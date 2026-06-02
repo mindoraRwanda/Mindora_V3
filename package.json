@@ -1,32 +1,40 @@
 {
   "name": "mindora_v3",
   "version": "1.0.0",
-  "description": "",
   "private": true,
-  "main": "index.js",
+  "description": "Mindora V3 monorepo — mental health platform microservices",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,js,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,json,md,yml,yaml}\"",
+    "db:generate": "npm run generate -w @mindora/database",
+    "db:migrate": "npm run migrate:dev -w @mindora/database"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mindoraRwanda/Mindora_V3.git"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/mindoraRwanda/Mindora_V3/issues"
-  },
-  "homepage": "https://github.com/mindoraRwanda/Mindora_V3#readme",
-  "workspaces": [
-    "apps/*",
-    "services/*",
-    "packages/*"
-  ],
   "devDependencies": {
-    "eslint": "^10.4.1",
-    "eslint-config-prettier": "^10.1.8",
-    "prettier": "^3.8.3"
+    "@eslint/js": "^9.22.0",
+    "eslint": "^9.22.0",
+    "eslint-config-prettier": "^10.1.1",
+    "prettier": "^3.5.3",
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.26.1",
+    "vitest": "^3.0.9"
   },
-  "type": "module"
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@10.9.2"
 }

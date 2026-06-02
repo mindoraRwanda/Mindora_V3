@@ -1,0 +1,185 @@
+_format_version: '3.0'
+
+# Microservices run on the host during local dev (npm run dev).
+# Kong in Docker reaches them via host.docker.internal.
+
+services:
+  - name: auth-service
+    url: http://host.docker.internal:3001
+  - name: user-service
+    url: http://host.docker.internal:3002
+  - name: appointment-service
+    url: http://host.docker.internal:3003
+  - name: mood-tracking-service
+    url: http://host.docker.internal:3004
+  - name: community-service
+    url: http://host.docker.internal:3005
+  - name: messaging-service
+    url: http://host.docker.internal:3006
+  - name: ai-integration-service
+    url: http://host.docker.internal:3007
+  - name: notification-service
+    url: http://host.docker.internal:3008
+  - name: admin-service
+    url: http://host.docker.internal:3009
+
+routes:
+  # Public health checks (no JWT) — full path forwarded to each service
+  - name: auth-health
+    service: auth-service
+    paths: [/api/v1/auth/health]
+    strip_path: false
+    methods: [GET]
+  - name: user-health
+    service: user-service
+    paths: [/api/v1/users/health]
+    strip_path: false
+    methods: [GET]
+  - name: appointment-health
+    service: appointment-service
+    paths: [/api/v1/appointments/health]
+    strip_path: false
+    methods: [GET]
+  - name: mood-health
+    service: mood-tracking-service
+    paths: [/api/v1/mood/health]
+    strip_path: false
+    methods: [GET]
+  - name: community-health
+    service: community-service
+    paths: [/api/v1/community/health]
+    strip_path: false
+    methods: [GET]
+  - name: messaging-health
+    service: messaging-service
+    paths: [/api/v1/messaging/health]
+    strip_path: false
+    methods: [GET]
+  - name: ai-health
+    service: ai-integration-service
+    paths: [/api/v1/ai/health]
+    strip_path: false
+    methods: [GET]
+  - name: notification-health
+    service: notification-service
+    paths: [/api/v1/notifications/health]
+    strip_path: false
+    methods: [GET]
+  - name: admin-health
+    service: admin-service
+    paths: [/api/v1/admin/health]
+    strip_path: false
+    methods: [GET]
+
+  # Protected API routes (JWT + rate limit)
+  - name: auth-api
+    service: auth-service
+    paths: [/api/v1/auth]
+    strip_path: true
+    methods: [GET, POST, PUT, PATCH, DELETE]
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          claims_to_verify: [exp]
+      - name: rate-limiting
+        config:
+          minute: 100
+          policy: local
+
+  - name: user-api
+    service: user-service
+    paths: [/api/v1/users]
+    strip_path: true
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 200
+          policy: local
+
+  - name: appointment-api
+    service: appointment-service
+    paths: [/api/v1/appointments]
+    strip_path: true
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 150
+          policy: local
+
+  - name: mood-api
+    service: mood-tracking-service
+    paths: [/api/v1/mood]
+    strip_path: true
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 200
+          policy: local
+
+  - name: community-api
+    service: community-service
+    paths: [/api/v1/community]
+    strip_path: true
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 300
+          policy: local
+
+  - name: messaging-api
+    service: messaging-service
+    paths: [/api/v1/messaging]
+    strip_path: true
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 500
+          policy: local
+
+  - name: ai-api
+    service: ai-integration-service
+    paths: [/api/v1/ai]
+    strip_path: true
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 60
+          policy: local
+
+  - name: notification-api
+    service: notification-service
+    paths: [/api/v1/notifications]
+    strip_path: true
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 100
+          policy: local
+
+  - name: admin-api
+    service: admin-service
+    paths: [/api/v1/admin]
+    strip_path: true
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 100
+          policy: local
+
+consumers:
+  - username: mindora-platform
+
+jwt_secrets:
+  - consumer: mindora-platform
+    key: mindora-auth
+    # Must match JWT_SECRET in .env — Kong declarative config does not expand env vars
+    secret: mindora-dev-jwt-secret-change-in-production
