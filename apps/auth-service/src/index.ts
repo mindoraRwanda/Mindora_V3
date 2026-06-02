@@ -1,30 +1,27 @@
-import { prisma } from '@mindora/database';
-import { registerSchema } from '@mindora/validation';
-import express from 'express';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { config as dotenvConfig } from 'dotenv';
+import { createApp } from './app.js';
+import { config } from './config.js';
+import { connectRedis } from './lib/redis.js';
 
-// Verify shared workspace packages resolve (used in Sprint 1 Auth tasks)
-void prisma;
-void registerSchema;
+const moduleDir = dirname(fileURLToPath(import.meta.url));
 
-const SERVICE_NAME = 'auth-service';
-const PORT = Number(process.env.PORT) || 3001;
-const GATEWAY_HEALTH_PATH = '/api/v1/auth/health';
+dotenvConfig({ path: resolve(moduleDir, '../../../.env') });
+dotenvConfig({ path: resolve(moduleDir, '../../../packages/database/.env') });
+dotenvConfig();
 
-const app = express();
+async function start() {
+  await connectRedis();
+  console.log('Redis connected (auth:blacklist:{jti} ready for logout in Sprint 2)');
 
-const healthResponse = () => ({
-  status: 'ok',
-  service: SERVICE_NAME,
-});
+  const app = createApp();
+  app.listen(config.port, () => {
+    console.log(`auth-service listening on http://localhost:${config.port}`);
+  });
+}
 
-app.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse());
-});
-
-app.get(GATEWAY_HEALTH_PATH, (_req, res) => {
-  res.status(200).json(healthResponse());
-});
-
-app.listen(PORT, () => {
-  console.log(`${SERVICE_NAME} listening on http://localhost:${PORT}`);
+start().catch((error) => {
+  console.error('Failed to start auth-service:', error);
+  process.exit(1);
 });

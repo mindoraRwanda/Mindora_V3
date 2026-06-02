@@ -30,6 +30,16 @@ routes:
     paths: [/api/v1/auth/health]
     strip_path: false
     methods: [GET]
+  - name: auth-register
+    service: auth-service
+    paths: [/api/v1/auth/register]
+    strip_path: true
+    methods: [POST]
+  - name: auth-login
+    service: auth-service
+    paths: [/api/v1/auth/login]
+    strip_path: true
+    methods: [POST]
   - name: user-health
     service: user-service
     paths: [/api/v1/users/health]
