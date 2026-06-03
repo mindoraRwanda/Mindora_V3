@@ -1,13 +1,9 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "CommonJS",
-    "strict": true,
-    "esModuleInterop": true
-  },
-  "include": [
-    "apps/**/*",
-    "packages/**/*",
-    "services/**/*"
+  "files": [],
+  "references": [
+    { "path": "./packages/shared-types" },
+    { "path": "./packages/validation" },
+    { "path": "./packages/database" },
+    { "path": "./packages/queue" }
   ]
 }

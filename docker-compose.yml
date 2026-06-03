@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mindora-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mindora
+      POSTGRES_PASSWORD: mindora
+      POSTGRES_DB: mindora
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mindora -d mindora']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    container_name: mindora-mongodb
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: mindora-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: mindora-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: mindora
+      RABBITMQ_DEFAULT_PASS: mindora
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kong:
+    image: kong:3.6
+    container_name: mindora-kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: 'off'
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_LISTEN: '0.0.0.0:8000'
+      KONG_ADMIN_LISTEN: '0.0.0.0:8001'
+      KONG_LOG_LEVEL: notice
+      JWT_SECRET: ${JWT_SECRET:-mindora-dev-jwt-secret-change-in-production}
+    volumes:
+      - ./infrastructure/kong/kong.yml:/kong/kong.yml:ro
+    ports:
+      - '8000:8000'
+      - '8001:8001'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      - postgres
+      - redis
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  redis_data:
+  rabbitmq_data:
