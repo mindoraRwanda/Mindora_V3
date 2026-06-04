@@ -1,10 +1,12 @@
 import express from 'express';
 
 const SERVICE_NAME = 'community-service';
-const PORT = Number(process.env.PORT) || 3005;
+const PORT = 3005;
 const GATEWAY_HEALTH_PATH = '/api/v1/community/health';
 
 const app = express();
+
+app.use(express.json())
 
 const healthResponse = () => ({
   status: 'ok',
