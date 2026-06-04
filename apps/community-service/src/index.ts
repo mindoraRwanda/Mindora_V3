@@ -1,5 +1,6 @@
 import express from 'express';
 import { connectDatabase } from './database';
+import { CommunityGroup } from './models'
 
 const SERVICE_NAME = 'community-service';
 const PORT = 3005;
@@ -27,6 +28,7 @@ const start = async () => {
   app.listen(PORT, () => {
     console.log(`Community Service running on port ${PORT}`)
   })
+  
 }
 
 start()
