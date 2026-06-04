@@ -1,4 +1,5 @@
 import express from 'express';
+import { connectDatabase } from './database';
 
 const SERVICE_NAME = 'community-service';
 const PORT = 3005;
@@ -21,6 +22,13 @@ app.get(GATEWAY_HEALTH_PATH, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
-app.listen(PORT, () => {
-  console.log(`${SERVICE_NAME} listening on http://localhost:${PORT}`);
-});
+const start = async () => {
+  await connectDatabase()
+  app.listen(PORT, () => {
+    console.log(`Community Service running on port ${PORT}`)
+  })
+}
+
+start()
+
+export default app
