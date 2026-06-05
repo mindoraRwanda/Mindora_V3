@@ -16,3 +16,10 @@ export const CreateGroupDto = z.object({
 })
 
 export type CreateGroupInput = z.infer<typeof CreateGroupDto>
+
+export const CreatePostDto = z.object({
+  content: z.string().min(1, 'Content cannot be empty').max(2000),
+  isAnonymous: z.boolean().default(false)
+})
+
+export type CreatePostInput = z.infer<typeof CreatePostDto>
