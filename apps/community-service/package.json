@@ -10,11 +10,14 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-
-    "express": "^4.21.2"
+    "@mindora/auth-service": "1.0.0",
+    "@mindora/validation": "*",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "vitest": "^4.1.8"
