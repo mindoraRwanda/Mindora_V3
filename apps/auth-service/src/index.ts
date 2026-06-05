@@ -4,6 +4,10 @@ import { config as dotenvConfig } from 'dotenv';
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { connectRedis } from './lib/redis.js';
+import { authenticate } from './middleware/authenticate.js';
+
+export { authenticate };
+export type { AuthenticatedRequest } from './middleware/authenticate.js';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
@@ -21,7 +25,10 @@ async function start() {
   });
 }
 
-start().catch((error) => {
-  console.error('Failed to start auth-service:', error);
-  process.exit(1);
-});
+// Only run start if this is the main module
+if (import.meta.url === `file://${process.argv[1]}`) {
+  start().catch((error) => {
+    console.error('Failed to start auth-service:', error);
+    process.exit(1);
+  });
+}
