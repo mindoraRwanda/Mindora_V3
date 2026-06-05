@@ -29,13 +29,14 @@ router.post('/groups', authenticate, async (req: Request, res: Response) => {
     })
 
     return res.status(201).json(group)
-  } catch (error: any) {
-    if (error.code === 11000) {
-      return res.status(409).json({ error: 'A group with this name already exists' })
+  } catch (error: unknown) {
+      const mongoError = error as { code?: number; message?: string }
+      if (mongoError.code === 11000) {
+        return res.status(409).json({ error: 'A group with this name already exists' })
+      }
+      console.error('Create group error:', error)
+      return res.status(500).json({ error: 'Internal server error' })
     }
-    console.error('Create group error:', error)
-    return res.status(500).json({ error: 'Internal server error' })
-  }
 })
 router.get('/groups', async (req: Request, res: Response) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1)
