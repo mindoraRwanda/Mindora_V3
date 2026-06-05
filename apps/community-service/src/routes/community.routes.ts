@@ -1,7 +1,9 @@
 import { Router, Request, Response } from 'express'
-import { CreateGroupDto } from '@mindora/validation'
-import { authenticate } from '@mindora/auth-service'
-import { CommunityGroup } from '../models'
+import { CreateGroupDto, CreatePostDto } from '@mindora/validation'
+import { authenticate, AuthenticatedRequest } from '@mindora/auth-service'
+import { CommunityGroup, Post } from '../models'
+import mongoose from 'mongoose'
+import { encryptUserId } from '../utils/encryption'
 
 const router = Router()
 
@@ -57,6 +59,61 @@ router.get('/groups', async (req: Request, res: Response) => {
     })
   } catch (error) {
     console.error('List groups error:', error)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+router.post('/groups/:id/posts', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params
+
+  if (!mongoose.Types.ObjectId.isValid(id as string)) {
+    return res.status(400).json({ error: 'Invalid group ID' })
+  }
+
+  const group = await CommunityGroup.findById(id)
+  if (!group) {
+    return res.status(404).json({ error: 'Community group not found' })
+  }
+
+  const result = CreatePostDto.safeParse(req.body)
+  if (!result.success) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      details: result.error.errors
+    })
+  }
+
+  const { content, isAnonymous } = result.data
+  const userId = req.user?.userId
+
+  if (!userId) {
+    return res.status(401).json({ error: 'User ID not found in token' })
+  }
+
+  const encryptedAuthorId = encryptUserId(userId)
+
+  try {
+    const newPost = await Post.create({
+      communityId: group._id,
+      encryptedAuthorId,
+      content,
+      isAnonymous
+    })
+
+    const responsePost = {
+      _id: newPost._id,
+      communityId: newPost.communityId,
+      content: newPost.content,
+      isAnonymous: newPost.isAnonymous,
+      reactions: newPost.reactions,
+      commentCount: newPost.commentCount,
+      createdAt: newPost.createdAt,
+      author: isAnonymous ? null : { userId }
+    }
+
+    return res.status(201).json(responsePost)
+  } catch (error) {
+    console.error('Create post error:', error)
     return res.status(500).json({ error: 'Internal server error' })
   }
 })

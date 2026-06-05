@@ -6,4 +6,4 @@ export {
   type RegisterDto,
   type UserRoleDto,
 } from './auth.js';
-export {CreateGroupDto} from './community.js'
+export {CreateGroupDto,CreatePostDto } from './community.js'
