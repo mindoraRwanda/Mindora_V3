@@ -7,6 +7,54 @@ import { encryptUserId } from '../utils/encryption'
 
 const router = Router()
 
+/**
+ * @swagger
+ * /api/v1/community/groups:
+ *   post:
+ *     summary: Create a new community group
+ *     tags: [Community Groups]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, description, category]
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 100
+ *                 example: Anxiety Support Circle
+ *               description:
+ *                 type: string
+ *                 minLength: 10
+ *                 maxLength: 500
+ *                 example: A safe space for people managing anxiety in their daily lives
+ *               category:
+ *                 type: string
+ *                 enum: [ANXIETY, DEPRESSION, GRIEF, RELATIONSHIPS, STRESS, ADDICTION, GENERAL]
+ *               isAnonymous:
+ *                 type: boolean
+ *                 default: false
+ *     responses:
+ *       201:
+ *         description: Group created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CommunityGroup'
+ *       400:
+ *         description: Validation failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationError'
+ *       401:
+ *         description: Unauthorized — missing or invalid token
+ */
 router.post('/groups', authenticate, async (req: Request, res: Response) => {
   const result = CreateGroupDto.safeParse(req.body)
 
@@ -38,6 +86,46 @@ router.post('/groups', authenticate, async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Internal server error' })
     }
 })
+
+
+/**
+ * @swagger
+ * /api/v1/community/groups:
+ *   get:
+ *     summary: List all community groups
+ *     tags: [Community Groups]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of results per page (max 50)
+ *     responses:
+ *       200:
+ *         description: Paginated list of groups
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 groups:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/CommunityGroup'
+ *                 total:
+ *                   type: number
+ *                 page:
+ *                   type: number
+ *                 limit:
+ *                   type: number
+ */
 router.get('/groups', async (req: Request, res: Response) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1)
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 10))
@@ -64,6 +152,53 @@ router.get('/groups', async (req: Request, res: Response) => {
   }
 })
 
+
+/**
+ * @swagger
+ * /api/v1/community/groups/{id}/posts:
+ *   post:
+ *     summary: Create a post in a community group
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The community group ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [content]
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 2000
+ *                 example: I have been finding breathing exercises really helpful.
+ *               isAnonymous:
+ *                 type: boolean
+ *                 default: false
+ *                 description: If true, author identity is encrypted and hidden from response
+ *     responses:
+ *       201:
+ *         description: Post created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Post'
+ *       400:
+ *         description: Validation failed or invalid group ID format
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Community group not found
+ */
 router.post('/groups/:id/posts', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params
 
@@ -118,4 +253,6 @@ router.post('/groups/:id/posts', authenticate, async (req: AuthenticatedRequest,
     return res.status(500).json({ error: 'Internal server error' })
   }
 })
+
+
 export default router
