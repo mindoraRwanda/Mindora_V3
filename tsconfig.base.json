@@ -17,6 +17,7 @@
     "baseUrl": ".",
     "paths": {
       "@mindora/auth-service": ["apps/auth-service/src/index.ts"],
+      "@mindora/auth-middleware": ["packages/auth-middleware/src/index.ts"],
       "@mindora/community-service": ["apps/community-service/src/index.ts"],
       "@mindora/database": ["packages/database/src/index.ts"],
       "@mindora/shared-types": ["packages/shared-types/src/index.ts"],

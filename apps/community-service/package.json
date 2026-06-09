@@ -11,9 +11,10 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@mindora/auth-service": "1.0.0",
+    "@mindora/auth-middleware": "1.0.0",
     "@mindora/validation": "*",
     "express": "^4.21.2",
+    "ioredis": "^5.6.0",
     "jsonwebtoken": "^9.0.3"
   },
   "devDependencies": {

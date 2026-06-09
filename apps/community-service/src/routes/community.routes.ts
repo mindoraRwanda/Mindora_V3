@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { CreateGroupDto, CreatePostDto } from '@mindora/validation'
-import { authenticate, AuthenticatedRequest } from '@mindora/auth-service'
+import { authenticate, AuthenticatedRequest } from '@mindora/auth-middleware'
 import { CommunityGroup, Post } from '../models'
 import mongoose from 'mongoose'
 import { encryptUserId } from '../utils/encryption'

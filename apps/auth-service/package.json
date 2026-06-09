@@ -3,8 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "development": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -14,6 +20,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@mindora/auth-middleware": "1.0.0",
     "@mindora/database": "1.0.0",
     "@mindora/validation": "1.0.0",
     "argon2": "^0.41.1",

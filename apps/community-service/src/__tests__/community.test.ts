@@ -21,7 +21,7 @@ const testToken = jwt.sign(
   TEST_SECRET,
   {
     expiresIn: '7d',
-    issuer: 'mindora-auth',
+    issuer: 'mindora',
     jwtid: 'test-jti-001'
   }
 )

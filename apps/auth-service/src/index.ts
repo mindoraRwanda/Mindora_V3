@@ -4,10 +4,11 @@ import { config as dotenvConfig } from 'dotenv';
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { connectRedis } from './lib/redis.js';
-import { authenticate } from './middleware/authenticate.js';
+import { authenticate } from '@mindora/auth-middleware';
+import type { AuthenticatedRequest } from '@mindora/auth-middleware';
 
 export { authenticate };
-export type { AuthenticatedRequest } from './middleware/authenticate.js';
+export type { AuthenticatedRequest };
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
