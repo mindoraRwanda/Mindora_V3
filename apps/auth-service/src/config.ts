@@ -15,4 +15,16 @@ export const config = {
   redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
   cookieName: 'refreshToken',
   isProduction: process.env.NODE_ENV === 'production',
+  appBaseUrl: process.env.APP_BASE_URL ?? 'http://localhost:3001',
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID ?? '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+    callbackUrl:
+      process.env.GOOGLE_CALLBACK_URL ??
+      'http://localhost:3001/oauth/google/callback',
+  },
 };
+
+export function isGoogleOAuthConfigured(): boolean {
+  return Boolean(config.google.clientId && config.google.clientSecret);
+}

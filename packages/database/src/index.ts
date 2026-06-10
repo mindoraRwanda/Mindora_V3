@@ -17,5 +17,11 @@ if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 
-export { PrismaClient };
-export type { User, RefreshToken, UserRole } from '@prisma/client';
+export { Prisma, PrismaClient };
+export type {
+  PatientProfile,
+  RefreshToken,
+  TherapistProfile,
+  User,
+  UserRole,
+} from '@prisma/client';
