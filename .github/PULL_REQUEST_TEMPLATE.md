@@ -1,4 +1,5 @@
 ## What changed and why
+
 <!-- One paragraph: what this PR does and the reason behind it. Link the issue if one exists. -->
 
 Closes #<!-- issue number -->
@@ -6,7 +7,9 @@ Closes #<!-- issue number -->
 ---
 
 ## Type of change
+
 <!-- Check all that apply -->
+
 - [ ] Bug fix
 - [ ] New feature
 - [ ] Refactor (no behaviour change)
@@ -19,7 +22,9 @@ Closes #<!-- issue number -->
 ---
 
 ## Affected service(s)
+
 <!-- Check every service whose code, tests, or config changed -->
+
 - [ ] `auth-service`
 - [ ] `user-service`
 - [ ] `admin-service`
@@ -38,13 +43,16 @@ Closes #<!-- issue number -->
 ---
 
 ## Testing
+
 <!-- Describe what you tested and how. "CI passed" alone is not enough. -->
 
 **Manual steps to verify:**
+
 1.
 2.
 
 **Test coverage:**
+
 - [ ] Unit tests added / updated
 - [ ] Integration tests added / updated
 - [ ] Existing tests still pass locally (`npm run test`)
@@ -52,7 +60,9 @@ Closes #<!-- issue number -->
 ---
 
 ## Database migrations
+
 <!-- Skip if no schema changes -->
+
 - [ ] No database changes
 - [ ] Migration added and applied locally (`npm run db:migrate`)
 - [ ] Migration is backwards-compatible (no destructive column drops in this PR)
@@ -61,7 +71,9 @@ Closes #<!-- issue number -->
 ---
 
 ## Security
+
 <!-- This platform handles sensitive mental health data. Answer honestly. -->
+
 - [ ] No secrets, tokens, or credentials added to code or config files
 - [ ] User input is validated before use (schema validation / parameterised queries)
 - [ ] No new endpoints bypass authentication / authorisation
@@ -70,7 +82,9 @@ Closes #<!-- issue number -->
 ---
 
 ## Breaking changes
+
 <!-- Complete this section only if "Breaking change" is checked above -->
+
 **What breaks:**
 
 **Migration path for consumers:**
@@ -78,4 +92,5 @@ Closes #<!-- issue number -->
 ---
 
 ## Reviewer notes
+
 <!-- Anything the reviewer should know: tricky logic, known limitations, follow-up tickets -->

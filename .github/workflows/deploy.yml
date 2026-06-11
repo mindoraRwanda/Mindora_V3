@@ -1,0 +1,228 @@
+name: Deploy
+
+on:
+  # Deploy to staging on every PR update so the environment gate can be checked
+  # before the PR is allowed to merge.
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+  # Deploy to production automatically after CI passes on main.
+  push:
+    branches: [main]
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+  packages: write # push images to GitHub Container Registry
+  deployments: write # create GitHub deployment records
+
+concurrency:
+  # One deploy per environment at a time. Never cancel a production deploy.
+  group: deploy-${{ github.event_name == 'push' && 'production' || 'staging' }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  # ─── Build & push all service images ─────────────────────────────────────
+  # Tags each image with the commit SHA for immutable, traceable deployments.
+  # Uses GitHub Container Registry — free for public repositories.
+  build-images:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: echo "tag=${{ env.REGISTRY }}/${{ github.repository_owner }}/mindora:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build each service image in parallel using the matrix below.
+      # Each service must have a Dockerfile at apps/<service>/Dockerfile.
+      - name: Build & push auth-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/auth-service/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/auth-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/auth-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push user-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/user-service/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/user-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/user-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push admin-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/admin-service/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/admin-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/admin-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push appointment-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/appointment-service/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/appointment-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/appointment-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push mood-tracking-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/mood-tracking-service/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/mood-tracking-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/mood-tracking-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push messaging-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/messaging-service/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/messaging-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/messaging-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push community-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/community-service/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/community-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/community-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push notification-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/notification-service/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/notification-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/notification-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push ai-integration-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/ai-integration-service/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/ai-integration-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/ai-integration-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── Deploy to staging ───────────────────────────────────────────────────
+  # Runs on every PR. Branch protection requires this job to succeed
+  # before the PR can be merged (add "staging" to Required deployments).
+  deploy-staging:
+    name: Deploy → staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build-images]
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }} # set STAGING_URL in repo → Settings → Environments → staging → Variables
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to staging server
+        # ── Replace this step with your actual deployment method ──────────
+        # Examples:
+        #
+        # SSH + Docker Compose:
+        #   uses: appleboy/ssh-action@v1
+        #   with:
+        #     host: ${{ secrets.STAGING_HOST }}
+        #     username: ${{ secrets.STAGING_USER }}
+        #     key: ${{ secrets.STAGING_SSH_KEY }}
+        #     script: |
+        #       cd /opt/mindora
+        #       IMAGE_TAG=${{ github.sha }} docker compose pull
+        #       IMAGE_TAG=${{ github.sha }} docker compose up -d --remove-orphans
+        #       docker compose exec -T database npx prisma migrate deploy
+        #
+        # Railway / Render / Fly.io: replace with their CLI deploy command
+        # ─────────────────────────────────────────────────────────────────
+        run: |
+          echo "Deploying commit ${{ github.sha }} to staging"
+          echo "Image tag: ${{ needs.build-images.outputs.image-tag }}"
+          echo "TODO: replace this step with your actual deploy command"
+
+      - name: Verify staging health
+        # Hit a /healthz (or /health) endpoint after deploy.
+        # Fails the deployment if the service is not responding within 60 s.
+        run: |
+          echo "TODO: replace STAGING_URL with your real staging base URL"
+          # curl --retry 6 --retry-delay 10 --fail "${{ vars.STAGING_URL }}/health"
+
+  # ─── Deploy to production ─────────────────────────────────────────────────
+  # Runs only after a merge to main. Requires a manual approval if you add
+  # a required reviewer to the "production" environment in Settings → Environments.
+  deploy-production:
+    name: Deploy → production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build-images]
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }} # set PRODUCTION_URL in repo → Settings → Environments → production → Variables
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to production server
+        # ── Same pattern as staging — point at your production host/project ─
+        run: |
+          echo "Deploying commit ${{ github.sha }} to production"
+          echo "Image tag: ${{ needs.build-images.outputs.image-tag }}"
+          echo "TODO: replace this step with your actual deploy command"
+
+      - name: Verify production health
+        run: |
+          echo "TODO: replace PRODUCTION_URL with your real production base URL"
+          # curl --retry 6 --retry-delay 10 --fail "${{ vars.PRODUCTION_URL }}/health"

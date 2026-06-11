@@ -1,12 +1,21 @@
-import amqp, { type Channel, type Connection, type ConsumeMessage } from 'amqplib';
+import amqp, {
+  type Channel,
+  type Connection,
+  type ConsumeMessage,
+} from 'amqplib';
 
 const DEFAULT_URL = 'amqp://mindora:mindora@localhost:5672';
 
-export type MessageHandler = (content: unknown, raw: ConsumeMessage) => Promise<void> | void;
+export type MessageHandler = (
+  content: unknown,
+  raw: ConsumeMessage
+) => Promise<void> | void;
 
 let sharedConnection: Connection | null = null;
 
-export async function connect(url = process.env.RABBITMQ_URL ?? DEFAULT_URL): Promise<Connection> {
+export async function connect(
+  url = process.env.RABBITMQ_URL ?? DEFAULT_URL
+): Promise<Connection> {
   if (sharedConnection) {
     return sharedConnection;
   }

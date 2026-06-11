@@ -10,22 +10,22 @@ Authentication microservice for Mindora V3 — register, login, JWT access token
 
 Loads from repo root `.env` and `packages/database/.env`:
 
-| Variable | Purpose |
-|----------|---------|
-| `DATABASE_URL` | PostgreSQL (Prisma) |
-| `REDIS_URL` | JWT blacklist (logout in Sprint 2) |
-| `JWT_SECRET` | Access token signing (must match Kong dev secret) |
-| `PORT` | Optional, default `3001` |
+| Variable       | Purpose                                           |
+| -------------- | ------------------------------------------------- |
+| `DATABASE_URL` | PostgreSQL (Prisma)                               |
+| `REDIS_URL`    | JWT blacklist (logout in Sprint 2)                |
+| `JWT_SECRET`   | Access token signing (must match Kong dev secret) |
+| `PORT`         | Optional, default `3001`                          |
 
 ## Endpoints
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/health` | No | Health check |
-| GET | `/api/v1/auth/health` | No | Kong health path |
-| POST | `/register` | No | Create user → `201 { userId }` |
-| POST | `/login` | No | Login → `200 { accessToken }` + refresh cookie |
-| GET | `/me` | Bearer JWT | Current user → `{ userId, email, role }` |
+| Method | Path                  | Auth       | Description                                    |
+| ------ | --------------------- | ---------- | ---------------------------------------------- |
+| GET    | `/health`             | No         | Health check                                   |
+| GET    | `/api/v1/auth/health` | No         | Kong health path                               |
+| POST   | `/register`           | No         | Create user → `201 { userId }`                 |
+| POST   | `/login`              | No         | Login → `200 { accessToken }` + refresh cookie |
+| GET    | `/me`                 | Bearer JWT | Current user → `{ userId, email, role }`       |
 
 Kong strips `/api/v1/auth` prefix, so gateway paths are e.g. `/api/v1/auth/register`.
 
@@ -44,11 +44,11 @@ From repo root (Postgres + migrate required):
 npm run db:seed
 ```
 
-| Role | Email | Password |
-|------|-------|----------|
-| PATIENT | `patient@test.mindora.local` | `Patient123!` |
+| Role      | Email                          | Password        |
+| --------- | ------------------------------ | --------------- |
+| PATIENT   | `patient@test.mindora.local`   | `Patient123!`   |
 | THERAPIST | `therapist@test.mindora.local` | `Therapist123!` |
-| ADMIN | `admin@test.mindora.local` | `Admin123!` |
+| ADMIN     | `admin@test.mindora.local`     | `Admin123!`     |
 
 ## Manual test (curl)
 

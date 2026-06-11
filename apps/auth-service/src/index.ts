@@ -13,7 +13,9 @@ dotenvConfig();
 
 async function start() {
   await connectRedis();
-  console.log('Redis connected (auth:blacklist:{jti} ready for logout in Sprint 2)');
+  console.log(
+    'Redis connected (auth:blacklist:{jti} ready for logout in Sprint 2)'
+  );
 
   const app = createApp();
   app.listen(config.port, () => {

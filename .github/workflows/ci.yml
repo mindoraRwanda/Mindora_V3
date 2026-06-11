@@ -97,7 +97,7 @@ jobs:
           fi
 
       - name: Scan for leaked credentials (TruffleHog)
-        uses: trufflesecurity/trufflehog@main   # TODO: pin to SHA — see comment above
+        uses: trufflesecurity/trufflehog@main # TODO: pin to SHA — see comment above
         with:
           path: ./
           base: ${{ steps.range.outputs.base }}
@@ -301,11 +301,11 @@ jobs:
     steps:
       - name: All required checks passed
         env:
-          SECRETS:  ${{ needs.secret-scan.result }}
-          CODEQL:   ${{ needs.codeql.result }}
-          QUALITY:  ${{ needs.quality.result }}
-          TEST:     ${{ needs.test.result }}
-          BUILD:    ${{ needs.build.result }}
+          SECRETS: ${{ needs.secret-scan.result }}
+          CODEQL: ${{ needs.codeql.result }}
+          QUALITY: ${{ needs.quality.result }}
+          TEST: ${{ needs.test.result }}
+          BUILD: ${{ needs.build.result }}
           SECURITY: ${{ needs.security.result }}
         run: |
           echo "secret-scan=$SECRETS  codeql=$CODEQL  quality=$QUALITY  test=$TEST  build=$BUILD  security=$SECURITY"

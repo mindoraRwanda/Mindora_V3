@@ -32,7 +32,9 @@ export function signAccessToken(payload: AccessTokenPayload): string {
   );
 }
 
-export function verifyAccessToken(token: string): AccessTokenPayload & { jti?: string } {
+export function verifyAccessToken(
+  token: string
+): AccessTokenPayload & { jti?: string } {
   const decoded = jwt.verify(token, config.jwtSecret, {
     issuer: config.jwtIssuer,
   });
