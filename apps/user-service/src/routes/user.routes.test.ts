@@ -34,7 +34,8 @@ vi.mock('@mindora/database', () => ({
 }));
 
 vi.mock('@mindora/auth-middleware', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@mindora/auth-middleware')>();
+  const actual =
+    await importOriginal<typeof import('@mindora/auth-middleware')>();
   return {
     ...actual,
     isTokenBlacklisted: (...args: unknown[]) => mockIsBlacklisted(...args),

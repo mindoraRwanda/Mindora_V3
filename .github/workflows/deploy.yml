@@ -1,0 +1,277 @@
+name: Deploy
+
+on:
+  # Deploy to staging on every PR update so the environment gate can be checked
+  # before the PR is allowed to merge.
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+  # Deploy to production automatically after CI passes on main.
+  push:
+    branches: [main]
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+  packages: write # push images to GitHub Container Registry
+  deployments: write # create GitHub deployment records
+
+concurrency:
+  # One deploy per environment at a time. Never cancel a production deploy.
+  group: deploy-${{ github.event_name == 'push' && 'production' || 'staging' }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ─── Build & push all service images ─────────────────────────────────────
+  #
+  # STATUS: placeholder — no Dockerfiles exist yet.
+  #
+  # TO ENABLE:
+  #   1. Add apps/<service>/Dockerfile for each service.
+  #   2. Delete the "Placeholder" step below.
+  #   3. Uncomment every step marked  ## UNCOMMENT
+  # ─────────────────────────────────────────────────────────────────────────
+  build-images:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set lowercase image prefix
+        # Docker registry names must be lowercase. github.repository_owner
+        # preserves original casing (e.g. mindoraRwanda), so we force it here.
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_PREFIX=${{ env.REGISTRY }}/${OWNER}" >> $GITHUB_ENV
+
+      # ── Placeholder — remove this step once Dockerfiles are added ──────
+      - name: Placeholder — image builds not yet enabled
+        id: meta
+        run: |
+          echo "Dockerfiles have not been added yet."
+          echo "Image builds are skipped until apps/<service>/Dockerfile exists."
+          echo "tag=placeholder" >> $GITHUB_OUTPUT
+
+      ## UNCOMMENT the steps below when Dockerfiles are ready
+      ## and delete the placeholder step above.
+
+      # - name: Set image tag
+      #   id: meta
+      #   run: echo "tag=${{ env.IMAGE_PREFIX }}/mindora:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      # - name: Log in to GitHub Container Registry
+      #   uses: docker/login-action@v3
+      #   with:
+      #     registry: ${{ env.REGISTRY }}
+      #     username: ${{ github.actor }}
+      #     password: ${{ secrets.GITHUB_TOKEN }}
+
+      # - name: Set up Docker Buildx
+      #   uses: docker/setup-buildx-action@v3
+
+      # - name: Build & push auth-service
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: apps/auth-service/Dockerfile
+      #     push: true
+      #     tags: ${{ env.IMAGE_PREFIX }}/auth-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/auth-service:latest
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
+
+      # - name: Build & push user-service
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: apps/user-service/Dockerfile
+      #     push: true
+      #     tags: ${{ env.IMAGE_PREFIX }}/user-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/user-service:latest
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
+
+      # - name: Build & push admin-service
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: apps/admin-service/Dockerfile
+      #     push: true
+      #     tags: ${{ env.IMAGE_PREFIX }}/admin-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/admin-service:latest
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
+
+      # - name: Build & push appointment-service
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: apps/appointment-service/Dockerfile
+      #     push: true
+      #     tags: ${{ env.IMAGE_PREFIX }}/appointment-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/appointment-service:latest
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
+
+      # - name: Build & push mood-tracking-service
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: apps/mood-tracking-service/Dockerfile
+      #     push: true
+      #     tags: ${{ env.IMAGE_PREFIX }}/mood-tracking-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/mood-tracking-service:latest
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
+
+      # - name: Build & push messaging-service
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: apps/messaging-service/Dockerfile
+      #     push: true
+      #     tags: ${{ env.IMAGE_PREFIX }}/messaging-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/messaging-service:latest
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
+
+      # - name: Build & push community-service
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: apps/community-service/Dockerfile
+      #     push: true
+      #     tags: ${{ env.IMAGE_PREFIX }}/community-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/community-service:latest
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
+
+      # - name: Build & push notification-service
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: apps/notification-service/Dockerfile
+      #     push: true
+      #     tags: ${{ env.IMAGE_PREFIX }}/notification-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/notification-service:latest
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
+
+      # - name: Build & push ai-integration-service
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: apps/ai-integration-service/Dockerfile
+      #     push: true
+      #     tags: ${{ env.IMAGE_PREFIX }}/ai-integration-service:${{ github.sha }},${{ env.IMAGE_PREFIX }}/ai-integration-service:latest
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
+
+  # ─── Deploy to staging ───────────────────────────────────────────────────
+  #
+  # STATUS: placeholder — deployment target not configured yet.
+  #
+  # TO ENABLE:
+  #   1. Add STAGING_HOST, STAGING_USER, STAGING_SSH_KEY to
+  #      GitHub → Settings → Environments → staging → Secrets.
+  #   2. Add STAGING_URL to the same environment's Variables.
+  #   3. Delete the "Placeholder" step below.
+  #   4. Uncomment the steps marked  ## UNCOMMENT
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy → staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build-images]
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Placeholder — remove this step once the server secrets are set ──
+      - name: Placeholder — staging deploy not yet configured
+        run: |
+          echo "Staging deployment is not configured yet."
+          echo "See the TO ENABLE instructions at the top of this job."
+          echo "Commit: ${{ github.sha }}"
+
+      ## UNCOMMENT when staging secrets are ready.
+
+      # - name: Deploy to staging via SSH
+      #   uses: appleboy/ssh-action@v1
+      #   with:
+      #     host: ${{ secrets.STAGING_HOST }}
+      #     username: ${{ secrets.STAGING_USER }}
+      #     key: ${{ secrets.STAGING_SSH_KEY }}
+      #     script: |
+      #       cd /opt/mindora
+      #       echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      #       IMAGE_TAG=${{ github.sha }} docker compose pull
+      #       IMAGE_TAG=${{ github.sha }} docker compose up -d --remove-orphans
+      #       docker compose exec -T postgres npx prisma migrate deploy
+
+      # - name: Verify staging health
+      #   run: |
+      #     curl --retry 6 --retry-delay 10 --fail "${{ vars.STAGING_URL }}/health"
+
+  # ─── Deploy to production ─────────────────────────────────────────────────
+  #
+  # STATUS: placeholder — deployment target not configured yet.
+  #
+  # TO ENABLE:
+  #   1. Add PRODUCTION_HOST, PRODUCTION_USER, PRODUCTION_SSH_KEY to
+  #      GitHub → Settings → Environments → production → Secrets.
+  #   2. Add PRODUCTION_URL to the same environment's Variables.
+  #   3. Add yourself as a Required Reviewer on the production environment
+  #      so every production deploy waits for manual approval.
+  #   4. Delete the "Placeholder" step below.
+  #   5. Uncomment the steps marked  ## UNCOMMENT
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-production:
+    name: Deploy → production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build-images]
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Placeholder — remove this step once the server secrets are set ──
+      - name: Placeholder — production deploy not yet configured
+        run: |
+          echo "Production deployment is not configured yet."
+          echo "See the TO ENABLE instructions at the top of this job."
+          echo "Commit: ${{ github.sha }}"
+
+      ## UNCOMMENT when production secrets are ready.
+
+      # - name: Deploy to production via SSH
+      #   uses: appleboy/ssh-action@v1
+      #   with:
+      #     host: ${{ secrets.PRODUCTION_HOST }}
+      #     username: ${{ secrets.PRODUCTION_USER }}
+      #     key: ${{ secrets.PRODUCTION_SSH_KEY }}
+      #     script: |
+      #       cd /opt/mindora
+      #       echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      #       IMAGE_TAG=${{ github.sha }} docker compose pull
+      #       IMAGE_TAG=${{ github.sha }} docker compose up -d --remove-orphans
+      #       docker compose exec -T postgres npx prisma migrate deploy
+
+      # - name: Verify production health
+      #   run: |
+      #     curl --retry 6 --retry-delay 10 --fail "${{ vars.PRODUCTION_URL }}/health"

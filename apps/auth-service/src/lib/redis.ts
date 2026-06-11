@@ -38,7 +38,9 @@ export async function getPasswordResetUserId(
   return client.get(passwordResetKey(tokenHash));
 }
 
-export async function deletePasswordResetToken(tokenHash: string): Promise<void> {
+export async function deletePasswordResetToken(
+  tokenHash: string
+): Promise<void> {
   const client = getRedisClient(config.redisUrl);
   if (client.status !== 'ready') {
     await client.connect();

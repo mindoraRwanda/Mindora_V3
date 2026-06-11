@@ -1,20 +1,32 @@
-import amqp, { type Channel, type Connection, type ConsumeMessage } from 'amqplib';
+import amqp, {
+  type Channel,
+  type ChannelModel,
+  type ConsumeMessage,
+} from 'amqplib';
 
 const DEFAULT_URL = 'amqp://mindora:mindora@localhost:5672';
 
-export type MessageHandler = (content: unknown, raw: ConsumeMessage) => Promise<void> | void;
+export type MessageHandler = (
+  content: unknown,
+  raw: ConsumeMessage
+) => Promise<void> | void;
 
-let sharedConnection: Connection | null = null;
+let sharedConnection: ChannelModel | null = null;
 
-export async function connect(url = process.env.RABBITMQ_URL ?? DEFAULT_URL): Promise<Connection> {
+export async function connect(
+  url = process.env.RABBITMQ_URL ?? DEFAULT_URL
+): Promise<ChannelModel> {
   if (sharedConnection) {
     return sharedConnection;
   }
-  sharedConnection = await amqp.connect(url);
-  sharedConnection.on('close', () => {
+  // Use a local variable so TypeScript knows the return value is never null,
+  // even though the 'close' listener later resets sharedConnection to null.
+  const connection = await amqp.connect(url);
+  connection.on('close', () => {
     sharedConnection = null;
   });
-  return sharedConnection;
+  sharedConnection = connection;
+  return connection;
 }
 
 export async function publish(
@@ -40,7 +52,7 @@ export async function subscribe(
   const connection = await connect(url);
   const channel = await connection.createChannel();
   await channel.assertQueue(queue, { durable: true });
-  await channel.consume(queue, async (message) => {
+  await channel.consume(queue, async (message: ConsumeMessage | null) => {
     if (!message) return;
     try {
       const content = JSON.parse(message.content.toString()) as unknown;

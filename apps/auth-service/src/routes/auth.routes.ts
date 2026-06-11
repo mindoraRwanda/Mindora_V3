@@ -1,8 +1,5 @@
 import { prisma } from '@mindora/database';
-import {
-  blacklistToken,
-  verifyAccessToken,
-} from '@mindora/auth-middleware';
+import { blacklistToken, verifyAccessToken } from '@mindora/auth-middleware';
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -101,36 +98,44 @@ authRouter.post('/login', async (req, res) => {
   res.status(200).json({ accessToken });
 });
 
-authRouter.post('/logout', authenticate, async (req: AuthenticatedRequest, res) => {
-  const header = req.headers.authorization;
-  const token = header?.startsWith('Bearer ') ? header.slice(7) : '';
+authRouter.post(
+  '/logout',
+  authenticate,
+  async (req: AuthenticatedRequest, res) => {
+    const header = req.headers.authorization;
+    const token = header?.startsWith('Bearer ') ? header.slice(7) : '';
 
-  try {
-    const payload = verifyAccessToken(token, config.jwtSecret, config.jwtIssuer);
-    if (payload.jti) {
-      const decoded = jwt.decode(token) as jwt.JwtPayload | null;
-      const exp = decoded?.exp ?? 0;
-      const ttlSeconds = Math.max(0, exp - Math.floor(Date.now() / 1000));
-      await blacklistToken(config.redisUrl, payload.jti, ttlSeconds);
+    try {
+      const payload = verifyAccessToken(
+        token,
+        config.jwtSecret,
+        config.jwtIssuer
+      );
+      if (payload.jti) {
+        const decoded = jwt.decode(token) as jwt.JwtPayload | null;
+        const exp = decoded?.exp ?? 0;
+        const ttlSeconds = Math.max(0, exp - Math.floor(Date.now() / 1000));
+        await blacklistToken(config.redisUrl, payload.jti, ttlSeconds);
+      }
+    } catch {
+      // Token already invalid — still clear refresh cookie and return 200
     }
-  } catch {
-    // Token already invalid — still clear refresh cookie and return 200
-  }
 
-  const refreshToken = req.cookies?.[config.cookieName] as string | undefined;
-  if (refreshToken) {
-    await prisma.refreshToken.updateMany({
-      where: {
-        tokenHash: hashToken(refreshToken),
-        revoked: false,
-      },
-      data: { revoked: true },
-    });
-  }
+    const refreshToken = req.cookies?.[config.cookieName] as string | undefined;
+    if (refreshToken) {
+      await prisma.refreshToken.updateMany({
+        where: {
+          tokenHash: hashToken(refreshToken),
+          revoked: false,
+        },
+        data: { revoked: true },
+      });
+    }
 
-  clearRefreshCookie(res);
-  res.status(200).json({ message: 'Logged out' });
-});
+    clearRefreshCookie(res);
+    res.status(200).json({ message: 'Logged out' });
+  }
+);
 
 authRouter.post('/refresh', async (req, res) => {
   const refreshToken = req.cookies?.[config.cookieName] as string | undefined;
@@ -269,15 +274,15 @@ authRouter.get(
 authRouter.get('/oauth/google', (req, res, next) => {
   if (!isGoogleOAuthConfigured()) {
     res.status(503).json({
-      message: 'Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
+      message:
+        'Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
     });
     return;
   }
-  passport.authenticate('google', { scope: ['profile', 'email'], session: false })(
-    req,
-    res,
-    next
-  );
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    session: false,
+  })(req, res, next);
 });
 
 authRouter.get('/oauth/google/callback', (req, res, next) => {

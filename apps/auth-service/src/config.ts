@@ -8,7 +8,10 @@ function requireEnv(name: string, fallback?: string): string {
 
 export const config = {
   port: Number(process.env.PORT) || 3001,
-  jwtSecret: requireEnv('JWT_SECRET', 'mindora-dev-jwt-secret-change-in-production'),
+  jwtSecret: requireEnv(
+    'JWT_SECRET',
+    'mindora-dev-jwt-secret-change-in-production'
+  ),
   jwtIssuer: process.env.JWT_ISSUER ?? 'mindora-auth',
   accessTokenTtl: '15m' as const,
   refreshTokenDays: 7,

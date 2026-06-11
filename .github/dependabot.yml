@@ -1,0 +1,41 @@
+version: 2
+
+updates:
+  # ── npm dependencies ────────────────────────────────────────────────────
+  # Dependabot opens PRs to bump outdated or vulnerable packages.
+  # Weekly cadence keeps the dependency tree fresh without flooding the queue.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Africa/Kigali
+    open-pull-requests-limit: 10
+    groups:
+      # Batch all non-breaking minor/patch updates into a single PR
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+    commit-message:
+      prefix: 'chore(deps)'
+
+  # ── GitHub Actions versions ─────────────────────────────────────────────
+  # Keeps actions pinned to up-to-date versions, which also patches
+  # supply-chain vulnerabilities in the CI pipeline itself.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Africa/Kigali
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: 'chore(ci)'

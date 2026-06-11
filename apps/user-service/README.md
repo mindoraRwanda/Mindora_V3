@@ -8,12 +8,12 @@ Profile management for Mindora patients and therapists.
 
 ## Endpoints
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/health` | No | Health check |
-| GET | `/me` | JWT | Current user's profile (patient or therapist) |
-| PUT | `/me` | JWT | Update profile fields |
-| GET | `/therapists` | JWT | Paginated therapist directory |
+| Method | Path          | Auth | Description                                   |
+| ------ | ------------- | ---- | --------------------------------------------- |
+| GET    | `/health`     | No   | Health check                                  |
+| GET    | `/me`         | JWT  | Current user's profile (patient or therapist) |
+| PUT    | `/me`         | JWT  | Update profile fields                         |
+| GET    | `/therapists` | JWT  | Paginated therapist directory                 |
 
 ## Seed profiles
 

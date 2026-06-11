@@ -34,7 +34,8 @@ export function verifyAccessToken(
 
 export function createVerifyJwt(options: AuthMiddlewareOptions) {
   const jwtIssuer = options.jwtIssuer ?? DEFAULT_ISSUER;
-  const redisUrl = options.redisUrl ?? process.env.REDIS_URL ?? DEFAULT_REDIS_URL;
+  const redisUrl =
+    options.redisUrl ?? process.env.REDIS_URL ?? DEFAULT_REDIS_URL;
 
   return async function verifyJwt(
     req: Request,
