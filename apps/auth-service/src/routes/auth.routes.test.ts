@@ -47,13 +47,11 @@ describe('POST /register', () => {
     mockUserCreate.mockResolvedValue({ id: 'user-123' });
 
     const app = createApp();
-    const response = await request(app)
-      .post('/register')
-      .send({
-        email: 'patient@example.com',
-        password: 'securePass1',
-        role: 'PATIENT',
-      });
+    const response = await request(app).post('/register').send({
+      email: 'patient@example.com',
+      password: 'securePass1',
+      role: 'PATIENT',
+    });
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual({ userId: 'user-123' });
@@ -63,13 +61,11 @@ describe('POST /register', () => {
     mockFindUnique.mockResolvedValue({ id: 'existing-user' });
 
     const app = createApp();
-    const response = await request(app)
-      .post('/register')
-      .send({
-        email: 'patient@example.com',
-        password: 'securePass1',
-        role: 'PATIENT',
-      });
+    const response = await request(app).post('/register').send({
+      email: 'patient@example.com',
+      password: 'securePass1',
+      role: 'PATIENT',
+    });
 
     expect(response.status).toBe(409);
     expect(response.body.message).toBe('Email already exists');
