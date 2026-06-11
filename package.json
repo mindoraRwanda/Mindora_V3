@@ -16,7 +16,8 @@
     "format:check": "prettier --check \"**/*.{ts,js,json,md,yml,yaml}\"",
     "db:generate": "npm run generate -w @mindora/database",
     "db:migrate": "npm run migrate:dev -w @mindora/database",
-    "db:seed": "npm run seed -w @mindora/database"
+    "db:seed": "npm run seed -w @mindora/database",
+    "db:seed:profiles": "npm run seed -w @mindora/user-service"
   },
   "repository": {
     "type": "git",

@@ -18,24 +18,68 @@ model User {
   email        String   @unique
   passwordHash String   @map("password_hash")
   role         UserRole
+  googleId     String?  @unique @map("google_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  refreshTokens RefreshToken[]
+  refreshTokens   RefreshToken[]
+  patientProfile  PatientProfile?
+  therapistProfile TherapistProfile?
 
   @@map("users")
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  tokenHash String   @map("token_hash")
-  expiresAt DateTime @map("expires_at")
-  revoked   Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  tokenHash         String   @map("token_hash")
+  expiresAt         DateTime @map("expires_at")
+  revoked           Boolean  @default(false)
+  replacedByTokenId String?  @map("replaced_by_token_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken? @relation("TokenRotation", fields: [replacedByTokenId], references: [id])
+  replaces   RefreshToken[] @relation("TokenRotation")
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+model PatientProfile {
+  id                      String   @id @default(uuid()) @db.Uuid
+  userId                  String   @unique @map("user_id") @db.Uuid
+  userName                String?  @map("user_name")
+  bio                     String?
+  timezone                String   @default("UTC")
+  languagePreference      String   @default("en") @map("language_preference")
+  notificationPreferences Json     @default("{}") @map("notification_preferences")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
-  @@map("refresh_tokens")
+  @@map("patient_profiles")
+}
+
+model TherapistProfile {
+  id                      String   @id @default(uuid()) @db.Uuid
+  userId                  String   @unique @map("user_id") @db.Uuid
+  userName                String?  @map("user_name")
+  bio                     String?
+  timezone                String   @default("UTC")
+  languagePreference      String   @default("en") @map("language_preference")
+  notificationPreferences Json     @default("{}") @map("notification_preferences")
+  specialisation          String?
+  languages               String[] @default([])
+  isAcceptingPatients     Boolean  @default(true) @map("is_accepting_patients")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isAcceptingPatients])
+  @@index([specialisation])
+  @@map("therapist_profiles")
 }

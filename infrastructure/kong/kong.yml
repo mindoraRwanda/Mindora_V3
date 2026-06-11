@@ -40,6 +40,31 @@ routes:
     paths: [/api/v1/auth/login]
     strip_path: true
     methods: [POST]
+  - name: auth-refresh
+    service: auth-service
+    paths: [/api/v1/auth/refresh]
+    strip_path: true
+    methods: [POST]
+  - name: auth-forgot-password
+    service: auth-service
+    paths: [/api/v1/auth/forgot-password]
+    strip_path: true
+    methods: [POST]
+  - name: auth-reset-password
+    service: auth-service
+    paths: [/api/v1/auth/reset-password]
+    strip_path: true
+    methods: [POST]
+  - name: auth-oauth-google
+    service: auth-service
+    paths: [/api/v1/auth/oauth/google]
+    strip_path: true
+    methods: [GET]
+  - name: auth-oauth-google-callback
+    service: auth-service
+    paths: [/api/v1/auth/oauth/google/callback]
+    strip_path: true
+    methods: [GET]
   - name: user-health
     service: user-service
     paths: [/api/v1/users/health]
