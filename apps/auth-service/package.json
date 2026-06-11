@@ -15,7 +15,7 @@
     "@mindora/validation": "1.0.0",
     "argon2": "^0.41.1",
     "cookie-parser": "^1.4.7",
-    "dotenv": "^16.4.7",
+    "dotenv": "^17.4.2",
     "express": "^4.21.2",
     "ioredis": "^5.6.0",
     "jsonwebtoken": "^9.0.2"
