@@ -1,6 +1,6 @@
 import amqp, {
   type Channel,
-  type Connection,
+  type ChannelModel,
   type ConsumeMessage,
 } from 'amqplib';
 
@@ -11,19 +11,22 @@ export type MessageHandler = (
   raw: ConsumeMessage
 ) => Promise<void> | void;
 
-let sharedConnection: Connection | null = null;
+let sharedConnection: ChannelModel | null = null;
 
 export async function connect(
   url = process.env.RABBITMQ_URL ?? DEFAULT_URL
-): Promise<Connection> {
+): Promise<ChannelModel> {
   if (sharedConnection) {
     return sharedConnection;
   }
-  sharedConnection = await amqp.connect(url);
-  sharedConnection.on('close', () => {
+  // Use a local variable so TypeScript knows the return value is never null,
+  // even though the 'close' listener later resets sharedConnection to null.
+  const connection = await amqp.connect(url);
+  connection.on('close', () => {
     sharedConnection = null;
   });
-  return sharedConnection;
+  sharedConnection = connection;
+  return connection;
 }
 
 export async function publish(
@@ -49,7 +52,7 @@ export async function subscribe(
   const connection = await connect(url);
   const channel = await connection.createChannel();
   await channel.assertQueue(queue, { durable: true });
-  await channel.consume(queue, async (message) => {
+  await channel.consume(queue, async (message: ConsumeMessage | null) => {
     if (!message) return;
     try {
       const content = JSON.parse(message.content.toString()) as unknown;
