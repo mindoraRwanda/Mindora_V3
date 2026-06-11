@@ -19,7 +19,7 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@prisma/client": "^6.5.0"
+    "@prisma/client": "^7.8.0"
   },
   "prisma": {
     "schema": "prisma/schema.prisma",
