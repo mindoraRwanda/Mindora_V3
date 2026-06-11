@@ -52,7 +52,7 @@ jobs:
     outputs:
       image-tag: ${{ steps.meta.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set lowercase image prefix
         # Docker registry names must be lowercase. github.repository_owner
@@ -197,7 +197,7 @@ jobs:
       name: staging
       url: ${{ vars.STAGING_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ── Placeholder — remove this step once the server secrets are set ──
       - name: Placeholder — staging deploy not yet configured
@@ -248,7 +248,7 @@ jobs:
       name: production
       url: ${{ vars.PRODUCTION_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ── Placeholder — remove this step once the server secrets are set ──
       - name: Placeholder — production deploy not yet configured
