@@ -6,6 +6,7 @@
     { "path": "./packages/database" },
     { "path": "./packages/queue" },
     { "path": "./packages/auth-middleware" }
-  ]
+  ],
+  "types": ["node"]
 
 }

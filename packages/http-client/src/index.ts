@@ -94,9 +94,9 @@ export async function callService<T>(
       ok: response.ok,
       error: response.ok ? undefined : `Service returned ${response.status}`
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Circuit is open or request failed
-    if (error.message === 'Breaker is open') {
+    if (error instanceof Error && error.message === 'Breaker is open') {
       console.error(`Circuit open — ${baseUrl} is unavailable`)
       return {
         data: null,
@@ -106,7 +106,10 @@ export async function callService<T>(
       }
     }
 
-    if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+    if (
+      error instanceof Error &&
+      (error.name === 'TimeoutError' || error.name === 'AbortError')
+    ) {
       return {
         data: null,
         status: 408,

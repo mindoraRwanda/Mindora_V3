@@ -11,7 +11,10 @@ export type MessageHandler = (
   raw: ConsumeMessage
 ) => Promise<void> | void;
 
-let sharedConnection: ChannelModel | null = null;
+type QueueConnection = Awaited<ReturnType<typeof amqp.connect>>;
+type QueueChannel = Awaited<ReturnType<QueueConnection['createChannel']>>;
+
+let sharedConnection: QueueChannel | null = null;
 
 export async function connect(
   url = process.env.RABBITMQ_URL ?? DEFAULT_URL
@@ -48,7 +51,7 @@ export async function subscribe(
   queue: string,
   handler: MessageHandler,
   url?: string
-): Promise<Channel> {
+): Promise<QueueChannel> {
   const connection = await connect(url);
   const channel = await connection.createChannel();
   await channel.assertQueue(queue, { durable: true });

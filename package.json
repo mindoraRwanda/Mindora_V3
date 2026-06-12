@@ -16,7 +16,8 @@
     "format:check": "prettier --check \"**/*.{ts,js,json,md,yml,yaml}\"",
     "db:generate": "npm run generate -w @mindora/database",
     "db:migrate": "npm run migrate:dev -w @mindora/database",
-    "db:seed": "npm run seed -w @mindora/database"
+    "db:seed": "npm run seed -w @mindora/database",
+    "db:seed:community": "npm run seed -w @mindora/community-service"
   },
   "repository": {
     "type": "git",
@@ -26,7 +27,7 @@
   "devDependencies": {
     "@eslint/js": "^9.22.0",
     "@types/express": "^5.0.6",
-    "@types/node": "^25.9.1",
+    "@types/node": "^25.9.3",
     "@types/opossum": "^8.1.9",
     "@types/supertest": "^7.2.0",
     "eslint": "^9.22.0",
