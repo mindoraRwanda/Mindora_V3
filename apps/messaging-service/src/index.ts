@@ -1,24 +1,20 @@
-import express from 'express';
+import { connectDatabase } from './database'
+import 'dotenv/config'
+import app from './app'
 
-const SERVICE_NAME = 'messaging-service';
-const PORT = Number(process.env.PORT) || 3006;
-const GATEWAY_HEALTH_PATH = '/api/v1/messaging/health';
+const PORT = process.env.PORT || 3006
 
-const app = express();
+const start = async () => {
+  await connectDatabase()
+  const server = app.listen(PORT, () => {
+  console.log(`Messaging Service running on port ${PORT}`)
+  })
+  process.on('SIGTERM', () => server.close())
+  process.on('SIGINT', () => server.close())
 
-const healthResponse = () => ({
-  status: 'ok',
-  service: SERVICE_NAME,
-});
+}
+start()
 
-app.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse());
-});
 
-app.get(GATEWAY_HEALTH_PATH, (_req, res) => {
-  res.status(200).json(healthResponse());
-});
 
-app.listen(PORT, () => {
-  console.log(`${SERVICE_NAME} listening on http://localhost:${PORT}`);
-});
+
