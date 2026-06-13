@@ -20,4 +20,7 @@ app.get(GATEWAY_HEALTH_PATH, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
+import { Conversation, Message } from './models'
+console.log('Models loaded:', Conversation.modelName, Message.modelName)
+
 export default app
