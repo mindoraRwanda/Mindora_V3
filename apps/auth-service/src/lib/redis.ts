@@ -1,20 +1,15 @@
-import { Redis } from 'ioredis';
+import {
+  blacklistToken,
+  getRedisClient,
+  isTokenBlacklisted,
+  passwordResetKey,
+} from '@mindora/auth-middleware';
 import { config } from '../config.js';
 
-let redis: Redis | null = null;
-
-export function getRedis(): Redis {
-  if (!redis) {
-    redis = new Redis(config.redisUrl, {
-      maxRetriesPerRequest: 1,
-      lazyConnect: true,
-    });
-  }
-  return redis;
-}
+export { blacklistToken, isTokenBlacklisted, passwordResetKey };
 
 export async function connectRedis(): Promise<void> {
-  const client = getRedis();
+  const client = getRedisClient(config.redisUrl);
   if (client.status === 'ready') {
     return;
   }
@@ -22,18 +17,33 @@ export async function connectRedis(): Promise<void> {
   await client.ping();
 }
 
-export function blacklistKey(jti: string): string {
-  return `auth:blacklist:${jti}`;
-}
-
-export async function isTokenBlacklisted(jti: string): Promise<boolean> {
-  const result = await getRedis().exists(blacklistKey(jti));
-  return result === 1;
-}
-
-export async function disconnectRedis(): Promise<void> {
-  if (redis) {
-    await redis.quit();
-    redis = null;
+export async function storePasswordResetToken(
+  tokenHash: string,
+  userId: string
+): Promise<void> {
+  const client = getRedisClient(config.redisUrl);
+  if (client.status !== 'ready') {
+    await client.connect();
   }
+  await client.set(passwordResetKey(tokenHash), userId, 'EX', 15 * 60);
+}
+
+export async function getPasswordResetUserId(
+  tokenHash: string
+): Promise<string | null> {
+  const client = getRedisClient(config.redisUrl);
+  if (client.status !== 'ready') {
+    await client.connect();
+  }
+  return client.get(passwordResetKey(tokenHash));
+}
+
+export async function deletePasswordResetToken(
+  tokenHash: string
+): Promise<void> {
+  const client = getRedisClient(config.redisUrl);
+  if (client.status !== 'ready') {
+    await client.connect();
+  }
+  await client.del(passwordResetKey(tokenHash));
 }
