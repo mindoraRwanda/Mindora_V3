@@ -5,6 +5,7 @@ import {
   verifyJwt,
   type AuthenticatedRequest,
 } from '../middleware/authenticate.js';
+import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
 
 export const userRouter = Router();
 
@@ -24,13 +25,14 @@ userRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
-userRouter.get('/me', verifyJwt, async (req: AuthenticatedRequest, res) => {
-  if (!req.user) {
+userRouter.get('/me', authenticatedRouteLimiter, verifyJwt, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user) {
     res.status(401).json({ message: 'Unauthorized' });
     return;
   }
 
-  const { userId, role } = req.user;
+  const { userId, role } = authReq.user;
 
   if (role === 'PATIENT') {
     const profile = await prisma.patientProfile.findUnique({ where: { userId } });
@@ -59,8 +61,9 @@ userRouter.get('/me', verifyJwt, async (req: AuthenticatedRequest, res) => {
   });
 });
 
-userRouter.put('/me', verifyJwt, async (req: AuthenticatedRequest, res) => {
-  if (!req.user) {
+userRouter.put('/me', authenticatedRouteLimiter, verifyJwt, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user) {
     res.status(401).json({ message: 'Unauthorized' });
     return;
   }
@@ -75,7 +78,7 @@ userRouter.put('/me', verifyJwt, async (req: AuthenticatedRequest, res) => {
   }
 
   const data = parsed.data;
-  const { userId, role } = req.user;
+  const { userId, role } = authReq.user;
 
   if (role === 'PATIENT') {
     const profile = await prisma.patientProfile.update({
@@ -112,7 +115,7 @@ userRouter.put('/me', verifyJwt, async (req: AuthenticatedRequest, res) => {
   res.status(400).json({ message: 'Profile updates not supported for this role' });
 });
 
-userRouter.get('/therapists', verifyJwt, async (req, res) => {
+userRouter.get('/therapists', authenticatedRouteLimiter, verifyJwt, async (req, res) => {
   const parsed = therapistListQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({

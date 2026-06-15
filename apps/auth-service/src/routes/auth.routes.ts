@@ -18,7 +18,12 @@ import {
   authenticate,
   type AuthenticatedRequest,
 } from '../middleware/authenticate.js';
+import {
+  authenticatedRouteLimiter,
+  publicAuthRouteLimiter,
+} from '../middleware/rate-limit.js';
 import { configureGoogleOAuth } from '../lib/google-oauth.js';
+import { getRequestCookie } from '../lib/cookies.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import {
   deletePasswordResetToken,
@@ -79,7 +84,7 @@ authRouter.post('/register', async (req, res) => {
   res.status(201).json({ userId: user.id });
 });
 
-authRouter.post('/login', async (req, res) => {
+authRouter.post('/login', publicAuthRouteLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({
@@ -101,7 +106,8 @@ authRouter.post('/login', async (req, res) => {
   res.status(200).json({ accessToken });
 });
 
-authRouter.post('/logout', authenticate, async (req: AuthenticatedRequest, res) => {
+authRouter.post('/logout', authenticatedRouteLimiter, authenticate, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   const header = req.headers.authorization;
   const token = header?.startsWith('Bearer ') ? header.slice(7) : '';
 
@@ -117,7 +123,7 @@ authRouter.post('/logout', authenticate, async (req: AuthenticatedRequest, res) 
     // Token already invalid — still clear refresh cookie and return 200
   }
 
-  const refreshToken = req.cookies?.[config.cookieName] as string | undefined;
+  const refreshToken = getRequestCookie(req, config.cookieName);
   if (refreshToken) {
     await prisma.refreshToken.updateMany({
       where: {
@@ -132,8 +138,8 @@ authRouter.post('/logout', authenticate, async (req: AuthenticatedRequest, res) 
   res.status(200).json({ message: 'Logged out' });
 });
 
-authRouter.post('/refresh', async (req, res) => {
-  const refreshToken = req.cookies?.[config.cookieName] as string | undefined;
+authRouter.post('/refresh', publicAuthRouteLimiter, async (req, res) => {
+  const refreshToken = getRequestCookie(req, config.cookieName);
   if (!refreshToken) {
     res.status(401).json({ message: 'Unauthorized' });
     return;
@@ -189,7 +195,7 @@ authRouter.post('/refresh', async (req, res) => {
   res.status(200).json({ accessToken });
 });
 
-authRouter.post('/forgot-password', async (req, res) => {
+authRouter.post('/forgot-password', publicAuthRouteLimiter, async (req, res) => {
   const parsed = forgotPasswordSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({
@@ -215,7 +221,7 @@ authRouter.post('/forgot-password', async (req, res) => {
   });
 });
 
-authRouter.post('/reset-password', async (req, res) => {
+authRouter.post('/reset-password', publicAuthRouteLimiter, async (req, res) => {
   const parsed = resetPasswordSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({
@@ -251,17 +257,19 @@ authRouter.post('/reset-password', async (req, res) => {
 
 authRouter.get(
   '/me',
+  authenticatedRouteLimiter,
   authenticate,
-  (req: AuthenticatedRequest, res: Response) => {
-    if (!req.user) {
+  (req, res: Response) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
       return;
     }
 
     res.status(200).json({
-      userId: req.user.userId,
-      email: req.user.email,
-      role: req.user.role,
+      userId: authReq.user.userId,
+      email: authReq.user.email,
+      role: authReq.user.role,
     });
   }
 );
@@ -280,7 +288,7 @@ authRouter.get('/oauth/google', (req, res, next) => {
   );
 });
 
-authRouter.get('/oauth/google/callback', (req, res, next) => {
+authRouter.get('/oauth/google/callback', publicAuthRouteLimiter, (req, res, next) => {
   if (!isGoogleOAuthConfigured()) {
     res.status(503).json({ message: 'Google OAuth is not configured.' });
     return;

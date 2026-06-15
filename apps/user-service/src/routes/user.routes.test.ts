@@ -9,6 +9,19 @@ vi.hoisted(() => {
   process.env.NODE_ENV = 'test';
 });
 
+vi.mock('ioredis', () => {
+  const Redis = vi.fn(() => ({
+    status: 'ready',
+    connect: vi.fn().mockResolvedValue(undefined),
+    exists: vi.fn().mockResolvedValue(0),
+    set: vi.fn().mockResolvedValue('OK'),
+    get: vi.fn().mockResolvedValue(null),
+    del: vi.fn().mockResolvedValue(1),
+    on: vi.fn(),
+  }));
+  return { default: Redis };
+});
+
 const mockPatientFindUnique = vi.fn();
 const mockPatientUpdate = vi.fn();
 const mockTherapistFindUnique = vi.fn();
