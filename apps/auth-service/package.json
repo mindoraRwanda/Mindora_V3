@@ -13,11 +13,11 @@
   "dependencies": {
     "@mindora/database": "1.0.0",
     "@mindora/validation": "1.0.0",
-    "argon2": "^0.41.1",
+    "argon2": "^0.44.0",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "ioredis": "^5.6.0",
+    "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
