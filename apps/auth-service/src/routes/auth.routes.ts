@@ -1,8 +1,5 @@
 import { prisma } from '@mindora/database';
-import {
-  blacklistToken,
-  verifyAccessToken,
-} from '@mindora/auth-middleware';
+import { blacklistToken, verifyAccessToken } from '@mindora/auth-middleware';
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -107,12 +104,15 @@ authRouter.post('/login', publicAuthRouteLimiter, async (req, res) => {
 });
 
 authRouter.post('/logout', authenticatedRouteLimiter, authenticate, async (req, res) => {
-  const authReq = req as AuthenticatedRequest;
   const header = req.headers.authorization;
   const token = header?.startsWith('Bearer ') ? header.slice(7) : '';
 
   try {
-    const payload = verifyAccessToken(token, config.jwtSecret, config.jwtIssuer);
+    const payload = verifyAccessToken(
+      token,
+      config.jwtSecret,
+      config.jwtIssuer
+    );
     if (payload.jti) {
       const decoded = jwt.decode(token) as jwt.JwtPayload | null;
       const exp = decoded?.exp ?? 0;
@@ -277,15 +277,15 @@ authRouter.get(
 authRouter.get('/oauth/google', (req, res, next) => {
   if (!isGoogleOAuthConfigured()) {
     res.status(503).json({
-      message: 'Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
+      message:
+        'Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
     });
     return;
   }
-  passport.authenticate('google', { scope: ['profile', 'email'], session: false })(
-    req,
-    res,
-    next
-  );
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    session: false,
+  })(req, res, next);
 });
 
 authRouter.get('/oauth/google/callback', publicAuthRouteLimiter, (req, res, next) => {

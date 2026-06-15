@@ -1,5 +1,8 @@
 import { prisma, Prisma } from '@mindora/database';
-import { therapistListQuerySchema, updateProfileSchema } from '@mindora/validation';
+import {
+  therapistListQuerySchema,
+  updateProfileSchema,
+} from '@mindora/validation';
 import { Router } from 'express';
 import {
   verifyJwt,
@@ -35,7 +38,9 @@ userRouter.get('/me', authenticatedRouteLimiter, verifyJwt, async (req, res) => 
   const { userId, role } = authReq.user;
 
   if (role === 'PATIENT') {
-    const profile = await prisma.patientProfile.findUnique({ where: { userId } });
+    const profile = await prisma.patientProfile.findUnique({
+      where: { userId },
+    });
     if (!profile) {
       res.status(404).json({ message: 'Profile not found' });
       return;
@@ -45,7 +50,9 @@ userRouter.get('/me', authenticatedRouteLimiter, verifyJwt, async (req, res) => 
   }
 
   if (role === 'THERAPIST') {
-    const profile = await prisma.therapistProfile.findUnique({ where: { userId } });
+    const profile = await prisma.therapistProfile.findUnique({
+      where: { userId },
+    });
     if (!profile) {
       res.status(404).json({ message: 'Profile not found' });
       return;
@@ -88,8 +95,9 @@ userRouter.put('/me', authenticatedRouteLimiter, verifyJwt, async (req, res) => 
         bio: data.bio,
         timezone: data.timezone,
         languagePreference: data.languagePreference,
-        notificationPreferences:
-          data.notificationPreferences as Prisma.InputJsonValue | undefined,
+        notificationPreferences: data.notificationPreferences as
+          | Prisma.InputJsonValue
+          | undefined,
       },
     });
     res.status(200).json({ role, profile });
@@ -104,15 +112,18 @@ userRouter.put('/me', authenticatedRouteLimiter, verifyJwt, async (req, res) => 
         bio: data.bio,
         timezone: data.timezone,
         languagePreference: data.languagePreference,
-        notificationPreferences:
-          data.notificationPreferences as Prisma.InputJsonValue | undefined,
+        notificationPreferences: data.notificationPreferences as
+          | Prisma.InputJsonValue
+          | undefined,
       },
     });
     res.status(200).json({ role, profile });
     return;
   }
 
-  res.status(400).json({ message: 'Profile updates not supported for this role' });
+  res
+    .status(400)
+    .json({ message: 'Profile updates not supported for this role' });
 });
 
 userRouter.get('/therapists', authenticatedRouteLimiter, verifyJwt, async (req, res) => {
@@ -130,7 +141,9 @@ userRouter.get('/therapists', authenticatedRouteLimiter, verifyJwt, async (req, 
 
   const where: Prisma.TherapistProfileWhereInput = {
     isAcceptingPatients: true,
-    ...(specialisation ? { specialisation: { contains: specialisation, mode: 'insensitive' } } : {}),
+    ...(specialisation
+      ? { specialisation: { contains: specialisation, mode: 'insensitive' } }
+      : {}),
     ...(language ? { languages: { has: language } } : {}),
   };
 

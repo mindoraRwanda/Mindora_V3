@@ -5,30 +5,316 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened]
+  # Allow manual re-runs from the GitHub UI without needing a code push
+  workflow_dispatch:
+
+# Minimal default — each job grants only what it actually needs.
+permissions:
+  contents: read
+
+# Cancel in-flight runs on the same branch when a new commit is pushed.
+# Never cancel runs on main so a merge is never abandoned mid-flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  lint-and-test:
+  # ─── 0. Change detection ─────────────────────────────────────────────────
+  # Produces a Turbo --filter so only affected services run in downstream jobs.
+  # • Global config change (turbo.json, lockfile, tsconfig) → run everything.
+  # • PR                                                     → affected packages vs base branch.
+  # • Push to main                                           → packages changed in last commit.
+  detect-changes:
+    name: Detect changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      turbo-filter: ${{ steps.set-filter.outputs.filter }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
         with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
+          fetch-depth: 0
+
+      - name: Check for global config changes
+        id: global
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            config:
+              - 'package.json'
+              - 'package-lock.json'
+              - 'turbo.json'
+              - 'tsconfig*.json'
+              - '.nvmrc'
+
+      - name: Set Turbo filter
+        id: set-filter
+        run: |
+          if [[ "${{ steps.global.outputs.config }}" == "true" ]]; then
+            echo "filter=" >> $GITHUB_OUTPUT
+            echo "Global config changed — running all packages"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "filter=--filter=[origin/${{ github.base_ref }}...HEAD]" >> $GITHUB_OUTPUT
+            echo "PR — running affected packages vs ${{ github.base_ref }}"
+          else
+            echo "filter=--filter=[HEAD^1]" >> $GITHUB_OUTPUT
+            echo "Push to main — running packages changed in last commit"
+          fi
+
+  # ─── 1. Secret & credential scan ─────────────────────────────────────────
+  # TruffleHog verifies secrets against their provider before alerting —
+  # no false-positive noise from test fixtures or example config files.
+  # REQUIRED: a live credential in the diff blocks the gate.
+  #
+  # ⚠ SHA PINNING (required before going live):
+  #   1. Find the latest release tag:
+  #      gh release view --repo trufflesecurity/trufflehog --json tagName
+  #   2. Get its commit SHA:
+  #      gh api repos/trufflesecurity/trufflehog/git/ref/tags/<tagName>
+  #   3. Replace `@main` below with `@<sha>  # <tagName>`
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve scan range
+        id: range
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "base=${{ github.event.pull_request.base.sha }}" >> $GITHUB_OUTPUT
+            echo "head=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]]; then
+            echo "base=HEAD" >> $GITHUB_OUTPUT
+            echo "head=HEAD" >> $GITHUB_OUTPUT
+          else
+            echo "base=${{ github.event.before }}" >> $GITHUB_OUTPUT
+            echo "head=${{ github.event.after }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Scan for leaked credentials (TruffleHog)
+        uses: trufflesecurity/trufflehog@main # TODO: pin to SHA — see comment above
+        with:
+          path: ./
+          base: ${{ steps.range.outputs.base }}
+          head: ${{ steps.range.outputs.head }}
+          extra_args: --only-verified
+
+  # ─── 2. CodeQL static analysis (SAST) ───────────────────────────────────
+  # Detects SQL injection, XSS, SSRF, path traversal, prototype pollution, etc.
+  # security-events: write is scoped to this job only — all other jobs stay read-only.
+  codeql:
+    name: CodeQL analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript
+
+  # ─── 3. Lint & format ────────────────────────────────────────────────────
+  quality:
+    name: Lint & format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [detect-changes]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate Prisma client
-        run: npm run generate -w @mindora/database
+      - name: Lint affected packages
+        run: npx turbo run lint ${{ needs.detect-changes.outputs.turbo-filter }}
+
+      - name: Format check
+        run: npm run format:check
+
+  # ─── 4. Tests with real service containers ───────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [detect-changes]
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://mindora:mindora@localhost:5432/mindora
+      REDIS_URL: redis://localhost:6379
+      # Fall back to a deterministic CI-only secret when repo secrets are not set.
+      # Set JWT_SECRET / REFRESH_SECRET in GitHub → Settings → Secrets for
+      # production-accurate test coverage.
+      JWT_SECRET: ${{ secrets.JWT_SECRET || 'ci-only-jwt-secret-not-for-production' }}
+      REFRESH_SECRET: ${{ secrets.REFRESH_SECRET || 'ci-only-refresh-secret-not-for-production' }}
+
+    services:
+      postgres:
+        image: postgres:16-alpine
         env:
-          DATABASE_URL: postgresql://mindora:mindora@localhost:5432/mindora
+          POSTGRES_USER: mindora
+          POSTGRES_PASSWORD: mindora
+          POSTGRES_DB: mindora
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mindora -d mindora"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
-      - name: Lint
-        run: npm run lint
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
 
-      - name: Test
-        run: npm run test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        # postinstall runs `prisma generate` automatically
+        run: npm ci
+
+      - name: Apply database migrations
+        run: npm run migrate:deploy -w @mindora/database
+
+      - name: Run tests for affected packages
+        run: npx turbo run test ${{ needs.detect-changes.outputs.turbo-filter }}
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            **/coverage/
+            **/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ─── 5. Build ────────────────────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [quality, detect-changes]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Restore Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          # Include workspace package.json files so per-service dep changes
+          # invalidate the cache correctly.
+          key: turbo-${{ runner.os }}-${{ hashFiles('turbo.json', 'package-lock.json', 'apps/*/package.json', 'packages/*/package.json') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('turbo.json', 'package-lock.json') }}-
+            turbo-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build affected workspaces
+        run: npx turbo run build ${{ needs.detect-changes.outputs.turbo-filter }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: apps/*/dist/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # ─── 6. Dependency vulnerability audit ───────────────────────────────────
+  # --omit=dev focuses the audit on what ships to production.
+  # Dev-tool CVEs (test runners, linters) are excluded so they don't block
+  # application PRs — they are handled separately by Dependabot.
+  security:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies for high-severity CVEs
+        run: npm audit --audit-level=high --omit=dev
+
+  # ─── 7. CI gate ───────────────────────────────────────────────────────────
+  # Single check name to target in GitHub branch protection rules.
+  # Every job above is required — nothing merges to main unless this passes.
+  ci-gate:
+    name: CI gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [secret-scan, codeql, quality, test, build, security]
+    if: always()
+    steps:
+      - name: All required checks passed
+        env:
+          SECRETS: ${{ needs.secret-scan.result }}
+          CODEQL: ${{ needs.codeql.result }}
+          QUALITY: ${{ needs.quality.result }}
+          TEST: ${{ needs.test.result }}
+          BUILD: ${{ needs.build.result }}
+          SECURITY: ${{ needs.security.result }}
+        run: |
+          echo "secret-scan=$SECRETS  codeql=$CODEQL  quality=$QUALITY  test=$TEST  build=$BUILD  security=$SECURITY"
+          [[ "$SECRETS"  == "success" \
+          && "$CODEQL"   == "success" \
+          && "$QUALITY"  == "success" \
+          && "$TEST"     == "success" \
+          && "$BUILD"    == "success" \
+          && "$SECURITY" == "success" ]] || {
+            echo "One or more required checks failed. Blocking merge."
+            exit 1
+          }

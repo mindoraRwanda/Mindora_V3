@@ -1,7 +1,12 @@
 import type { Response } from 'express';
 import { prisma } from '@mindora/database';
 import { config } from '../config.js';
-import { createRefreshToken, getRefreshTokenExpiry, hashToken, signAccessToken } from './tokens.js';
+import {
+  createRefreshToken,
+  getRefreshTokenExpiry,
+  hashToken,
+  signAccessToken,
+} from './tokens.js';
 
 type SessionUser = {
   id: string;
