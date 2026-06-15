@@ -28,139 +28,154 @@ userRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
-userRouter.get('/me', authenticatedRouteLimiter, verifyJwt, async (req, res) => {
-  const authReq = req as AuthenticatedRequest;
-  if (!authReq.user) {
-    res.status(401).json({ message: 'Unauthorized' });
-    return;
-  }
-
-  const { userId, role } = authReq.user;
-
-  if (role === 'PATIENT') {
-    const profile = await prisma.patientProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) {
-      res.status(404).json({ message: 'Profile not found' });
+userRouter.get(
+  '/me',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      res.status(401).json({ message: 'Unauthorized' });
       return;
     }
-    res.status(200).json({ role, profile });
-    return;
-  }
 
-  if (role === 'THERAPIST') {
-    const profile = await prisma.therapistProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) {
-      res.status(404).json({ message: 'Profile not found' });
+    const { userId, role } = authReq.user;
+
+    if (role === 'PATIENT') {
+      const profile = await prisma.patientProfile.findUnique({
+        where: { userId },
+      });
+      if (!profile) {
+        res.status(404).json({ message: 'Profile not found' });
+        return;
+      }
+      res.status(200).json({ role, profile });
       return;
     }
-    res.status(200).json({ role, profile });
-    return;
-  }
 
-  res.status(200).json({
-    role,
-    message: 'No extended profile for this role',
-    userId,
-  });
-});
+    if (role === 'THERAPIST') {
+      const profile = await prisma.therapistProfile.findUnique({
+        where: { userId },
+      });
+      if (!profile) {
+        res.status(404).json({ message: 'Profile not found' });
+        return;
+      }
+      res.status(200).json({ role, profile });
+      return;
+    }
 
-userRouter.put('/me', authenticatedRouteLimiter, verifyJwt, async (req, res) => {
-  const authReq = req as AuthenticatedRequest;
-  if (!authReq.user) {
-    res.status(401).json({ message: 'Unauthorized' });
-    return;
-  }
-
-  const parsed = updateProfileSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({
-      message: 'Validation failed',
-      errors: parsed.error.flatten().fieldErrors,
+    res.status(200).json({
+      role,
+      message: 'No extended profile for this role',
+      userId,
     });
-    return;
   }
+);
 
-  const data = parsed.data;
-  const { userId, role } = authReq.user;
+userRouter.put(
+  '/me',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
 
-  if (role === 'PATIENT') {
-    const profile = await prisma.patientProfile.update({
-      where: { userId },
-      data: {
-        userName: data.userName,
-        bio: data.bio,
-        timezone: data.timezone,
-        languagePreference: data.languagePreference,
-        notificationPreferences: data.notificationPreferences as
-          | Prisma.InputJsonValue
-          | undefined,
-      },
+    const parsed = updateProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const data = parsed.data;
+    const { userId, role } = authReq.user;
+
+    if (role === 'PATIENT') {
+      const profile = await prisma.patientProfile.update({
+        where: { userId },
+        data: {
+          userName: data.userName,
+          bio: data.bio,
+          timezone: data.timezone,
+          languagePreference: data.languagePreference,
+          notificationPreferences: data.notificationPreferences as
+            | Prisma.InputJsonValue
+            | undefined,
+        },
+      });
+      res.status(200).json({ role, profile });
+      return;
+    }
+
+    if (role === 'THERAPIST') {
+      const profile = await prisma.therapistProfile.update({
+        where: { userId },
+        data: {
+          userName: data.userName,
+          bio: data.bio,
+          timezone: data.timezone,
+          languagePreference: data.languagePreference,
+          notificationPreferences: data.notificationPreferences as
+            | Prisma.InputJsonValue
+            | undefined,
+        },
+      });
+      res.status(200).json({ role, profile });
+      return;
+    }
+
+    res
+      .status(400)
+      .json({ message: 'Profile updates not supported for this role' });
+  }
+);
+
+userRouter.get(
+  '/therapists',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  async (req, res) => {
+    const parsed = therapistListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { page, limit, specialisation, language } = parsed.data;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.TherapistProfileWhereInput = {
+      isAcceptingPatients: true,
+      ...(specialisation
+        ? { specialisation: { contains: specialisation, mode: 'insensitive' } }
+        : {}),
+      ...(language ? { languages: { has: language } } : {}),
+    };
+
+    const [therapists, total] = await Promise.all([
+      prisma.therapistProfile.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.therapistProfile.count({ where }),
+    ]);
+
+    res.status(200).json({
+      therapists,
+      total,
+      page,
+      limit,
     });
-    res.status(200).json({ role, profile });
-    return;
   }
-
-  if (role === 'THERAPIST') {
-    const profile = await prisma.therapistProfile.update({
-      where: { userId },
-      data: {
-        userName: data.userName,
-        bio: data.bio,
-        timezone: data.timezone,
-        languagePreference: data.languagePreference,
-        notificationPreferences: data.notificationPreferences as
-          | Prisma.InputJsonValue
-          | undefined,
-      },
-    });
-    res.status(200).json({ role, profile });
-    return;
-  }
-
-  res
-    .status(400)
-    .json({ message: 'Profile updates not supported for this role' });
-});
-
-userRouter.get('/therapists', authenticatedRouteLimiter, verifyJwt, async (req, res) => {
-  const parsed = therapistListQuerySchema.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({
-      message: 'Validation failed',
-      errors: parsed.error.flatten().fieldErrors,
-    });
-    return;
-  }
-
-  const { page, limit, specialisation, language } = parsed.data;
-  const skip = (page - 1) * limit;
-
-  const where: Prisma.TherapistProfileWhereInput = {
-    isAcceptingPatients: true,
-    ...(specialisation
-      ? { specialisation: { contains: specialisation, mode: 'insensitive' } }
-      : {}),
-    ...(language ? { languages: { has: language } } : {}),
-  };
-
-  const [therapists, total] = await Promise.all([
-    prisma.therapistProfile.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.therapistProfile.count({ where }),
-  ]);
-
-  res.status(200).json({
-    therapists,
-    total,
-    page,
-    limit,
-  });
-});
+);
