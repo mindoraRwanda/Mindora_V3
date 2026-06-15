@@ -1,5 +1,4 @@
 import amqp, {
-  type Channel,
   type ChannelModel,
   type ConsumeMessage,
 } from 'amqplib';
