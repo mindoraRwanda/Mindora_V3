@@ -1,0 +1,31 @@
+const script = document.createElement('script')
+script.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js'
+document.head.appendChild(script)
+script.onload = () => {
+  window.socket = io('http://localhost:3006')
+  socket.emit('join_conversation', { conversationId: '6a2f3dc3a4cee11b39b25489' })
+  socket.on('connect', () => console.log('Therapist connected:', socket.id))
+  socket.on('joined_conversation', (d) => console.log('Joined:', d))
+  socket.on('new_message', (m) => console.log('New message received:', m))
+  socket.on('error', (e) => console.error('Error:', e))
+}
+
+
+const script = document.createElement('script')
+script.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js'
+document.head.appendChild(script)
+script.onload = () => {
+  window.socket = io('http://localhost:3006')
+  socket.on('connect', () => {
+    console.log('Connected:', socket.id)
+    socket.emit('join_conversation', { conversationId: '6a2f3dc3a4cee11b39b25489' })
+  })
+  socket.emit('send_message', {
+  conversationId: 'your-conversation-id-here',
+  content: 'Hello, how are you feeling today?',
+  senderId: 'test-karimi-123'
+    })
+  socket.on('joined_conversation', (d) => console.log('Joined:', d))
+  socket.on('new_message', (m) => console.log('New message:', m))
+  socket.on('error', (e) => console.error('Error:', e))
+}

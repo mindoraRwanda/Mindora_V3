@@ -4,13 +4,25 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
-    "strict": true,
+    "strict": false,
+    "noImplicitAny": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "noEmit": false,
+    "baseUrl": ".",
+    "paths": {
+      "@mindora/auth-service": ["apps/auth-service/src/index.ts"],
+      "@mindora/auth-middleware": ["packages/auth-middleware/src/index.ts"],
+      "@mindora/community-service": ["apps/community-service/src/index.ts"],
+      "@mindora/database": ["packages/database/src/index.ts"],
+      "@mindora/shared-types": ["packages/shared-types/src/index.ts"],
+      "@mindora/validation": ["packages/validation/src/index.ts"],
+      "@mindora/queue": ["packages/queue/src/index.ts"]
+    }
   }
 }

@@ -9,3 +9,5 @@ coverage/
 .DS_Store
 Thumbs.db
 *.tsbuildinfo
+generate-test-token.ts
+test.html

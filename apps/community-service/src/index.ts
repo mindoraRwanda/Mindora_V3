@@ -1,24 +1,14 @@
-import express from 'express';
+import 'dotenv/config'
+import app from './app'
+import { connectDatabase } from './database'
 
-const SERVICE_NAME = 'community-service';
-const PORT = Number(process.env.PORT) || 3005;
-const GATEWAY_HEALTH_PATH = '/api/v1/community/health';
+const PORT = process.env.PORT || 3005
 
-const app = express();
+const start = async () => {
+  await connectDatabase()
+  app.listen(PORT, () => {
+    console.log(`Community Service running on port ${PORT}`)
+  })
+}
 
-const healthResponse = () => ({
-  status: 'ok',
-  service: SERVICE_NAME,
-});
-
-app.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse());
-});
-
-app.get(GATEWAY_HEALTH_PATH, (_req, res) => {
-  res.status(200).json(healthResponse());
-});
-
-app.listen(PORT, () => {
-  console.log(`${SERVICE_NAME} listening on http://localhost:${PORT}`);
-});
+start()

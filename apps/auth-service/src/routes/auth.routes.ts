@@ -5,7 +5,7 @@ import { config } from '../config.js';
 import {
   authenticate,
   type AuthenticatedRequest,
-} from '../middleware/authenticate.js';
+} from '@mindora/auth-middleware';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import {
   createRefreshToken,
