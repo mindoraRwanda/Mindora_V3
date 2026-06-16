@@ -48,7 +48,24 @@ const options: swaggerJsdoc.Options = {
           properties: {
             _id: { type: 'string', example: '64f1a2b3c4d5e6f7a8b9c0d2' },
             communityId: { type: 'string', example: '64f1a2b3c4d5e6f7a8b9c0d1' },
-            content: { type: 'string', example: 'Breathing exercises have helped me a lot.' },
+            content: {
+              type: 'object',
+              description: 'TipTap document JSON',
+              required: ['type'],
+              properties: {
+                type: { type: 'string', enum: ['doc'] },
+                content: { type: 'array', items: { type: 'object' } }
+              },
+              example: {
+                type: 'doc',
+                content: [
+                  {
+                    type: 'paragraph',
+                    content: [{ type: 'text', text: 'Breathing exercises have helped me a lot.' }]
+                  }
+                ]
+              }
+            },
             isAnonymous: { type: 'boolean', example: false },
             author: {
               nullable: true,

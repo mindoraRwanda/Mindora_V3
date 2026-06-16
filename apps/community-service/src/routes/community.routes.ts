@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { CreateGroupDto, CreatePostDto, CreateCommentDto } from '@mindora/validation'
-import { authenticate, AuthenticatedRequest } from '@mindora/auth-middleware'
+import { authenticate, requireRole, AuthenticatedRequest } from '@mindora/auth-middleware'
 import { CommunityGroup, Post, Comment} from '../models'
 import mongoose from 'mongoose'
 import { encryptUserId } from '../utils/encryption'
@@ -56,8 +56,10 @@ const router = Router()
  *               $ref: '#/components/schemas/ValidationError'
  *       401:
  *         description: Unauthorized — missing or invalid token
+ *       403:
+ *         description: Forbidden — only ADMIN users may create community groups
  */
-router.post('/groups', authenticate, async (req: Request, res: Response) => {
+router.post('/groups', authenticate, requireRole('ADMIN'), async (req: Request, res: Response) => {
   const result = CreateGroupDto.safeParse(req.body)
 
   if (!result.success) {
@@ -179,10 +181,24 @@ router.get('/groups', async (req: Request, res: Response) => {
  *             required: [content]
  *             properties:
  *               content:
- *                 type: string
- *                 minLength: 1
- *                 maxLength: 2000
- *                 example: I have been finding breathing exercises really helpful.
+ *                 type: object
+ *                 required: [type]
+ *                 description: TipTap document JSON
+ *                 properties:
+ *                   type:
+ *                     type: string
+ *                     enum: [doc]
+ *                   content:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                 example:
+ *                   type: doc
+ *                   content:
+ *                     - type: paragraph
+ *                       content:
+ *                         - type: text
+ *                           text: Breathing exercises have helped me a lot.
  *               isAnonymous:
  *                 type: boolean
  *                 default: false

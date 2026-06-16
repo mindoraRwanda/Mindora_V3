@@ -8,7 +8,7 @@ interface IReaction {
 export interface IPost extends Document {
   communityId: mongoose.Types.ObjectId
   encryptedAuthorId: string
-  content: string
+  content: Record<string, unknown>
   isAnonymous: boolean
   reactions: IReaction[]
   commentCount: number
@@ -29,9 +29,8 @@ const PostSchema = new Schema<IPost>(
       required: true
     },
     content: {
-      type: String,
-      required: true,
-      trim: true
+      type: Schema.Types.Mixed,
+      required: true
     },
     isAnonymous: {
       type: Boolean,

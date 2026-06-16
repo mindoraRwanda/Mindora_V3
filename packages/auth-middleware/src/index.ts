@@ -64,6 +64,16 @@ async function isTokenBlacklisted(jti: string): Promise<boolean> {
   }
 }
 
+export function requireRole(...roles: string[]) {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    next()
+  }
+}
+
 export async function authenticate(
   req: AuthenticatedRequest,
   res: Response,

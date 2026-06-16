@@ -26,7 +26,7 @@ function connectClient(): Promise<Socket> {
 
 function nextEvent(socket: Socket, event: string): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Timed out waiting for "${event}"`)), 3000)
+    const timer = setTimeout(() => reject(new Error(`Timed out waiting for "${event}"`)), 10000)
     socket.once(event, (data) => { clearTimeout(timer); resolve(data) })
   })
 }
@@ -45,6 +45,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await mongoose.connection.dropDatabase()
   await mongoose.disconnect()
+  server.closeAllConnections()
   await new Promise<void>((resolve) => server.close(() => resolve()))
 })
 

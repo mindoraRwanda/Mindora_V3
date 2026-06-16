@@ -18,7 +18,10 @@ export const CreateGroupDto = z.object({
 export type CreateGroupInput = z.infer<typeof CreateGroupDto>
 
 export const CreatePostDto = z.object({
-  content: z.string().min(1, 'Content cannot be empty').max(2000),
+  content: z
+    .object({ type: z.literal('doc') })
+    .passthrough()
+    .refine((v) => v !== null && v !== undefined, { message: 'Content cannot be empty' }),
   isAnonymous: z.boolean().default(false)
 })
 export const CreateCommentDto = z.object({

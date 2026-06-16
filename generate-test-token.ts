@@ -3,11 +3,13 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const role = process.argv[2] || 'PATIENT';
+
 const token = jwt.sign(
   {
     sub: 'test-karimi-123',
     email: 'karimi@mindora.com',
-    role: 'PATIENT',
+    role,
   },
   process.env.JWT_SECRET as string,
   {

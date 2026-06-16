@@ -47,35 +47,95 @@ const seed = async () => {
     {
       communityId: groups[0]._id,
       encryptedAuthorId: 'plaintext-seed-user-1',
-      content: 'I have been using the 4-7-8 breathing technique and it has genuinely helped with my panic attacks. Breathe in for 4, hold for 7, out for 8.',
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'I have been using the 4-7-8 breathing technique and it has genuinely helped with my panic attacks.' }]
+          },
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Breathe in for 4, hold for 7, out for 8.' }]
+          }
+        ]
+      },
       isAnonymous: false,
       commentCount: 0
     },
     {
       communityId: groups[0]._id,
       encryptedAuthorId: 'plaintext-seed-user-2',
-      content: 'Does anyone else find that exercise helps? I started walking 20 minutes a day and noticed a difference within a week.',
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Does anyone else find that exercise helps?' }]
+          },
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'I started walking 20 minutes a day and noticed a difference within a week.' }]
+          }
+        ]
+      },
       isAnonymous: false,
       commentCount: 0
     },
     {
       communityId: groups[1]._id,
       encryptedAuthorId: 'encrypted-anon-user-abc123',
-      content: 'It has been six months and some days still feel impossible. I am learning that grief has no timeline.',
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'It has been six months and some days still feel impossible.' }]
+          },
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'I am learning that grief has no timeline.' }]
+          }
+        ]
+      },
       isAnonymous: true,
       commentCount: 0
     },
     {
       communityId: groups[1]._id,
       encryptedAuthorId: 'encrypted-anon-user-def456',
-      content: 'I lost my mother last year. Coming here helps me feel less alone. Thank you all.',
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'I lost my mother last year. Coming here helps me feel less alone.' }]
+          },
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', marks: [{ type: 'italic' }], text: 'Thank you all.' }]
+          }
+        ]
+      },
       isAnonymous: true,
       commentCount: 0
     },
     {
       communityId: groups[2]._id,
       encryptedAuthorId: 'plaintext-seed-user-3',
-      content: 'Setting a hard stop time for work at 6pm changed my life. Boundaries are not selfish, they are necessary.',
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Setting a hard stop time for work at 6pm changed my life.' }]
+          },
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', marks: [{ type: 'bold' }], text: 'Boundaries are not selfish, they are necessary.' }]
+          }
+        ]
+      },
       isAnonymous: false,
       commentCount: 0
     }
