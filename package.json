@@ -42,7 +42,7 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=24.16.0"
   },
   "packageManager": "npm@10.9.2",
   "main": "eslint.config.js",
