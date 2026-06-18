@@ -16,3 +16,17 @@ export {
   type TherapistListQueryDto,
   type UpdateProfileDto,
 } from './profile.js';
+export {
+  appointmentListQuerySchema,
+  availabilityQuerySchema,
+  bookAppointmentSchema,
+  cancelAppointmentSchema,
+  rateAppointmentSchema,
+  therapistScheduleQuerySchema,
+  type AppointmentListQueryDto,
+  type AvailabilityQueryDto,
+  type BookAppointmentDto,
+  type CancelAppointmentDto,
+  type RateAppointmentDto,
+  type TherapistScheduleQueryDto,
+} from './appointment.js';

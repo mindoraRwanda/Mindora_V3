@@ -8,7 +8,8 @@ Therapist scheduling, booking with double-booking prevention, and appointment li
 
 ## API documentation
 
-Full OpenAPI 3 spec: [`docs/appointment-service.yaml`](../../docs/appointment-service.yaml)
+- **OpenAPI spec:** [`docs/appointment-service.yaml`](../../docs/appointment-service.yaml)
+- **Swagger UI:** `http://localhost:3003/docs` (when service is running)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -22,8 +23,6 @@ Full OpenAPI 3 spec: [`docs/appointment-service.yaml`](../../docs/appointment-se
 | PUT | `/:id/complete` | JWT (therapist) | Mark COMPLETED |
 | POST | `/:id/rate` | JWT (patient) | Rate 1–5 after COMPLETED (422 otherwise) |
 
-> **Note:** Endpoints are being implemented in Sprint 3. The OpenAPI spec is the contract; implement routes to match.
-
 ## RabbitMQ events
 
 Publish typed events from `@mindora/events` via `src/lib/publish-appointment-event.ts`:
@@ -35,23 +34,35 @@ Publish typed events from `@mindora/events` via `src/lib/publish-appointment-eve
 | Cancelled | `appointment.cancelled` | `mindora.appointments` |
 | Completed | `appointment.completed` | `mindora.appointments` |
 
-```typescript
-import { createAppointmentBookedEvent } from '@mindora/events';
-import { publishAppointmentEvent } from './lib/publish-appointment-event.js';
-
-await publishAppointmentEvent(
-  createAppointmentBookedEvent({ /* ... */ })
-);
-```
-
 ## Development
 
 ```bash
+# Apply migration (once)
+npm run db:migrate
+
+# Seed auth users, profiles, then appointments
+npm run db:seed
+npm run db:seed:profiles
+npm run db:seed:appointments
+
+# Start service
 npm run dev -w @mindora/appointment-service
 ```
 
 Requires Postgres, Redis (JWT blacklist), and RabbitMQ (`docker compose up -d`).
 
-## Swagger UI (planned)
+## Seed data
 
-When all routes are implemented, serve Swagger UI at `/docs` using `docs/appointment-service.yaml`.
+Creates 3 appointments between `patient@test.mindora.local` and `therapist@test.mindora.local`:
+
+- **PENDING** — tomorrow 10:00 UTC
+- **CONFIRMED** — day after tomorrow 11:00 UTC
+- **COMPLETED** — 7 days ago 14:00 UTC (rated 5)
+
+## Tests
+
+```bash
+npm run test -w @mindora/appointment-service
+```
+
+Covers booking success, double-booking 409, confirm, cancel (patient/therapist), and rating (success + 422).
