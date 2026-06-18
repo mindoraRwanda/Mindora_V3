@@ -44,6 +44,25 @@ export async function publish(
   await channel.close();
 }
 
+/**
+ * Publish a JSON payload to a topic exchange (used by appointment domain events).
+ */
+export async function publishToExchange(
+  exchange: string,
+  routingKey: string,
+  payload: unknown,
+  url?: string
+): Promise<void> {
+  const connection = await connect(url);
+  const channel = await connection.createChannel();
+  await channel.assertExchange(exchange, 'topic', { durable: true });
+  channel.publish(exchange, routingKey, Buffer.from(JSON.stringify(payload)), {
+    persistent: true,
+    contentType: 'application/json',
+  });
+  await channel.close();
+}
+
 export async function subscribe(
   queue: string,
   handler: MessageHandler,

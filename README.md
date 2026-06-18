@@ -88,6 +88,7 @@ Mindora_V3/
 ├── packages/
 │   ├── database/            # @mindora/database — Prisma client
 │   ├── queue/               # @mindora/queue — RabbitMQ helpers
+│   ├── events/              # @mindora/events — RabbitMQ event payload types
 │   ├── validation/          # @mindora/validation — Zod DTOs
 │   └── shared-types/        # @mindora/shared-types
 ├── infrastructure/kong/     # Kong declarative config
@@ -102,7 +103,7 @@ Mindora_V3/
 | ---------------------- | ---- | ------------------------------ |
 | auth-service           | 3001 | `/api/v1/auth/health`          |
 | user-service           | 3002 | `/api/v1/users/health`         |
-| appointment-service    | 3003 | `/api/v1/appointments/health`  |
+| appointment-service    | 3003 | `/api/v1/appointments/health`  | [OpenAPI](docs/appointment-service.yaml) |
 | mood-tracking-service  | 3004 | `/api/v1/mood/health`          |
 | community-service      | 3005 | `/api/v1/community/health`     |
 | messaging-service      | 3006 | `/api/v1/messaging/health`     |
