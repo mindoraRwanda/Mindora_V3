@@ -1,7 +1,11 @@
 import type { IsoDateTimeString, UuidString, WithMetadata } from '../common.js';
 import type { APPOINTMENT_ROUTING_KEYS } from './constants.js';
 
-export const APPOINTMENT_SESSION_TYPES = ['VIDEO', 'IN_PERSON', 'CHAT'] as const;
+export const APPOINTMENT_SESSION_TYPES = [
+  'VIDEO',
+  'IN_PERSON',
+  'CHAT',
+] as const;
 export type AppointmentSessionType = (typeof APPOINTMENT_SESSION_TYPES)[number];
 
 export const APPOINTMENT_STATUSES = [

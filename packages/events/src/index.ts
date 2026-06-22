@@ -1,4 +1,9 @@
-export type { EventMetadata, IsoDateTimeString, UuidString, WithMetadata } from './common.js';
+export type {
+  EventMetadata,
+  IsoDateTimeString,
+  UuidString,
+  WithMetadata,
+} from './common.js';
 
 export {
   APPOINTMENTS_EXCHANGE,

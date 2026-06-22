@@ -101,7 +101,7 @@ Mindora_V3/
 ## Services and ports
 
 | Service                | Port | Kong health path               |
-| ---------------------- | ---- | ------------------------------ |
+| ---------------------- | ---- | ------------------------------ | ---------------------------------------- |
 | auth-service           | 3001 | `/api/v1/auth/health`          |
 | user-service           | 3002 | `/api/v1/users/health`         |
 | appointment-service    | 3003 | `/api/v1/appointments/health`  | [OpenAPI](docs/appointment-service.yaml) |

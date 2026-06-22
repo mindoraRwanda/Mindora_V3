@@ -6,12 +6,12 @@ Shared TypeScript definitions for RabbitMQ domain event payloads across Mindora 
 
 ## Appointment events (Sprint 3)
 
-| Routing key | Type | When published |
-|-------------|------|----------------|
-| `appointment.booked` | `AppointmentBookedEvent` | Patient books a slot (POST `/appointments`) |
-| `appointment.confirmed` | `AppointmentConfirmedEvent` | Therapist confirms PENDING appointment |
-| `appointment.cancelled` | `AppointmentCancelledEvent` | Patient or therapist cancels |
-| `appointment.completed` | `AppointmentCompletedEvent` | Therapist marks session complete |
+| Routing key             | Type                        | When published                              |
+| ----------------------- | --------------------------- | ------------------------------------------- |
+| `appointment.booked`    | `AppointmentBookedEvent`    | Patient books a slot (POST `/appointments`) |
+| `appointment.confirmed` | `AppointmentConfirmedEvent` | Therapist confirms PENDING appointment      |
+| `appointment.cancelled` | `AppointmentCancelledEvent` | Patient or therapist cancels                |
+| `appointment.completed` | `AppointmentCompletedEvent` | Therapist marks session complete            |
 
 **Exchange:** `mindora.appointments` (topic, durable)
 

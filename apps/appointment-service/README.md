@@ -15,25 +15,25 @@ Therapist scheduling, booking with double-booking prevention, and appointment li
 - **OpenAPI spec:** [`docs/appointment-service.yaml`](../../docs/appointment-service.yaml)
 - **Swagger UI:** `http://localhost:3003/docs` (when service is running)
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/health` | No | Health check |
-| GET | `/availability/:therapistId` | JWT | Available slots (excludes PENDING/CONFIRMED blocks) |
-| POST | `/` | JWT (patient) | Book appointment — row lock, 409 on conflict |
-| GET | `/mine` | JWT (patient) | Paginated patient appointments (`?status=`) |
-| GET | `/schedule` | JWT (therapist) | Therapist schedule (`?date=`) |
-| PUT | `/:id/confirm` | JWT (therapist) | PENDING → CONFIRMED |
-| PUT | `/:id/cancel` | JWT | Cancel with `{ cancellationReason }` |
-| PUT | `/:id/complete` | JWT (therapist) | Mark COMPLETED |
-| POST | `/:id/rate` | JWT (patient) | Rate 1–5 after COMPLETED (422 otherwise) |
+| Method | Path                         | Auth            | Description                                         |
+| ------ | ---------------------------- | --------------- | --------------------------------------------------- |
+| GET    | `/health`                    | No              | Health check                                        |
+| GET    | `/availability/:therapistId` | JWT             | Available slots (excludes PENDING/CONFIRMED blocks) |
+| POST   | `/`                          | JWT (patient)   | Book appointment — row lock, 409 on conflict        |
+| GET    | `/mine`                      | JWT (patient)   | Paginated patient appointments (`?status=`)         |
+| GET    | `/schedule`                  | JWT (therapist) | Therapist schedule (`?date=`)                       |
+| PUT    | `/:id/confirm`               | JWT (therapist) | PENDING → CONFIRMED                                 |
+| PUT    | `/:id/cancel`                | JWT             | Cancel with `{ cancellationReason }`                |
+| PUT    | `/:id/complete`              | JWT (therapist) | Mark COMPLETED                                      |
+| POST   | `/:id/rate`                  | JWT (patient)   | Rate 1–5 after COMPLETED (422 otherwise)            |
 
 ## RabbitMQ events
 
 Publish typed events from `@mindora/events` via `src/lib/publish-appointment-event.ts`:
 
-| Event | Routing key | Exchange |
-|-------|-------------|----------|
-| Booked | `appointment.booked` | `mindora.appointments` |
+| Event     | Routing key             | Exchange               |
+| --------- | ----------------------- | ---------------------- |
+| Booked    | `appointment.booked`    | `mindora.appointments` |
 | Confirmed | `appointment.confirmed` | `mindora.appointments` |
 | Cancelled | `appointment.cancelled` | `mindora.appointments` |
 | Completed | `appointment.completed` | `mindora.appointments` |

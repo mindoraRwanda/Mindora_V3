@@ -297,7 +297,9 @@ appointmentRouter.put(
     }
 
     if (appointment.status !== 'PENDING') {
-      res.status(409).json({ message: 'Appointment is not pending confirmation' });
+      res
+        .status(409)
+        .json({ message: 'Appointment is not pending confirmation' });
       return;
     }
 
@@ -363,7 +365,10 @@ appointmentRouter.put(
       return;
     }
 
-    if (appointment.status === 'CANCELLED' || appointment.status === 'COMPLETED') {
+    if (
+      appointment.status === 'CANCELLED' ||
+      appointment.status === 'COMPLETED'
+    ) {
       res.status(409).json({ message: 'Appointment cannot be cancelled' });
       return;
     }

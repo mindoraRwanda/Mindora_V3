@@ -7,7 +7,10 @@ import yaml from 'yaml';
 import { appointmentRouter } from './routes/appointment.routes.js';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
-const openApiPath = resolve(moduleDir, '../../../docs/appointment-service.yaml');
+const openApiPath = resolve(
+  moduleDir,
+  '../../../docs/appointment-service.yaml'
+);
 
 export function createApp() {
   const app = express();
