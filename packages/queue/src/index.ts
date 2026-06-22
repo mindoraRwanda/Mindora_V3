@@ -1,4 +1,5 @@
 import amqp, {
+  type Channel,
   type ChannelModel,
   type ConsumeMessage,
 } from 'amqplib';
@@ -11,9 +12,8 @@ export type MessageHandler = (
 ) => Promise<void> | void;
 
 type QueueConnection = Awaited<ReturnType<typeof amqp.connect>>;
-type QueueChannel = Awaited<ReturnType<QueueConnection['createChannel']>>;
 
-let sharedConnection: QueueChannel | null = null;
+let sharedConnection: QueueConnection | null = null;
 
 export async function connect(
   url = process.env.RABBITMQ_URL ?? DEFAULT_URL
@@ -50,7 +50,7 @@ export async function subscribe(
   queue: string,
   handler: MessageHandler,
   url?: string
-): Promise<QueueChannel> {
+): Promise<Channel> {
   const connection = await connect(url);
   const channel = await connection.createChannel();
   await channel.assertQueue(queue, { durable: true });
@@ -66,6 +66,30 @@ export async function subscribe(
     }
   });
   return channel;
+}
+
+export async function subscribeToExchange(
+  exchange: string,
+  queue: string,
+  handler: MessageHandler,
+  url?: string
+): Promise<void> {
+  const connection = await connect(url);
+  const channel = await connection.createChannel();
+  await channel.assertExchange(exchange, 'fanout', { durable: true });
+  await channel.assertQueue(queue, { durable: true });
+  await channel.bindQueue(queue, exchange, '');
+  await channel.consume(queue, async (message: ConsumeMessage | null) => {
+    if (!message) return;
+    try {
+      const content = JSON.parse(message.content.toString()) as unknown;
+      await handler(content, message);
+      channel.ack(message);
+    } catch (error) {
+      channel.nack(message, false, false);
+      console.error(`Failed to process message from exchange ${exchange}:`, error);
+    }
+  });
 }
 
 export async function disconnect(): Promise<void> {

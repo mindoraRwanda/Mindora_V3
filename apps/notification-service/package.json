@@ -2,6 +2,7 @@
   "name": "@mindora/notification-service",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
@@ -10,10 +11,13 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@mindora/events": "*",
+    "@mindora/queue": "*",
     "express": "^4.21.2"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/node": "^20.0.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "vitest": "^4.1.8"
