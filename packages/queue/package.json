@@ -19,5 +19,8 @@
     "@types/amqplib": "^0.10.7",
     "typescript": "^5.8.2",
     "vitest": "^3.0.9"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

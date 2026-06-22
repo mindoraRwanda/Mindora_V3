@@ -1,3 +1,7 @@
+# Local infrastructure for Mindora V3 microservices.
+# Application services run on the host with Node.js 24 (see .nvmrc).
+# Service Dockerfiles use node:24-alpine when building container images.
+
 services:
   postgres:
     image: postgres:16-alpine

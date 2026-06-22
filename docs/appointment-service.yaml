@@ -4,6 +4,7 @@ info:
   description: |
     Appointment booking and scheduling for Mindora V3 (Sprint 3).
 
+    - **Runtime:** Node.js 24 (see `.nvmrc`)
     - **Port:** 3003 (direct) · **8000** via Kong (`/api/v1/appointments/*`)
     - **Auth:** Bearer JWT (`@mindora/auth-middleware`) on all routes except health
     - **Concurrency:** POST booking uses PostgreSQL `SELECT FOR UPDATE` to prevent double-booking

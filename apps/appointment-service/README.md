@@ -2,6 +2,10 @@
 
 Therapist scheduling, booking with double-booking prevention, and appointment lifecycle management.
 
+## Prerequisites
+
+- **Node.js 24+** (see root `.nvmrc`)
+
 ## Port
 
 **3003** (direct) · **8000** via Kong (`/api/v1/appointments/*`)
@@ -50,6 +54,15 @@ npm run dev -w @mindora/appointment-service
 ```
 
 Requires Postgres, Redis (JWT blacklist), and RabbitMQ (`docker compose up -d`).
+
+## Docker
+
+Build from the **repository root** (Node.js 24 Alpine):
+
+```bash
+docker build -f apps/appointment-service/Dockerfile -t mindora/appointment-service .
+docker run --rm -p 3003:3003 --env-file .env mindora/appointment-service
+```
 
 ## Seed data
 

@@ -2,6 +2,8 @@
 
 Shared TypeScript definitions for RabbitMQ domain event payloads across Mindora microservices.
 
+**Runtime:** Node.js 24+ (monorepo `.nvmrc`)
+
 ## Appointment events (Sprint 3)
 
 | Routing key | Type | When published |

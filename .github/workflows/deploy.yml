@@ -41,7 +41,7 @@ jobs:
   # STATUS: placeholder — no Dockerfiles exist yet.
   #
   # TO ENABLE:
-  #   1. Add apps/<service>/Dockerfile for each service.
+  #   1. Add apps/<service>/Dockerfile for each service (Node.js 24 — node:24-alpine).
   #   2. Delete the "Placeholder" step below.
   #   3. Uncomment every step marked  ## UNCOMMENT
   # ─────────────────────────────────────────────────────────────────────────

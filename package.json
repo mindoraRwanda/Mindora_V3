@@ -37,7 +37,7 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "packageManager": "npm@10.9.2"
 }

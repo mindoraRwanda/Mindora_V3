@@ -47,6 +47,7 @@ jobs:
               - 'turbo.json'
               - 'tsconfig*.json'
               - '.nvmrc'
+              - '.node-version'
 
       - name: Set Turbo filter
         id: set-filter

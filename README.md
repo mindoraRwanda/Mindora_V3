@@ -4,13 +4,13 @@ Mental health platform monorepo — Turborepo + npm workspaces, 9 microservices,
 
 ## Prerequisites
 
-- **Node.js 20** (see `.nvmrc`)
+- **Node.js 24** (see `.nvmrc` / `.node-version`)
 - **npm** 10+
 - **Docker Desktop** (PostgreSQL, MongoDB, Redis, RabbitMQ, Kong)
 - **Git**
 
 ```bash
-node -v    # v20.x
+node -v    # v24.x
 npm -v
 docker -v
 ```
@@ -22,6 +22,7 @@ docker -v
 ```bash
 git clone https://github.com/mindoraRwanda/Mindora_V3.git
 cd Mindora_V3
+nvm use          # reads .nvmrc → Node 24
 npm install
 ```
 
