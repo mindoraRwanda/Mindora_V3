@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 export type AuthenticatedRequest = Request & {
   user?: {
@@ -32,7 +32,7 @@ function getRedisClient(): Redis {
 
 function verifyAccessToken(token: string): AccessTokenPayload {
   const jwtSecret = process.env.JWT_SECRET ?? 'mindora-dev-jwt-secret-change-in-production';
-  const jwtIssuer = process.env.JWT_ISSUER ?? 'mindora';
+  const jwtIssuer = process.env.JWT_ISSUER ?? 'mindora-auth';
 
   const decoded = jwt.verify(token, jwtSecret, {
     issuer: jwtIssuer,

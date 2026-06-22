@@ -9,7 +9,10 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --concurrency=4",
+    "dev:messaging": "turbo run dev --filter=@mindora/messaging-service --filter=@mindora/auth-service",
+    "dev:community": "turbo run dev --filter=@mindora/community-service --filter=@mindora/auth-service",
+    "dev:auth": "turbo run dev --filter=@mindora/auth-service",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,js,json,md,yml,yaml}\"",

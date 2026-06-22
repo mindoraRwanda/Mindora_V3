@@ -5,6 +5,7 @@ import { createAdapter } from '@socket.io/redis-adapter'
 import mongoose from 'mongoose'
 import { Conversation, Message } from './models'
 import { isMongoConnected } from './database'
+import { getRedisClient } from './utils/redis.js'
 
 export let io: SocketIOServer
 
@@ -60,6 +61,19 @@ export const initializeSocket = async (httpServer: HttpServer, skipRedis = false
         if (!Array.isArray(participants) || participants.length !== 2 ||
             !participants.every((p) => typeof p === 'string' && p.trim().length > 0)) {
           socket.emit('error', { message: 'participants must be an array of exactly 2 non-empty user ID strings' })
+          return
+        }
+
+        const existing = await Conversation.findOne({
+          participants: { $all: participants, $size: 2 }
+        })
+
+        if (existing) {
+          console.log(`✓ Returning existing conversation via socket: ${existing._id}`)
+          socket.emit('conversation_created', {
+            _id: existing._id.toString(),
+            participants: existing.participants
+          })
           return
         }
 
@@ -147,6 +161,23 @@ export const initializeSocket = async (httpServer: HttpServer, skipRedis = false
 
         // Confirm to the client that they joined
         socket.emit('joined_conversation', { conversationId })
+
+        // Send recent history so the client sees any messages missed while offline
+        const recentMessages = await Message.find({ conversationId })
+          .sort({ createdAt: 1 })
+          .limit(50)
+          .lean()
+
+        socket.emit('message_history', {
+          conversationId,
+          messages: recentMessages.map((m) => ({
+            _id: String(m._id),
+            senderId: m.senderId,
+            content: m.content,
+            createdAt: m.createdAt,
+            readAt: m.readAt ?? null
+          }))
+        })
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error)
         const errorStack = error instanceof Error ? error.stack : ''
@@ -219,7 +250,7 @@ export const initializeSocket = async (httpServer: HttpServer, skipRedis = false
 
         // Broadcast to everyone in the room including the sender
         const messagePayload = {
-          _id: message._id,
+          _id: message._id.toString(),
           conversationId: message.conversationId,
           senderId: message.senderId,
           content: message.content,
@@ -240,7 +271,92 @@ export const initializeSocket = async (httpServer: HttpServer, skipRedis = false
         }
       }
     })
+    // Event 3: mark_read
+    // Client emits when they view a received message. Server sets readAt and notifies the sender.
+    socket.on('mark_read', async (data: { conversationId: string; messageId: string }) => {
+      const { conversationId, messageId } = data
+      if (!mongoose.Types.ObjectId.isValid(messageId)) return
+      try {
+        const updated = await Message.findByIdAndUpdate(
+          messageId,
+          { $set: { readAt: new Date() } },
+          { new: false }
+        )
+        if (!updated) return
+        socket.to(conversationId).emit('message_read', { conversationId, messageId })
+      } catch (err) {
+        console.error('mark_read error:', err)
+      }
+    })
+
+    // Event 4: typing_start
+    // Client emits while composing. Server sets a 5 s Redis TTL and broadcasts to room.
+    socket.on('typing_start', async (data: { conversationId: string; userId: string }) => {
+      const { conversationId, userId } = data
+      if (!conversationId || !userId) return
+      try {
+        await getRedisClient().set(`typing:${conversationId}:${userId}`, '1', 'EX', 5)
+        socket.to(conversationId).emit('user_typing', { conversationId, userId })
+      } catch (err) {
+        console.error('typing_start error:', err)
+      }
+    })
+
+    // Event 5: typing_stop
+    // Client emits when done composing. Server deletes the key and broadcasts to room.
+    socket.on('typing_stop', async (data: { conversationId: string; userId: string }) => {
+      const { conversationId, userId } = data
+      if (!conversationId || !userId) return
+      try {
+        await getRedisClient().del(`typing:${conversationId}:${userId}`)
+        socket.to(conversationId).emit('user_stopped_typing', { conversationId, userId })
+      } catch (err) {
+        console.error('typing_stop error:', err)
+      }
+    })
+
+    // Event 6: register_presence
+    // Client emits immediately after connect with their userId. Server sets a 60 s Redis key.
+    socket.on('register_presence', async (data: { userId: string }) => {
+      const { userId } = data
+      if (!userId) return
+      socket.data.userId = userId
+      try {
+        await getRedisClient().set(`presence:${userId}`, '1', 'EX', 90)
+        console.log(`✓ Presence registered for ${userId}`)
+      } catch (err) {
+        console.error('register_presence error:', err)
+      }
+    })
+
+    // Event 7: heartbeat
+    // Client emits every 30 s to refresh the 60 s presence TTL before it expires.
+    socket.on('heartbeat', async () => {
+      const userId = socket.data.userId as string | undefined
+      if (!userId) return
+      try {
+        await getRedisClient().expire(`presence:${userId}`, 90)
+      } catch (err) {
+        console.error('heartbeat error:', err)
+      }
+    })
+
+    // Event 8: logout_presence
+    // Client emits this in beforeunload so presence clears immediately on tab close.
+    socket.on('logout_presence', async () => {
+      const userId = socket.data.userId as string | undefined
+      if (!userId) return
+      try {
+        await getRedisClient().del(`presence:${userId}`)
+        console.log(`✓ Presence removed for ${userId} (tab closed)`)
+      } catch (err) {
+        console.error('logout_presence error:', err)
+      }
+    })
+
     socket.on('disconnect', (reason) => {
+      // Presence expires via its 90 s TTL — brief network drops won't falsely show offline.
+      // Only a deliberate tab close (logout_presence) or TTL expiry removes the key.
       console.log(`Client disconnected: ${socket.id} — reason: ${reason}`)
     })
   })

@@ -16,21 +16,21 @@ const TEST_SECRET = 'mindora-dev-jwt-secret-change-in-production'
 const patientToken = jwt.sign(
   { sub: 'test-user-123', email: 'karimi@mindora.com', role: 'PATIENT' },
   TEST_SECRET,
-  { expiresIn: '7d', issuer: 'mindora', jwtid: 'test-jti-001' }
+  { expiresIn: '7d', issuer: 'mindora-auth', jwtid: 'test-jti-001' }
 )
 
 // THERAPIST token — used to verify 403 on group creation
 const therapistToken = jwt.sign(
   { sub: 'test-therapist-456', email: 'therapist@mindora.com', role: 'THERAPIST' },
   TEST_SECRET,
-  { expiresIn: '7d', issuer: 'mindora', jwtid: 'test-jti-002' }
+  { expiresIn: '7d', issuer: 'mindora-auth', jwtid: 'test-jti-002' }
 )
 
 // ADMIN token — required to create community groups
 const adminToken = jwt.sign(
   { sub: 'test-admin-789', email: 'admin@mindora.com', role: 'ADMIN' },
   TEST_SECRET,
-  { expiresIn: '7d', issuer: 'mindora', jwtid: 'test-jti-003' }
+  { expiresIn: '7d', issuer: 'mindora-auth', jwtid: 'test-jti-003' }
 )
 
 const authHeader = `Bearer ${patientToken}`

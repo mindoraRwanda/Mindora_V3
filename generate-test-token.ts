@@ -7,14 +7,14 @@ const role = process.argv[2] || 'PATIENT';
 
 const token = jwt.sign(
   {
-    sub: 'test-karimi-123',
+    sub: 'patient-karimi-123',
     email: 'karimi@mindora.com',
     role,
   },
   process.env.JWT_SECRET as string,
   {
     expiresIn: '7d',
-    issuer: 'mindora',
+    issuer: 'mindora-auth',
     jwtid: 'test-jti-123'
   }
 );

@@ -7,6 +7,8 @@
     { "path": "./packages/queue" },
     { "path": "./packages/auth-middleware" }
   ],
-  "types": ["node"]
+  "compilerOptions": {
+    "types": ["node"]
+  }
 
 }
