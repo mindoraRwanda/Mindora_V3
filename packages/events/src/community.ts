@@ -8,3 +8,11 @@ export interface CommunityReportedEvent extends BaseEvent {
   reason: string;
   status: 'PENDING' | 'REVIEWED' | 'DISMISSED';
 }
+
+export interface CommunityReplyEvent extends BaseEvent {
+  replyId: string;
+  postId: string;
+  postAuthorId: string;
+  replyAuthorId: string;
+  excerpt: string;
+}

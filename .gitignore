@@ -10,3 +10,6 @@ coverage/
 Thumbs.db
 *.tsbuildinfo
 test.html
+front-end-test-files/
+test_script.js
+node_modules
