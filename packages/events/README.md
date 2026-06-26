@@ -15,6 +15,15 @@ Shared TypeScript definitions for RabbitMQ domain event payloads across Mindora 
 
 **Exchange:** `mindora.appointments` (topic, durable)
 
+## Mood events (Sprint 4)
+
+| Routing key    | Type               | When published                |
+| -------------- | ------------------ | ----------------------------- |
+| `mood.concern` | `MoodConcernEvent` | 3+ of last 5 mood scores ≤ 3  |
+| `mood.streak`  | `MoodStreakEvent`  | Streak hits 7, 14, or 30 days |
+
+**Exchange:** `mindora.mood` (topic, durable)
+
 ## Usage in appointment-service
 
 ```typescript

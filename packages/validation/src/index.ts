@@ -30,3 +30,9 @@ export {
   type RateAppointmentDto,
   type TherapistScheduleQueryDto,
 } from './appointment.js';
+export {
+  logMoodSchema,
+  moodHistoryQuerySchema,
+  type LogMoodDto,
+  type MoodHistoryQueryDto,
+} from './mood.js';

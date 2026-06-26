@@ -21,6 +21,7 @@ export { Prisma, PrismaClient };
 export type {
   Appointment,
   AppointmentStatus,
+  MoodEntry,
   PatientProfile,
   RefreshToken,
   SessionType,

@@ -18,7 +18,8 @@
     "db:migrate": "npm run migrate:dev -w @mindora/database",
     "db:seed": "npm run seed -w @mindora/database",
     "db:seed:profiles": "npm run seed -w @mindora/user-service",
-    "db:seed:appointments": "npm run seed -w @mindora/appointment-service"
+    "db:seed:appointments": "npm run seed -w @mindora/appointment-service",
+    "db:seed:mood": "npm run seed -w @mindora/mood-tracking-service"
   },
   "repository": {
     "type": "git",

@@ -24,3 +24,15 @@ export {
   type AppointmentSlotPayload,
   type AppointmentStatus,
 } from './appointments/index.js';
+
+export {
+  MOOD_EXCHANGE,
+  MOOD_ROUTING_KEYS,
+  MOOD_STREAK_MILESTONES,
+  createMoodConcernEvent,
+  createMoodStreakEvent,
+  type MoodConcernEvent,
+  type MoodDomainEvent,
+  type MoodRoutingKey,
+  type MoodStreakEvent,
+} from './mood/index.js';
