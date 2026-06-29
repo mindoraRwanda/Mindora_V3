@@ -22,6 +22,11 @@ const seedUsers = [
     role: 'THERAPIST' as const,
   },
   {
+    email: 'therapist2@test.mindora.local',
+    password: 'Therapist2123!',
+    role: 'THERAPIST' as const,
+  },
+  {
     email: 'admin@test.mindora.local',
     password: 'Admin123!',
     role: 'ADMIN' as const,

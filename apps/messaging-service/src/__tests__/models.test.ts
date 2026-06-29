@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import mongoose from 'mongoose'
-import { Conversation } from '../models/Conversation'
-import { Message } from '../models/Message'
+import { Conversation } from '../models/Conversation.js'
+import { Message } from '../models/Message.js'
 
 beforeAll(async () => {
   await mongoose.connect('mongodb://localhost:27017/mindora_messaging_models_test')

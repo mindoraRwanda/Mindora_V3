@@ -1,10 +1,11 @@
 import { Router, Request, Response } from 'express'
 import { CreateGroupDto, CreatePostDto, CreateCommentDto } from '@mindora/validation'
-import { authenticate, requireRole, AuthenticatedRequest } from '@mindora/auth-middleware'
-import { CommunityGroup, Post, Comment} from '../models'
+import { authenticate, requireRole } from '@mindora/auth-middleware'
+import type { AuthenticatedRequest } from '@mindora/auth-middleware'
+import { CommunityGroup, Post, Comment} from '../models/index.js'
 import mongoose from 'mongoose'
-import { encryptUserId } from '../utils/encryption'
-import { Report } from '../models'
+import { encryptUserId } from '../utils/encryption.js'
+import { Report } from '../models/index.js'
 import { publish } from '@mindora/queue'
 
 const router = Router()

@@ -2,6 +2,7 @@ import express from 'express'
 import conversationsRouter from './routes/conversations.routes.js'
 import { authenticate } from '@mindora/auth-middleware'
 import type { AuthenticatedRequest } from '@mindora/auth-middleware'
+
 import { getRedisClient } from './utils/redis.js'
 
 const SERVICE_NAME = 'messaging-service'

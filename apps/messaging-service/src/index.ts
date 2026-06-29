@@ -1,8 +1,8 @@
 import 'dotenv/config'
 import http from 'http'
-import app from './app'
-import { connectDatabase } from './database'
-import { initializeSocket } from './socket'
+import app from './app.js'
+import { connectDatabase } from './database.js'
+import { initializeSocket } from './socket.js'
 
 const PORT = process.env.PORT || 3006
 

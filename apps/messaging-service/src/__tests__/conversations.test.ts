@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import supertest from 'supertest'
 import mongoose from 'mongoose'
 import jwt from 'jsonwebtoken'
-import app from '../app'
-import { Conversation } from '../models/Conversation'
+import app from '../app.js'
+import { Conversation } from '../models/Conversation.js'
 
 const request = supertest(app)
 

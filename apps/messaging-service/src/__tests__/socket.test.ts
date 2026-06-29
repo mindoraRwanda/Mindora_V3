@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import mongoose from 'mongoose'
 import http from 'http'
 import { io as ioClient, Socket } from 'socket.io-client'
-import { Conversation } from '../models/Conversation'
-import { initializeSocket } from '../socket'
+import { Conversation } from '../models/Conversation.js'
+import { initializeSocket } from '../socket.js'
 
 // vi.mock is hoisted by vitest before all imports, so socket.ts's
 // import of isMongoConnected from ./database gets the mock version.

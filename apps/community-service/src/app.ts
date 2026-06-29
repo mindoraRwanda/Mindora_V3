@@ -1,7 +1,7 @@
 import express from 'express'
-import communityRoutes from './routes/community.routes'
+import communityRoutes from './routes/community.routes.js'
 import swaggerUi from 'swagger-ui-express'
-import { swaggerSpec } from './docs/swagger'
+import { swaggerSpec } from './docs/swagger.js'
 
 const app = express()
 

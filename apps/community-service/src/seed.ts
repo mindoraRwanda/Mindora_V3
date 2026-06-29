@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import mongoose from 'mongoose'
-import { CommunityGroup, Post } from './models'
+import { CommunityGroup, Post } from './models/index.js'
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/mindora_community'
 

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { CreateGroupDto } from '@mindora/validation'
 import { authenticate } from '@mindora/auth-middleware'
-import { CommunityGroup } from '../models'
+import { CommunityGroup } from '../models/index.js'
 
 const router = Router()
 

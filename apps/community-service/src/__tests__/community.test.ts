@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import supertest from 'supertest'
 import mongoose from 'mongoose'
-import app from '../app'
-import { CommunityGroup, Post } from '../models'
+import app from '../app.js'
+import { CommunityGroup, Post } from '../models/index.js'
 
 const request = supertest(app)
 

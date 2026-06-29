@@ -3,8 +3,8 @@ import { Server as SocketIOServer } from 'socket.io'
 import { createClient } from 'redis'
 import { createAdapter } from '@socket.io/redis-adapter'
 import mongoose from 'mongoose'
-import { Conversation, Message } from './models'
-import { isMongoConnected } from './database'
+import { Conversation, Message } from './models/index.js'
+import { isMongoConnected } from './database.js'
 import { getRedisClient } from './utils/redis.js'
 
 export let io: SocketIOServer

@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --concurrency=4",
+    "dev": "turbo run dev --concurrency=10",
     "dev:messaging": "turbo run dev --filter=@mindora/messaging-service --filter=@mindora/auth-service",
     "dev:community": "turbo run dev --filter=@mindora/community-service --filter=@mindora/auth-service",
     "dev:auth": "turbo run dev --filter=@mindora/auth-service",
@@ -52,7 +52,11 @@
   "main": "eslint.config.js",
   "overrides": {
     "axios": "^1.18.1",
-    "joi": "^18.2.3"
+    "joi": "^18.2.3",
+    "africastalking": {
+      "axios": "^1.18.1",
+      "joi": "^18.2.3"
+    }
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
