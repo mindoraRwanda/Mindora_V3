@@ -8,6 +8,7 @@ import type {
 } from '@mindora/events';
 import { sendPushNotification } from './fcm.js';
 import { sendEmailToUser } from './email.js';
+import { sendSms } from './sms.js';
 import {
   appointmentBookedTemplate,
   appointmentConfirmedTemplate,
@@ -78,6 +79,18 @@ async function handleCommunity(payload: unknown): Promise<void> {
   await sendPushNotification(event.postAuthorId, 'New Reply', event.excerpt);
 }
 
+async function handleAi(payload: unknown): Promise<void> {
+  console.log(`[${EXCHANGES.AI}] received:`, JSON.stringify(payload));
+
+  if ('crisisLevel' in (payload as object)) {
+    const crisis = payload as { userId: string; crisisLevel: number };
+    await sendSms(
+      crisis.userId,
+      `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`
+    );
+  }
+}
+
 export async function startConsumers(): Promise<void> {
   await subscribeWithRetry(
     EXCHANGES.APPOINTMENTS,
@@ -116,8 +129,17 @@ export async function startConsumers(): Promise<void> {
   await subscribeWithRetry(
     EXCHANGES.AI,
     NOTIFICATION_QUEUES.AI,
-    async (payload) => {
-      console.log(`[${EXCHANGES.AI}] received:`, JSON.stringify(payload));
-    }
+    handleAi
   );
+
+  // TODO[sms/appointment-reminder]: no EXCHANGES.APPOINTMENT_REMINDER exists in @mindora/events and
+  // no AppointmentReminderEvent type is defined. Do NOT add a subscribeWithRetry call here until:
+  //   1. A reminder scheduler/cron job is implemented that publishes reminder events.
+  //   2. AppointmentReminderEvent (appointmentId, patientId, therapistId, scheduledAt, minutesBefore)
+  //      is added to packages/events/src/appointments.ts and exported from the index.
+  //   3. EXCHANGES.APPOINTMENT_REMINDER (e.g. 'mindora.appointment-reminders') is registered in
+  //      packages/events/src/base.ts.
+  // When those land, wire: await subscribeWithRetry(EXCHANGES.APPOINTMENT_REMINDER,
+  //   NOTIFICATION_QUEUES.APPOINTMENT_REMINDERS, handleAppointmentReminder);
+  // and implement handleAppointmentReminder to call both sendSms and sendPushNotification.
 }

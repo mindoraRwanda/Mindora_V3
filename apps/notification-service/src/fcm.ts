@@ -1,6 +1,9 @@
 import { initializeApp, cert, type App } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 import { readFileSync } from 'node:fs';
+import { FatalNotificationError } from './errors.js';
+
+export { FatalNotificationError };
 
 let app: App | null = null;
 
@@ -10,17 +13,6 @@ const FATAL_FCM_CODES = new Set([
   'messaging/invalid-registration-token',
   'messaging/registration-token-not-registered',
 ]);
-
-export class FatalNotificationError extends Error {
-  constructor(
-    message: string,
-    public readonly fcmCode: string,
-    public readonly userId: string
-  ) {
-    super(message);
-    this.name = 'FatalNotificationError';
-  }
-}
 
 export function initFirebase(): void {
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;

@@ -16,11 +16,13 @@ const app = express();
 const TEST_USERS = {
   'patientId': {
     fcmToken: STUB_FCM_TOKEN,
-    email: 'g.njunge@alustudent.com'
+    email: 'g.njunge@alustudent.com',
+    phoneNumber: '+250795682259'
   },
   'therapistId': {
     fcmToken: STUB_FCM_TOKEN,
-    email: 'g.njunge@alustudent.com'
+    email: 'g.njunge@alustudent.com',
+    phoneNumber: '+250795682259'
   }
 };
 

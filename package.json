@@ -20,7 +20,8 @@
     "db:generate": "npm run generate -w @mindora/database",
     "db:migrate": "npm run migrate:dev -w @mindora/database",
     "db:seed": "npm run seed -w @mindora/database",
-    "db:seed:community": "npm run seed -w @mindora/community-service"
+    "db:seed:community": "npm run seed -w @mindora/community-service",
+    "postinstall": "node -e \"const{rmSync,existsSync}=require('fs');const p='node_modules/africastalking/node_modules/axios';if(existsSync(p))rmSync(p,{recursive:true,force:true});\""
   },
   "repository": {
     "type": "git",
@@ -49,11 +50,17 @@
   },
   "packageManager": "npm@10.9.2",
   "main": "eslint.config.js",
+  "overrides": {
+    "axios": "^1.18.1",
+    "joi": "^18.2.3"
+  },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
     "acorn": "^8.16.0",
     "acorn-jsx": "^5.3.2",
     "ajv": "^6.15.0",
+    "axios": "^1.18.1",
+    "joi": "^18.2.3",
     "balanced-match": "^1.0.2",
     "brace-expansion": "^1.1.15",
     "cross-spawn": "^7.0.6",

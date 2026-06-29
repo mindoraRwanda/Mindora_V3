@@ -24,7 +24,7 @@ vi.mock('node:fs', () => ({
 }))
 
 describe('FatalNotificationError', () => {
-  it('constructs with correct name, message, fcmCode, and userId', async () => {
+  it('constructs with correct name, message, providerCode, and userId', async () => {
     const { FatalNotificationError } = await import('../fcm.js')
     const err = new FatalNotificationError(
       'Token is invalid',
@@ -33,7 +33,7 @@ describe('FatalNotificationError', () => {
     )
     expect(err.name).toBe('FatalNotificationError')
     expect(err.message).toBe('Token is invalid')
-    expect(err.fcmCode).toBe('messaging/invalid-registration-token')
+    expect(err.providerCode).toBe('messaging/invalid-registration-token')
     expect(err.userId).toBe('user-abc')
     expect(err).toBeInstanceOf(Error)
   })
@@ -248,7 +248,7 @@ describe('sendPushNotification', () => {
       expect.fail('should have thrown FatalNotificationError')
     } catch (err) {
       expect(err).toBeInstanceOf(FatalNotificationError)
-      expect((err as InstanceType<typeof FatalNotificationError>).fcmCode).toBe(
+      expect((err as InstanceType<typeof FatalNotificationError>).providerCode).toBe(
         'messaging/registration-token-not-registered'
       )
       expect((err as InstanceType<typeof FatalNotificationError>).userId).toBe('user-99')

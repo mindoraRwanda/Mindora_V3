@@ -1,5 +1,5 @@
 import { connect, subscribeToExchange } from '@mindora/queue';
-import { FatalNotificationError } from './fcm.js';
+import { FatalNotificationError } from './errors.js';
 
 const DLQ = 'mindora.notifications.dlq';
 const REPROCESS_QUEUE = 'mindora.notifications.reprocess';
@@ -63,7 +63,7 @@ async function scheduleRetry(envelope: RetryEnvelope, err: unknown): Promise<voi
   // Fatal errors (invalid/unregistered token) will never succeed — skip all retries.
   if (err instanceof FatalNotificationError) {
     console.error(
-      `[retry] fatal FCM error (${err.fcmCode}) for exchange=${envelope.exchange} — routing to DLQ immediately`
+      `[retry] fatal notification error (${err.providerCode}) for exchange=${envelope.exchange} — routing to DLQ immediately`
     );
     await publishToDlq(envelope, err);
     return;
@@ -82,7 +82,8 @@ async function scheduleRetry(envelope: RetryEnvelope, err: unknown): Promise<voi
 
   const delayMs = RETRY_DELAYS_MS[attempt];
   console.warn(
-    `[retry] attempt ${attempt + 1}/${MAX_RETRIES} for exchange=${exchange}, next retry in ${delayMs / 1000}s`
+    `[retry] attempt ${attempt + 1}/${MAX_RETRIES} for exchange=${exchange}, next retry in ${delayMs / 1000}s —`,
+    err instanceof Error ? err.message : err
   );
   await publishToRetryQueue(attempt, { ...envelope, attempt: attempt + 1 });
 }
