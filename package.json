@@ -100,6 +100,7 @@
     "path-key": "^3.1.1",
     "prelude-ls": "^1.2.1",
     "punycode": "^2.3.1",
+    "resend": "^6.16.0",
     "shebang-command": "^2.0.0",
     "shebang-regex": "^3.0.0",
     "socket.io": "^4.8.3",

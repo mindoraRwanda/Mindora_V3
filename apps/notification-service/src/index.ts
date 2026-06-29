@@ -3,6 +3,7 @@ import express from 'express';
 import { connect } from '@mindora/queue';
 import { startConsumers, SUBSCRIBED_EXCHANGES } from './consumers.js';
 import { initFirebase } from './fcm.js';
+import { initResend } from './email.js';
 import { setupRetryInfrastructure } from './retry.js';
 
 const SERVICE_NAME = 'notification-service';
@@ -26,6 +27,7 @@ app.get(GATEWAY_HEALTH_PATH, (_req, res) => {
 
 async function main(): Promise<void> {
   initFirebase();
+  initResend();
 
   await connect();
   console.log('✓ RabbitMQ connection established');

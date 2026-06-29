@@ -6,16 +6,27 @@
 import express from 'express';
 
 // Replace this with a token generated from fcm-test.html before running.
-const STUB_FCM_TOKEN = 'wu_b2MWFiIIyCAp5zuaCH:APA91bE8qfwZyHM2PA4wSchZ8MKttI0b-_oVdF52VftOu6qkwMs7KOZXk_cMvYMnTWmjyvo13bUQ_oVGHKDPI1X8DdeYPAKNijVRqjsIhTRoEwMSMbfa5to';
+const STUB_FCM_TOKEN = 'ewu_b2MWFiIIyCAp5zuaCH:APA91bE8qfwZyHM2PA4wSchZ8MKttI0b-_oVdF52VftOu6qkwMs7KOZXk_cMvYMnTWmjyvo13bUQ_oVGHKDPI1X8DdeYPAKNijVRqjsIhTRoEwMSMbfa5to';
 
 const PORT = 3002; // must match USER_SERVICE_URL in .env (default: http://localhost:3002)
 
 const app = express();
 
+
+const TEST_USERS = {
+  'patientId': {
+    fcmToken: STUB_FCM_TOKEN,
+    email: 'g.njunge@alustudent.com'
+  },
+  'therapistId': {
+    fcmToken: STUB_FCM_TOKEN,
+    email: 'g.njunge@alustudent.com'
+  }
+};
+
 app.get('/api/v1/users/:userId/preferences', (req, res) => {
-  console.log(`[stub-user-service] GET /api/v1/users/${req.params.userId}/preferences`);
-  // getFcmToken reads response.fcmToken at the top level — no nesting.
-  res.json({ fcmToken: STUB_FCM_TOKEN });
+  const user = TEST_USERS[req.params.userId] ?? TEST_USERS['patientId'];
+  res.json(user);
 });
 
 // Catch-all so unexpected routes are visible rather than silently hanging.

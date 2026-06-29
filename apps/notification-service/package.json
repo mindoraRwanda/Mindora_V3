@@ -15,7 +15,8 @@
     "@mindora/queue": "*",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
-    "firebase-admin": "^14.0.0"
+    "firebase-admin": "^14.0.0",
+    "resend": "^6.16.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
