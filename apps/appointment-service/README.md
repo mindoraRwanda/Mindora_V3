@@ -13,7 +13,8 @@ Therapist scheduling, booking with double-booking prevention, and appointment li
 ## API documentation
 
 - **OpenAPI spec:** [`docs/appointment-service.yaml`](../../docs/appointment-service.yaml)
-- **Swagger UI:** `http://localhost:3003/docs` (when service is running)
+- **Swagger UI:** `http://localhost:3003/docs`
+- **Frontend codegen:** `http://localhost:3003/openapi.json` or `/openapi.yaml` (CORS enabled)
 
 | Method | Path                         | Auth            | Description                                         |
 | ------ | ---------------------------- | --------------- | --------------------------------------------------- |

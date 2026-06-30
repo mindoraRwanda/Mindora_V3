@@ -34,25 +34,9 @@ import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
 
 export const appointmentRouter = Router();
 
-const SERVICE_NAME = 'appointment-service';
-const GATEWAY_HEALTH_PATH = '/api/v1/appointments/health';
-
 function routeParam(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
 }
-
-const healthResponse = () => ({
-  status: 'ok',
-  service: SERVICE_NAME,
-});
-
-appointmentRouter.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse());
-});
-
-appointmentRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
-  res.status(200).json(healthResponse());
-});
 
 appointmentRouter.get(
   '/availability/:therapistId',

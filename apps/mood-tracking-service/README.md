@@ -16,6 +16,7 @@ Patient mood logging with TimescaleDB analytics, Redis caching, and RabbitMQ con
 
 - **OpenAPI:** [`docs/mood-service.yaml`](../../docs/mood-service.yaml)
 - **Swagger UI:** `http://localhost:3004/docs`
+- **Frontend codegen:** `http://localhost:3004/openapi.json` or `/openapi.yaml` (CORS enabled)
 
 | Method | Path              | Auth            | Description                                    |
 | ------ | ----------------- | --------------- | ---------------------------------------------- |

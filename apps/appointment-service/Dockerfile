@@ -9,7 +9,7 @@ COPY apps ./apps
 COPY packages ./packages
 COPY docs ./docs
 
-RUN npm ci
+RUN npm install
 RUN npm run build -w @mindora/appointment-service
 
 FROM node:24-alpine AS runtime

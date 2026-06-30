@@ -172,9 +172,8 @@ jobs:
       REFRESH_SECRET: ${{ secrets.REFRESH_SECRET || 'ci-only-refresh-secret-not-for-production' }}
 
     services:
-      # TimescaleDB image required for mood_entries hypertable migration (Sprint 4).
       postgres:
-        image: timescale/timescaledb:latest-pg16
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: mindora
           POSTGRES_PASSWORD: mindora

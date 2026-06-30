@@ -1,7 +1,4 @@
--- Enable TimescaleDB for mood_entries hypertable and time_bucket queries
-CREATE EXTENSION IF NOT EXISTS timescaledb;
-
--- CreateTable
+-- CreateTable (works on plain PostgreSQL and TimescaleDB)
 CREATE TABLE "mood_entries" (
     "id" UUID NOT NULL,
     "user_id" UUID NOT NULL,
@@ -24,5 +21,13 @@ CREATE INDEX "mood_entries_user_id_recorded_at_idx" ON "mood_entries"("user_id",
 -- AddForeignKey
 ALTER TABLE "mood_entries" ADD CONSTRAINT "mood_entries_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- Convert to hypertable partitioned by recorded_at (TimescaleDB)
-SELECT create_hypertable('mood_entries', 'recorded_at', if_not_exists => TRUE);
+-- TimescaleDB hypertable (optional — skipped in CI/plain Postgres; enabled in docker-compose)
+DO $timescale$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS timescaledb;
+  PERFORM create_hypertable('mood_entries', 'recorded_at', if_not_exists => TRUE);
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE NOTICE 'TimescaleDB hypertable skipped: %', SQLERRM;
+END
+$timescale$;

@@ -29,25 +29,9 @@ import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
 
 export const moodRouter = Router();
 
-const SERVICE_NAME = 'mood-tracking-service';
-const GATEWAY_HEALTH_PATH = '/api/v1/mood/health';
-
 function routeParam(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
 }
-
-const healthResponse = () => ({
-  status: 'ok',
-  service: SERVICE_NAME,
-});
-
-moodRouter.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse());
-});
-
-moodRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
-  res.status(200).json(healthResponse());
-});
 
 moodRouter.post(
   '/log',

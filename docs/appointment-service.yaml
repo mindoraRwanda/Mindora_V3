@@ -10,6 +10,9 @@ info:
     - **Concurrency:** POST booking uses PostgreSQL `SELECT FOR UPDATE` to prevent double-booking
     - **Events:** State changes publish to RabbitMQ exchange `mindora.appointments` (see `@mindora/events`)
 
+    **Frontend integration:** OpenAPI spec at `GET /openapi.json` or `GET /openapi.yaml` (CORS enabled).
+    Interactive docs at `GET /docs`. Kong base: `http://localhost:8000/api/v1/appointments`.
+
     OpenAPI source: `docs/appointment-service.yaml`
   version: 1.0.0
   contact:

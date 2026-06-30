@@ -8,6 +8,9 @@ info:
     - **Port:** 3004 (direct) · **8000** via Kong (`/api/v1/mood/*`)
     - **Database:** PostgreSQL + TimescaleDB hypertable on `mood_entries.recorded_at`
     - **Events:** `mood.concern`, `mood.streak` on exchange `mindora.mood`
+
+    **Frontend integration:** OpenAPI spec at `GET /openapi.json` or `GET /openapi.yaml` (CORS enabled).
+    Interactive docs at `GET /docs`. Kong base: `http://localhost:8000/api/v1/mood`.
   version: 1.0.0
 
 servers:
