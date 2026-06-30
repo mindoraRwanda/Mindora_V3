@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { isTokenBlacklisted } from './redis.js';
-import type { AuthMiddlewareOptions, AuthenticatedRequest } from './types.js';
+import type { AuthMiddlewareOptions, AuthenticatedRequest, AuthUser } from './types.js';
 
 const DEFAULT_REDIS_URL = 'redis://localhost:6379';
 const DEFAULT_ISSUER = 'mindora-auth';
@@ -29,6 +29,17 @@ export function verifyAccessToken(
     email: String(decoded.email ?? ''),
     role: String(decoded.role ?? ''),
     jti: typeof decoded.jti === 'string' ? decoded.jti : undefined,
+  };
+}
+
+export function requireRole(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user || !roles.includes(authReq.user.role)) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    next();
   };
 }
 

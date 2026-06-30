@@ -25,6 +25,7 @@ services:
       - '27017:27017'
     volumes:
       - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
     healthcheck:
       test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
       interval: 10s
@@ -88,5 +89,6 @@ services:
 volumes:
   postgres_data:
   mongodb_data:
+  mongodb_config:
   redis_data:
   rabbitmq_data:

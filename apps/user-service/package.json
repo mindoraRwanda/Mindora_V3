@@ -15,9 +15,13 @@
     "@mindora/auth-middleware": "1.0.0",
     "@mindora/database": "1.0.0",
     "@mindora/validation": "1.0.0",
+    "@types/passport": "^1.0.17",
+    "@types/passport-google-oauth20": "^2.0.17",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "express-rate-limit": "^7.5.0"
+    "express-rate-limit": "^7.5.1",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
@@ -27,6 +31,6 @@
     "supertest": "^7.1.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
-    "vitest": "^3.0.9"
+    "vitest": "^4.1.8"
   }
 }

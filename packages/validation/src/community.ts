@@ -1,0 +1,31 @@
+import { z } from 'zod'
+
+export const CreateGroupDto = z.object({
+  name: z.string().min(3, 'Name must be at least 3 characters').max(100),
+  description: z.string().min(10, 'Description must be at least 10 characters').max(500),
+  category: z.enum([
+    'ANXIETY',
+    'DEPRESSION',
+    'GRIEF',
+    'RELATIONSHIPS',
+    'STRESS',
+    'ADDICTION',
+    'GENERAL'
+  ]),
+  isAnonymous: z.boolean().default(false)
+})
+
+export type CreateGroupInput = z.infer<typeof CreateGroupDto>
+
+export const CreatePostDto = z.object({
+  content: z
+    .object({ type: z.literal('doc') })
+    .passthrough()
+    .refine((v) => v !== null && v !== undefined, { message: 'Content cannot be empty' }),
+  isAnonymous: z.boolean().default(false)
+})
+export const CreateCommentDto = z.object({
+  content: z.string().min(1).max(10000),
+  isAnonymous: z.boolean().default(false)
+})
+export type CreatePostInput = z.infer<typeof CreatePostDto>

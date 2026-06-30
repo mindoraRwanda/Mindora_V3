@@ -10,6 +10,7 @@ export {
   type ResetPasswordDto,
   type UserRoleDto,
 } from './auth.js';
+export { CreateCommentDto, CreateGroupDto, CreatePostDto } from './community.js';
 export {
   therapistListQuerySchema,
   updateProfileSchema,

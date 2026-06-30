@@ -22,8 +22,8 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  refreshTokens   RefreshToken[]
-  patientProfile  PatientProfile?
+  refreshTokens    RefreshToken[]
+  patientProfile   PatientProfile?
   therapistProfile TherapistProfile?
 
   @@map("users")
@@ -38,8 +38,8 @@ model RefreshToken {
   replacedByTokenId String?  @map("replaced_by_token_id") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at")
 
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  replacedBy RefreshToken? @relation("TokenRotation", fields: [replacedByTokenId], references: [id])
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken?  @relation("TokenRotation", fields: [replacedByTokenId], references: [id])
   replaces   RefreshToken[] @relation("TokenRotation")
 
   @@index([userId])

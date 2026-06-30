@@ -6,5 +6,9 @@
     { "path": "./packages/database" },
     { "path": "./packages/queue" },
     { "path": "./packages/auth-middleware" }
-  ]
+  ],
+  "compilerOptions": {
+    "types": ["node"]
+  }
+
 }
