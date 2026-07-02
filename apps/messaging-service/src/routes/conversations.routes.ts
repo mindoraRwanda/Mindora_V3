@@ -8,6 +8,61 @@ const router = Router()
 
 const DEFAULT_PAGE_SIZE = 20
 
+/**
+ * @swagger
+ * /api/v1/messaging/conversations:
+ *   post:
+ *     summary: Start or retrieve a conversation
+ *     description: >
+ *       Finds an existing 1-to-1 conversation between the authenticated user and
+ *       `participantId`. Returns 200 if one already exists, or creates and returns
+ *       a new one with 201. You cannot start a conversation with yourself.
+ *     tags: [Conversations]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [participantId]
+ *             properties:
+ *               participantId:
+ *                 type: string
+ *                 description: User ID of the other participant.
+ *                 example: therapist-456
+ *     responses:
+ *       201:
+ *         description: New conversation created.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Conversation'
+ *       200:
+ *         description: Existing conversation returned.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Conversation'
+ *       400:
+ *         description: Missing participantId, empty string, or self-conversation attempt.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               missing:
+ *                 value: { error: 'participantId is required' }
+ *               self:
+ *                 value: { error: 'Cannot start a conversation with yourself' }
+ *       401:
+ *         description: Missing or invalid JWT.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 // POST / — find existing conversation or create a new one
 router.post('/', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.userId
@@ -49,6 +104,48 @@ router.post('/', authenticate, async (req: AuthenticatedRequest, res: Response) 
   }
 })
 
+/**
+ * @swagger
+ * /api/v1/messaging/conversations:
+ *   get:
+ *     summary: List conversations for the authenticated user
+ *     description: >
+ *       Returns a paginated list of the authenticated user's conversations, sorted by
+ *       most recently updated. Each item includes the unread message count and a
+ *       preview of the last message.
+ *     tags: [Conversations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number (1-based).
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
+ *           default: 20
+ *         description: Number of conversations per page.
+ *     responses:
+ *       200:
+ *         description: Paginated list of conversation summaries.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PaginatedConversations'
+ *       401:
+ *         description: Missing or invalid JWT.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 // GET / — list all conversations for the authenticated user
 router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.userId
@@ -101,6 +198,84 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
   }
 })
 
+/**
+ * @swagger
+ * /api/v1/messaging/conversations/{id}:
+ *   get:
+ *     summary: Get paginated chat history for a conversation
+ *     description: >
+ *       Returns cursor-paginated messages for a conversation, newest-first.
+ *       The requesting user must be a participant. Message content is decrypted
+ *       before being returned. Pass `nextCursor` from the previous response as
+ *       `cursor` to page backward through history.
+ *     tags: [Conversations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: MongoDB ObjectId of the conversation.
+ *         example: 64f1a2b3c4d5e6f7a8b9c0d1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
+ *           default: 20
+ *         description: Number of messages to return per page.
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *         description: >
+ *           MongoDB ObjectId of the oldest message in the previous page.
+ *           Omit for the first page (most recent messages).
+ *         example: 64f1a2b3c4d5e6f7a8b9c0d2
+ *     responses:
+ *       200:
+ *         description: Paginated messages with a cursor for the next page.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PaginatedMessages'
+ *       400:
+ *         description: Malformed conversation ID or cursor.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               badId:
+ *                 value: { error: 'Invalid conversation ID' }
+ *               badCursor:
+ *                 value: { error: 'Invalid cursor' }
+ *       401:
+ *         description: Missing or invalid JWT.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: Authenticated user is not a participant in this conversation.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               value: { error: 'Forbidden' }
+ *       404:
+ *         description: Conversation not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               value: { error: 'Conversation not found' }
+ */
 // GET /:id — cursor-based paginated chat history (decrypts content before returning)
 router.get('/:id', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.userId
