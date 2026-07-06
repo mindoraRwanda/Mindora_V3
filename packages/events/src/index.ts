@@ -5,6 +5,15 @@ export type {
   WithMetadata,
 } from './common.js';
 
+export type { BaseEvent, QueueName, ExchangeName } from './base.js';
+export { QUEUES, EXCHANGES } from './base.js';
+export type {
+  CommunityReportedEvent,
+  CommunityReplyEvent,
+} from './community.js';
+export type { MessageReceivedEvent } from './messaging.js';
+export type { AIUsageLoggedEvent } from './ai.js';
+
 export {
   APPOINTMENTS_EXCHANGE,
   APPOINTMENT_ROUTING_KEYS,

@@ -13,35 +13,37 @@ vi.hoisted(() => {
 
 vi.mock('ioredis', () => {
   const store = new Map<string, string>();
-  const Redis = vi.fn(() => ({
-    status: 'ready',
-    connect: vi.fn().mockResolvedValue(undefined),
-    exists: vi
-      .fn()
-      .mockImplementation((key: string) =>
-        Promise.resolve(store.has(key) ? 1 : 0)
-      ),
-    get: vi
-      .fn()
-      .mockImplementation((key: string) =>
-        Promise.resolve(store.get(key) ?? null)
-      ),
-    set: vi.fn().mockImplementation((key: string, value: string) => {
-      store.set(key, value);
-      return Promise.resolve('OK');
-    }),
-    del: vi.fn().mockImplementation((key: string) => {
-      store.delete(key);
-      return Promise.resolve(1);
-    }),
-    incr: vi.fn().mockImplementation((key: string) => {
-      const next = Number(store.get(key) ?? '0') + 1;
-      store.set(key, String(next));
-      return Promise.resolve(next);
-    }),
-    expire: vi.fn().mockResolvedValue(1),
-    on: vi.fn(),
-  }));
+  const Redis = vi.fn(function () {
+    return {
+      status: 'ready',
+      connect: vi.fn().mockResolvedValue(undefined),
+      exists: vi
+        .fn()
+        .mockImplementation((key: string) =>
+          Promise.resolve(store.has(key) ? 1 : 0)
+        ),
+      get: vi
+        .fn()
+        .mockImplementation((key: string) =>
+          Promise.resolve(store.get(key) ?? null)
+        ),
+      set: vi.fn().mockImplementation((key: string, value: string) => {
+        store.set(key, value);
+        return Promise.resolve('OK');
+      }),
+      del: vi.fn().mockImplementation((key: string) => {
+        store.delete(key);
+        return Promise.resolve(1);
+      }),
+      incr: vi.fn().mockImplementation((key: string) => {
+        const next = Number(store.get(key) ?? '0') + 1;
+        store.set(key, String(next));
+        return Promise.resolve(next);
+      }),
+      expire: vi.fn().mockResolvedValue(1),
+      on: vi.fn(),
+    };
+  });
   return { default: Redis };
 });
 
@@ -67,6 +69,34 @@ vi.mock('@mindora/database', () => ({
     $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
   },
   Prisma: {},
+}));
+
+vi.mock('../middleware/authenticate.js', () => ({
+  verifyJwt: (req, res, next) => {
+    const header = req.headers.authorization;
+    if (!header?.startsWith('Bearer ')) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+    try {
+      const token = header.slice('Bearer '.length);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET!, {
+        issuer: process.env.JWT_ISSUER,
+      });
+      if (typeof decoded === 'string' || !decoded.sub) {
+        res.status(401).json({ message: 'Unauthorized' });
+        return;
+      }
+      req.user = {
+        userId: decoded.sub,
+        email: String(decoded.email ?? ''),
+        role: String(decoded.role ?? ''),
+      };
+      next();
+    } catch {
+      res.status(401).json({ message: 'Unauthorized' });
+    }
+  },
 }));
 
 vi.mock('@mindora/auth-middleware', async (importOriginal) => {

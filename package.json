@@ -9,7 +9,10 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --concurrency=10",
+    "dev:messaging": "turbo run dev --filter=@mindora/messaging-service --filter=@mindora/auth-service",
+    "dev:community": "turbo run dev --filter=@mindora/community-service --filter=@mindora/auth-service",
+    "dev:auth": "turbo run dev --filter=@mindora/auth-service",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,js,json,md,yml,yaml}\"",
@@ -19,7 +22,9 @@
     "db:seed": "npm run seed -w @mindora/database",
     "db:seed:profiles": "npm run seed -w @mindora/user-service",
     "db:seed:appointments": "npm run seed -w @mindora/appointment-service",
-    "db:seed:mood": "npm run seed -w @mindora/mood-tracking-service"
+    "db:seed:mood": "npm run seed -w @mindora/mood-tracking-service",
+    "db:seed:community": "npm run seed -w @mindora/community-service",
+    "postinstall": "node -e \"const{rmSync,existsSync}=require('fs');const p='node_modules/africastalking/node_modules/axios';if(existsSync(p))rmSync(p,{recursive:true,force:true});\""
   },
   "repository": {
     "type": "git",
@@ -28,17 +33,42 @@
   "license": "ISC",
   "devDependencies": {
     "@eslint/js": "^9.22.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.3",
+    "@types/opossum": "^8.1.9",
+    "@types/supertest": "^7.2.0",
     "eslint": "^9.22.0",
     "eslint-config-prettier": "^10.1.1",
     "prettier": "^3.5.3",
+    "supertest": "^7.2.2",
+    "ts-node-dev": "^2.0.0",
     "turbo": "^2.5.4",
-    "typescript": "^5.8.2",
+    "typescript": "^5.9.3",
     "typescript-eslint": "^8.26.1",
-    "vitest": "^3.0.9"
+    "vitest": "^4.1.8"
   },
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.16.0"
   },
-  "packageManager": "npm@10.9.2"
+  "packageManager": "npm@10.9.2",
+  "overrides": {
+    "axios": "^1.18.1",
+    "joi": "^18.2.3",
+    "africastalking": {
+      "axios": "^1.18.1",
+      "joi": "^18.2.3"
+    }
+  },
+  "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
+    "axios": "^1.18.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "ioredis": "^5.11.1",
+    "joi": "^18.2.3",
+    "mongoose": "^9.6.3",
+    "resend": "^6.16.0",
+    "socket.io": "^4.8.3"
+  }
 }

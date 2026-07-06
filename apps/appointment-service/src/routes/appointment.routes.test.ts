@@ -10,15 +10,17 @@ vi.hoisted(() => {
 });
 
 vi.mock('ioredis', () => {
-  const Redis = vi.fn(() => ({
-    status: 'ready',
-    connect: vi.fn().mockResolvedValue(undefined),
-    exists: vi.fn().mockResolvedValue(0),
-    set: vi.fn().mockResolvedValue('OK'),
-    get: vi.fn().mockResolvedValue(null),
-    del: vi.fn().mockResolvedValue(1),
-    on: vi.fn(),
-  }));
+  const Redis = vi.fn(function () {
+    return {
+      status: 'ready',
+      connect: vi.fn().mockResolvedValue(undefined),
+      exists: vi.fn().mockResolvedValue(0),
+      set: vi.fn().mockResolvedValue('OK'),
+      get: vi.fn().mockResolvedValue(null),
+      del: vi.fn().mockResolvedValue(1),
+      on: vi.fn(),
+    };
+  });
   return { default: Redis };
 });
 
@@ -56,6 +58,34 @@ vi.mock('@mindora/database', () => ({
         this.code = code;
       }
     },
+  },
+}));
+
+vi.mock('../middleware/authenticate.js', () => ({
+  verifyJwt: (req, res, next) => {
+    const header = req.headers.authorization;
+    if (!header?.startsWith('Bearer ')) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+    try {
+      const token = header.slice('Bearer '.length);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET!, {
+        issuer: process.env.JWT_ISSUER,
+      });
+      if (typeof decoded === 'string' || !decoded.sub) {
+        res.status(401).json({ message: 'Unauthorized' });
+        return;
+      }
+      req.user = {
+        userId: decoded.sub,
+        email: String(decoded.email ?? ''),
+        role: String(decoded.role ?? ''),
+      };
+      next();
+    } catch {
+      res.status(401).json({ message: 'Unauthorized' });
+    }
   },
 }));
 
