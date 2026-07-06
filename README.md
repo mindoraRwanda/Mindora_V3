@@ -67,6 +67,13 @@ docker compose up -d
 | Kong proxy | 8000 | API gateway |
 | Kong admin | 8001 | Kong configuration API |
 
+> **⚠️ Windows / Docker Desktop — PostgreSQL auth note**
+> `docker-compose.yml` sets `POSTGRES_HOST_AUTH_METHOD: trust` on the PostgreSQL service.
+> This is required on Windows because Docker Desktop routes host TCP connections through
+> the bridge gateway (`172.18.0.1`) rather than the loopback address (`127.0.0.1`), which
+> bypasses PostgreSQL's loopback trust rule and causes password auth to fail.
+> **Remove this variable and use scram-sha-256 with secrets-managed credentials in any non-local environment.**
+
 ### 4. Database setup
 
 ```bash
@@ -419,7 +426,7 @@ Raw OpenAPI JSON available at `/docs.json` on each service (e.g. `http://localho
 | `npm run build` | Build all packages and apps |
 | `npm run lint` | ESLint across all workspaces |
 | `npm run test` | Vitest across all workspaces |
-| `npm run db:migrate` | Run Prisma migrations |
+| `npm run db:migrate` | Run Prisma migrations — **broken on Windows + Docker Desktop** (see Known Issues) |
 | `npm run db:seed` | Seed the PostgreSQL database |
 | `npm run db:seed:community` | Seed community-service MongoDB data |
 | `npm run db:generate` | Regenerate Prisma client after schema changes |
@@ -442,6 +449,55 @@ Tests use **Vitest** and run via Turborepo (`npm run test`).
 | `@mindora/validation` | Unit | all Zod schema shapes |
 
 > Auth and user service tests mock ioredis using `vi.fn().mockImplementation(class { ... })` — the Vitest 4.x constructor-mock pattern.
+
+---
+
+## Known Issues & Workarounds
+
+### Prisma CLI cannot connect to Docker PostgreSQL on Windows (P1000)
+
+**Symptom:** `npm run db:migrate` (or any `prisma migrate dev` / `prisma db push` command) exits with:
+
+```
+Error: P1000: Authentication failed against database server at `localhost`
+```
+
+or hangs indefinitely with no PostgreSQL log entries.
+
+**Root cause:** The Prisma migrate engine and query engine ship as pre-compiled Rust binaries. On Windows with Docker Desktop, the Docker bridge driver routes host-to-container TCP connections through the bridge gateway (`172.18.0.1`) rather than loopback (`127.0.0.1`). The Rust binary is unable to establish any TCP connection to the container via this path — even with `POSTGRES_HOST_AUTH_METHOD: trust` applied, no connection attempt appears in PostgreSQL's `log_connections` output. This is a Windows-specific Docker Desktop networking issue with the Rust binary; it does not affect the JavaScript driver (`pg` npm package) or any other Node.js PostgreSQL client.
+
+**Workaround — apply migrations directly via `docker exec`:**
+
+Instead of `npm run db:migrate`, copy the SQL file into the container and run it with `psql`:
+
+```bash
+# For packages/database migrations (mindora DB)
+docker cp packages/database/prisma/migrations/<timestamp>_<name>/migration.sql mindora_v3-postgres-1:/tmp/migration.sql
+docker exec mindora_v3-postgres-1 psql -U mindora -d mindora -f /tmp/migration.sql
+
+# For ai-integration-service migrations (mindora_ai DB)
+docker cp apps/ai-integration-service/prisma/migrations/<timestamp>_<name>/migration.sql mindora_v3-postgres-1:/tmp/migration.sql
+docker exec mindora_v3-postgres-1 psql -U mindora -d mindora_ai -f /tmp/migration.sql
+```
+
+After applying the SQL, record the migration in Prisma's tracking table so `prisma migrate status` stays accurate:
+
+```bash
+docker exec mindora_v3-postgres-1 psql -U mindora -d mindora -c "
+INSERT INTO \"_prisma_migrations\" (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
+VALUES (gen_random_uuid()::text, 'baseline', now(), '<migration_name>', NULL, NULL, now(), 1)
+ON CONFLICT DO NOTHING;"
+```
+
+Replace `<migration_name>` with the directory name (e.g. `20260703000000_init`). Use `-d mindora_ai` for AI service migrations.
+
+**Generating the Prisma client still works** — only the CLI migrate/push commands are broken:
+
+```bash
+npm run db:generate   # fine — runs prisma generate (no network)
+```
+
+**This issue does not affect production** — CI runs on Linux and production deployments use Linux containers where Prisma's Rust binary connects normally.
 
 ---
 

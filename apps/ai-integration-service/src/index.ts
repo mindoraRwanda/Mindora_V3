@@ -1,24 +1,34 @@
-import express from 'express';
+import './env.js'; // must be first — loads .env before any module reads process.env
+import http from 'http';
+import app from './app.js';
+import { connectDatabase } from './database.js';
 
 const SERVICE_NAME = 'ai-integration-service';
-const PORT = Number(process.env.PORT) || 3007;
-const GATEWAY_HEALTH_PATH = '/api/v1/ai/health';
+const PORT = Number(process.env.AI_SERVICE_PORT) || 3007;
 
-const app = express();
+async function start(): Promise<void> {
+  try {
+    await connectDatabase();
 
-const healthResponse = () => ({
-  status: 'ok',
-  service: SERVICE_NAME,
-});
+    const server = http.createServer(app);
 
-app.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse());
-});
+    server.listen(PORT, () => {
+      console.log(`✓ ${SERVICE_NAME} running on http://localhost:${PORT}`);
+    });
 
-app.get(GATEWAY_HEALTH_PATH, (_req, res) => {
-  res.status(200).json(healthResponse());
-});
+    process.on('SIGTERM', () => {
+      console.log('⏳ SIGTERM received, closing gracefully...');
+      server.close();
+    });
 
-app.listen(PORT, () => {
-  console.log(`${SERVICE_NAME} listening on http://localhost:${PORT}`);
-});
+    process.on('SIGINT', () => {
+      console.log('⏳ SIGINT received, closing gracefully...');
+      server.close();
+    });
+  } catch (error) {
+    console.error('✗ Failed to start service:', error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
+}
+
+start();

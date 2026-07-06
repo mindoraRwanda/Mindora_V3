@@ -1,0 +1,28 @@
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../src/generated/client"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("AI_DATABASE_URL")
+}
+
+model AiInteraction {
+  id             String   @id @default(uuid())
+  user_id        String
+  session_id     String
+  // AES-256-GCM encryption is applied at the application layer before writing this field
+  user_message   String
+  // AES-256-GCM encryption is applied at the application layer before writing this field
+  ai_response    String
+  input_flagged  Boolean  @default(false)
+  output_flagged Boolean  @default(false)
+  crisis_level   Int      @db.SmallInt
+  tokens_used    Int?
+  response_ms    Int?
+  created_at     DateTime @default(now()) @db.Timestamptz
+
+  @@map("ai_interactions")
+}
