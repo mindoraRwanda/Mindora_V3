@@ -17,15 +17,15 @@
     "express": "^4.21.2",
     "ioredis": "^5.11.1",
     "mongoose": "^8.0.0",
-    "redis": "^6.0.0",
+    "redis": "^6.1.0",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^20.0.0",
-    "@types/socket.io": "^3.0.1",
+    "@types/socket.io": "^3.0.2",
     "socket.io-client": "^4.8.3",
-    "tsx": "^4.19.3",
+    "tsx": "^4.23.0",
     "typescript": "^5.8.2",
     "vitest": "^4.1.8"
   }
