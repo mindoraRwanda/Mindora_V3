@@ -4,6 +4,10 @@ import { authenticate } from '@mindora/auth-middleware';
 import type { AuthenticatedRequest } from '@mindora/auth-middleware';
 
 import { getRedisClient } from './utils/redis.js';
+import {
+  authenticatedRouteLimiter,
+  healthRouteLimiter,
+} from './middleware/rate-limit.js';
 
 const SERVICE_NAME = 'messaging-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/messaging/health';
@@ -13,11 +17,11 @@ app.use(express.json());
 
 const healthResponse = () => ({ status: 'ok', service: SERVICE_NAME });
 
-app.get('/health', (_req, res) => {
+app.get('/health', healthRouteLimiter, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
-app.get(GATEWAY_HEALTH_PATH, (_req, res) => {
+app.get(GATEWAY_HEALTH_PATH, healthRouteLimiter, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
@@ -26,6 +30,7 @@ app.use('/api/v1/messaging/conversations', conversationsRouter);
 // GET /api/v1/messaging/presence/:userId — check if a user is currently online
 app.get(
   '/api/v1/messaging/presence/:userId',
+  authenticatedRouteLimiter,
   authenticate,
   async (req: AuthenticatedRequest, res) => {
     const { userId } = req.params;

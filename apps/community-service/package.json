@@ -16,6 +16,7 @@
     "@mindora/auth-middleware": "1.0.0",
     "@mindora/validation": "*",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.5.1",
     "ioredis": "^5.6.0",
     "jsonwebtoken": "^9.0.3",
     "swagger-jsdoc": "^6.3.0",

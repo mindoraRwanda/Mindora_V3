@@ -11,6 +11,10 @@ import mongoose from 'mongoose';
 import { encryptUserId } from '../utils/encryption.js';
 import { Report } from '../models/index.js';
 import { publish } from '@mindora/queue';
+import {
+  authenticatedRouteLimiter,
+  publicRouteLimiter,
+} from '../middleware/rate-limit.js';
 
 const router = Router();
 
@@ -66,6 +70,7 @@ const router = Router();
  */
 router.post(
   '/groups',
+  authenticatedRouteLimiter,
   authenticate,
   requireRole('ADMIN'),
   async (req: Request, res: Response) => {
@@ -141,31 +146,35 @@ router.post(
  *                 limit:
  *                   type: number
  */
-router.get('/groups', async (req: Request, res: Response) => {
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const limit = Math.min(
-    50,
-    Math.max(1, parseInt(req.query.limit as string) || 10)
-  );
-  const skip = (page - 1) * limit;
+router.get(
+  '/groups',
+  publicRouteLimiter,
+  async (req: Request, res: Response) => {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(
+      50,
+      Math.max(1, parseInt(req.query.limit as string) || 10)
+    );
+    const skip = (page - 1) * limit;
 
-  try {
-    const [groups, total] = await Promise.all([
-      CommunityGroup.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
-      CommunityGroup.countDocuments(),
-    ]);
+    try {
+      const [groups, total] = await Promise.all([
+        CommunityGroup.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
+        CommunityGroup.countDocuments(),
+      ]);
 
-    return res.status(200).json({
-      groups,
-      total,
-      page,
-      limit,
-    });
-  } catch (error) {
-    console.error('List groups error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+      return res.status(200).json({
+        groups,
+        total,
+        page,
+        limit,
+      });
+    } catch (error) {
+      console.error('List groups error:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
   }
-});
+);
 
 /**
  * @swagger
@@ -229,6 +238,7 @@ router.get('/groups', async (req: Request, res: Response) => {
  */
 router.post(
   '/groups/:id/posts',
+  authenticatedRouteLimiter,
   authenticate,
   async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
@@ -288,6 +298,7 @@ router.post(
 
 router.post(
   '/groups/:id/posts/:postId/comments',
+  authenticatedRouteLimiter,
   authenticate,
   async (req: AuthenticatedRequest, res: Response) => {
     const id = req.params.id as string;
@@ -351,6 +362,7 @@ router.post(
 
 router.post(
   '/groups/:id/posts/:postId/react',
+  authenticatedRouteLimiter,
   authenticate,
   async (req: Request, res: Response) => {
     const postId = req.params.postId as string;
@@ -404,6 +416,7 @@ router.post(
 
 router.post(
   '/reports',
+  authenticatedRouteLimiter,
   authenticate,
   async (req: AuthenticatedRequest, res: Response) => {
     const { contentId, contentType, reason } = req.body;
@@ -468,35 +481,39 @@ router.post(
     }
   }
 );
-router.get('/groups/:id/posts', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const groupId = id as string;
+router.get(
+  '/groups/:id/posts',
+  publicRouteLimiter,
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const groupId = id as string;
 
-  if (!mongoose.Types.ObjectId.isValid(groupId)) {
-    return res.status(400).json({ error: 'Invalid group ID' });
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      return res.status(400).json({ error: 'Invalid group ID' });
+    }
+
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(
+      50,
+      Math.max(1, parseInt(req.query.limit as string) || 10)
+    );
+    const skip = (page - 1) * limit;
+
+    try {
+      const [posts, total] = await Promise.all([
+        Post.find({ communityId: id })
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit),
+        Post.countDocuments({ communityId: id }),
+      ]);
+
+      return res.status(200).json({ posts, total, page, limit });
+    } catch (error) {
+      console.error('List posts error:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
   }
-
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const limit = Math.min(
-    50,
-    Math.max(1, parseInt(req.query.limit as string) || 10)
-  );
-  const skip = (page - 1) * limit;
-
-  try {
-    const [posts, total] = await Promise.all([
-      Post.find({ communityId: id })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
-      Post.countDocuments({ communityId: id }),
-    ]);
-
-    return res.status(200).json({ posts, total, page, limit });
-  } catch (error) {
-    console.error('List posts error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
+);
 
 export default router;

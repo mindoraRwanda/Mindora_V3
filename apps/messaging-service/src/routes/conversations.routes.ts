@@ -6,6 +6,7 @@ import {
 } from '@mindora/auth-middleware';
 import { Conversation, Message } from '../models/index.js';
 import { decryptContent } from '../utils/encryption.js';
+import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
 
 const router = Router();
 
@@ -14,6 +15,7 @@ const DEFAULT_PAGE_SIZE = 20;
 // POST / — find existing conversation or create a new one
 router.post(
   '/',
+  authenticatedRouteLimiter,
   authenticate,
   async (req: AuthenticatedRequest, res: Response) => {
     const userId = req.user?.userId;
@@ -67,6 +69,7 @@ router.post(
 // GET / — list all conversations for the authenticated user
 router.get(
   '/',
+  authenticatedRouteLimiter,
   authenticate,
   async (req: AuthenticatedRequest, res: Response) => {
     const userId = req.user?.userId;
@@ -131,6 +134,7 @@ router.get(
 // GET /:id — cursor-based paginated chat history (decrypts content before returning)
 router.get(
   '/:id',
+  authenticatedRouteLimiter,
   authenticate,
   async (req: AuthenticatedRequest, res: Response) => {
     const userId = req.user?.userId;

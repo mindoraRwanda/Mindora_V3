@@ -1,6 +1,7 @@
 import { initializeApp, cert, type App } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 import { readFileSync } from 'node:fs';
+import { basename, resolve, relative } from 'node:path';
 import { FatalNotificationError } from './errors.js';
 
 export { FatalNotificationError };
@@ -14,6 +15,28 @@ const FATAL_FCM_CODES = new Set([
   'messaging/registration-token-not-registered',
 ]);
 
+function readServiceAccountFile(filePath: string): string {
+  if (filePath.includes('..') || filePath.includes('\0')) {
+    throw new Error('Invalid Firebase service account path');
+  }
+
+  const resolved = resolve(filePath);
+  const secretsRoot = resolve(
+    process.env.FIREBASE_SECRETS_DIR ?? '/etc/secrets'
+  );
+  const relativePath = relative(secretsRoot, resolved);
+
+  if (
+    relativePath.startsWith('..') ||
+    relativePath.includes('..') ||
+    !basename(resolved).endsWith('.json')
+  ) {
+    throw new Error('Invalid Firebase service account path');
+  }
+
+  return readFileSync(resolved, 'utf8');
+}
+
 export function initFirebase(): void {
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (!serviceAccountJson) {
@@ -25,7 +48,7 @@ export function initFirebase(): void {
   // Value may be inline JSON (starts with '{') or a path to a .json file.
   const raw = serviceAccountJson.trimStart().startsWith('{')
     ? serviceAccountJson
-    : readFileSync(serviceAccountJson, 'utf8');
+    : readServiceAccountFile(serviceAccountJson);
 
   app = initializeApp({
     credential: cert(JSON.parse(raw) as object),

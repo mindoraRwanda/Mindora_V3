@@ -2,27 +2,33 @@ import express from 'express';
 import communityRoutes from './routes/community.routes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './docs/swagger.js';
+import { publicRouteLimiter } from './middleware/rate-limit.js';
 
 const app = express();
 
 app.use(express.json());
 
 // Swagger docs
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use(
+  '/docs',
+  publicRouteLimiter,
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec)
+);
 
 // Export the raw spec as JSON so other tools can consume it
-app.get('/docs.json', (_req, res) => {
+app.get('/docs.json', publicRouteLimiter, (_req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
 });
 
-app.get('/health', (req, res) => {
+app.get('/health', publicRouteLimiter, (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
 app.use('/api/v1/community', communityRoutes);
 
-app.get('/api/v1/community/health', (_req, res) => {
+app.get('/api/v1/community/health', publicRouteLimiter, (_req, res) => {
   res.status(200).json({ status: 'ok', service: 'community-service' });
 });
 

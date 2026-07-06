@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 
 const ENCRYPTION_KEY = Buffer.from(
-  process.env.MESSAGE_ENCRYPTION_KEY ?? 'placeholder-key-32-bytes-exactly!!',
+  process.env.MESSAGE_ENCRYPTION_KEY ?? 'mindora-dev-message-key-32bytes!!',
   'utf8'
 ).slice(0, 32);
 

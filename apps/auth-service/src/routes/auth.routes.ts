@@ -55,7 +55,7 @@ authRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
-authRouter.post('/register', async (req, res) => {
+authRouter.post('/register', publicAuthRouteLimiter, async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({

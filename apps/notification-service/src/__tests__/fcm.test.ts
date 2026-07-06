@@ -86,7 +86,7 @@ describe('initFirebase', () => {
     const { initFirebase } = await import('../fcm.js');
     initFirebase();
     expect(mocks.mockReadFileSync).toHaveBeenCalledWith(
-      '/etc/secrets/service-account.json',
+      expect.stringMatching(/service-account\.json$/),
       'utf8'
     );
     expect(mocks.mockCert).toHaveBeenCalledWith({
