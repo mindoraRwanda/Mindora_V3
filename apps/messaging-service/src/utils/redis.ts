@@ -1,6 +1,6 @@
-import { Redis } from 'ioredis'
+import { Redis } from 'ioredis';
 
-let _client: Redis | null = null
+let _client: Redis | null = null;
 
 export function getRedisClient(): Redis {
   if (!_client) {
@@ -8,10 +8,10 @@ export function getRedisClient(): Redis {
       lazyConnect: false,
       maxRetriesPerRequest: 1,
       enableReadyCheck: false,
-    })
+    });
     _client.on('error', (err: Error) => {
-      console.error('[messaging-redis] error:', err.message)
-    })
+      console.error('[messaging-redis] error:', err.message);
+    });
   }
-  return _client
+  return _client;
 }

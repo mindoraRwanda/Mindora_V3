@@ -54,11 +54,13 @@ export function initSms(): void {
   const apiKey = process.env.AT_API_KEY;
   const username = process.env.AT_USERNAME;
   if (!apiKey || !username) {
-    console.warn('[sms] AT_API_KEY or AT_USERNAME not set — SMS notifications disabled');
+    console.warn(
+      '[sms] AT_API_KEY or AT_USERNAME not set — SMS notifications disabled'
+    );
     return;
   }
   smsClient = makeAfricasTalking({ apiKey, username }).SMS;
-  console.log('✓ Africa\'s Talking SMS client initialized');
+  console.log("✓ Africa's Talking SMS client initialized");
 }
 
 async function getUserPhone(userId: string): Promise<string | null> {
@@ -66,7 +68,9 @@ async function getUserPhone(userId: string): Promise<string | null> {
   try {
     const res = await fetch(`${base}/api/v1/users/${userId}/preferences`);
     if (!res.ok) {
-      console.warn(`[sms] User Service returned ${res.status} for user ${userId} — no phone number`);
+      console.warn(
+        `[sms] User Service returned ${res.status} for user ${userId} — no phone number`
+      );
       return null;
     }
     const data = (await res.json()) as { phoneNumber?: string };
@@ -91,7 +95,9 @@ export async function sendSms(to: string, body: string): Promise<void> {
   console.log(`[sms] sendSms → user=${to}`);
 
   if (!smsClient) {
-    console.warn(`[sms] SMS client not initialized — skipping SMS to user ${to}`);
+    console.warn(
+      `[sms] SMS client not initialized — skipping SMS to user ${to}`
+    );
     return;
   }
 
@@ -105,7 +111,9 @@ export async function sendSms(to: string, body: string): Promise<void> {
   const recipient = result.SMSMessageData.Recipients[0];
 
   if (!recipient || AT_SUCCESS_CODES.has(recipient.statusCode)) {
-    console.log(`[sms] SMS delivered → user=${to} phone=${phone} status=${recipient?.status ?? 'unknown'}`);
+    console.log(
+      `[sms] SMS delivered → user=${to} phone=${phone} status=${recipient?.status ?? 'unknown'}`
+    );
     return;
   }
 
@@ -116,9 +124,15 @@ export async function sendSms(to: string, body: string): Promise<void> {
     console.error(
       `[sms] Fatal AT error (${label}) for user ${to} — number ${phone} is permanently unreachable, routing straight to DLQ`
     );
-    throw new FatalNotificationError(`AT ${label} for user ${to}`, String(statusCode), to);
+    throw new FatalNotificationError(
+      `AT ${label} for user ${to}`,
+      String(statusCode),
+      to
+    );
   }
 
   // Transient: balance low (405), risk hold (401), routing failure (407), gateway errors (500/501/502)
-  throw new Error(`SMS delivery failed (AT status ${statusCode}) for user ${to} — will retry`);
+  throw new Error(
+    `SMS delivery failed (AT status ${statusCode}) for user ${to} — will retry`
+  );
 }

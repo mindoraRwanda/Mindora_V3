@@ -1,0 +1,124 @@
+openapi: 3.0.3
+info:
+  title: Mindora Mood Tracking Service API
+  description: |
+    Mood logging, TimescaleDB weekly insights, and therapist reports (Sprint 4).
+
+    - **Runtime:** Node.js 24
+    - **Port:** 3004 (direct) · **8000** via Kong (`/api/v1/mood/*`)
+    - **Database:** PostgreSQL + TimescaleDB hypertable on `mood_entries.recorded_at`
+    - **Events:** `mood.concern`, `mood.streak` on exchange `mindora.mood`
+
+    **Frontend integration:** OpenAPI spec at `GET /openapi.json` or `GET /openapi.yaml` (CORS enabled).
+    Interactive docs at `GET /docs`. Kong base: `http://localhost:8000/api/v1/mood`.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3004
+  - url: http://localhost:8000/api/v1/mood
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: OK
+
+  /log:
+    post:
+      summary: Log a mood entry
+      description: |
+        Patient only. Journal note encrypted (AES-256-GCM). Max 10 logs/day (429).
+        Publishes `mood.concern` if 3+ of last 5 scores are <= 3.
+        Publishes `mood.streak` at 7/14/30 day milestones.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogMoodRequest'
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized
+        '403':
+          description: Not a patient
+        '429':
+          description: Daily limit exceeded
+
+  /history:
+    get:
+      summary: Paginated mood history
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 10 }
+        - name: startDate
+          in: query
+          schema: { type: string, format: date-time }
+        - name: endDate
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: History list
+
+  /insights:
+    get:
+      summary: Weekly trend insights (TimescaleDB time_bucket)
+      description: Cached in Redis `mood:{userId}:weekly` for 1 hour.
+      responses:
+        '200':
+          description: Weekly buckets + trend direction
+
+  /report/{userId}:
+    get:
+      summary: Therapist patient mood summary
+      description: Does not expose raw journal notes.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Summary
+        '403':
+          description: Not a therapist
+
+  /streak:
+    get:
+      summary: Current check-in streak
+      responses:
+        '200':
+          description: Streak count
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    LogMoodRequest:
+      type: object
+      required: [moodScore]
+      properties:
+        moodScore: { type: integer, minimum: 1, maximum: 10 }
+        emotions: { type: array, items: { type: string } }
+        sleepHours: { type: number }
+        stressLevel: { type: integer }
+        energyLevel: { type: integer }
+        journalNote: { type: string }
+        triggers: { type: array, items: { type: string } }
+
+security:
+  - bearerAuth: []

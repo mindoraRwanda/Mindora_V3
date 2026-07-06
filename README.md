@@ -4,13 +4,13 @@ Mental health platform monorepo — Turborepo + npm workspaces, 9 microservices,
 
 ## Prerequisites
 
-- **Node.js 20** (see `.nvmrc`)
+- **Node.js 24** (see `.nvmrc` / `.node-version`)
 - **npm** 10+
 - **Docker Desktop** (PostgreSQL, MongoDB, Redis, RabbitMQ, Kong)
 - **Git**
 
 ```bash
-node -v    # v20.x
+node -v    # v24.x
 npm -v
 docker -v
 ```
@@ -22,6 +22,7 @@ docker -v
 ```bash
 git clone https://github.com/mindoraRwanda/Mindora_V3.git
 cd Mindora_V3
+nvm use          # reads .nvmrc → Node 24
 npm install
 ```
 
@@ -88,6 +89,7 @@ Mindora_V3/
 ├── packages/
 │   ├── database/            # @mindora/database — Prisma client
 │   ├── queue/               # @mindora/queue — RabbitMQ helpers
+│   ├── events/              # @mindora/events — RabbitMQ event payload types
 │   ├── validation/          # @mindora/validation — Zod DTOs
 │   └── shared-types/        # @mindora/shared-types
 ├── infrastructure/kong/     # Kong declarative config
@@ -99,11 +101,11 @@ Mindora_V3/
 ## Services and ports
 
 | Service                | Port | Kong health path               |
-| ---------------------- | ---- | ------------------------------ |
+| ---------------------- | ---- | ------------------------------ | ---------------------------------------- |
 | auth-service           | 3001 | `/api/v1/auth/health`          |
 | user-service           | 3002 | `/api/v1/users/health`         |
-| appointment-service    | 3003 | `/api/v1/appointments/health`  |
-| mood-tracking-service  | 3004 | `/api/v1/mood/health`          |
+| appointment-service    | 3003 | `/api/v1/appointments/health`  | [OpenAPI](docs/appointment-service.yaml) |
+| mood-tracking-service  | 3004 | `/api/v1/mood/health`          | [OpenAPI](docs/mood-service.yaml)        |
 | community-service      | 3005 | `/api/v1/community/health`     |
 | messaging-service      | 3006 | `/api/v1/messaging/health`     |
 | ai-integration-service | 3007 | `/api/v1/ai/health`            |

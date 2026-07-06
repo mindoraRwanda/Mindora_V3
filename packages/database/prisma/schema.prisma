@@ -13,6 +13,19 @@ enum UserRole {
   ADMIN
 }
 
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum SessionType {
+  VIDEO
+  IN_PERSON
+  CHAT
+}
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   email        String   @unique
@@ -22,9 +35,12 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  refreshTokens    RefreshToken[]
-  patientProfile   PatientProfile?
-  therapistProfile TherapistProfile?
+  refreshTokens        RefreshToken[]
+  patientProfile       PatientProfile?
+  therapistProfile     TherapistProfile?
+  patientAppointments  Appointment[] @relation("PatientAppointments")
+  therapistAppointments Appointment[] @relation("TherapistAppointments")
+  moodEntries          MoodEntry[]
 
   @@map("users")
 }
@@ -38,8 +54,8 @@ model RefreshToken {
   replacedByTokenId String?  @map("replaced_by_token_id") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at")
 
-  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  replacedBy RefreshToken?  @relation("TokenRotation", fields: [replacedByTokenId], references: [id])
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken? @relation("TokenRotation", fields: [replacedByTokenId], references: [id])
   replaces   RefreshToken[] @relation("TokenRotation")
 
   @@index([userId])
@@ -82,4 +98,46 @@ model TherapistProfile {
   @@index([isAcceptingPatients])
   @@index([specialisation])
   @@map("therapist_profiles")
+}
+
+model Appointment {
+  id                 String            @id @default(uuid()) @db.Uuid
+  patientId          String            @map("patient_id") @db.Uuid
+  therapistId        String            @map("therapist_id") @db.Uuid
+  slotStart          DateTime          @map("slot_start")
+  slotEnd            DateTime          @map("slot_end")
+  sessionType        SessionType       @map("session_type")
+  status             AppointmentStatus @default(PENDING)
+  cancellationReason String?           @map("cancellation_reason")
+  rating             Int?
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  patient   User @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Cascade)
+  therapist User @relation("TherapistAppointments", fields: [therapistId], references: [id], onDelete: Cascade)
+
+  @@index([therapistId, slotStart])
+  @@index([patientId])
+  @@index([therapistId, status, slotStart])
+  @@map("appointments")
+}
+
+model MoodEntry {
+  id                   String   @default(uuid()) @db.Uuid
+  userId               String   @map("user_id") @db.Uuid
+  moodScore            Int      @map("mood_score")
+  emotions             String[] @default([])
+  sleepHours           Float?   @map("sleep_hours")
+  stressLevel          Int?     @map("stress_level")
+  energyLevel          Int?     @map("energy_level")
+  journalNoteEncrypted String?  @map("journal_note_encrypted")
+  triggers             String[] @default([])
+  recordedAt           DateTime @default(now()) @map("recorded_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([id, recordedAt])
+  @@index([userId, recordedAt])
+  @@map("mood_entries")
 }

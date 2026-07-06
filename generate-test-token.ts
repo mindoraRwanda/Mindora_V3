@@ -15,7 +15,7 @@ const token = jwt.sign(
   {
     expiresIn: '7d',
     issuer: 'mindora-auth',
-    jwtid: 'test-jti-123'
+    jwtid: 'test-jti-123',
   }
 );
 

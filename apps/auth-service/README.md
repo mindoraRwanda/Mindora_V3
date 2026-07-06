@@ -2,6 +2,10 @@
 
 Authentication microservice for Mindora V3.
 
+## Prerequisites
+
+- **Node.js 24+** (see root `.nvmrc`)
+
 ## Port
 
 **3001** (direct) · **8000** via Kong (`/api/v1/auth/*`)
@@ -52,3 +56,12 @@ npm run db:seed
 ## Manual testing
 
 See sprint docs for curl examples. OAuth requires Google Cloud Console credentials in `.env`.
+
+## Docker
+
+Build from the **repository root** (Node.js 24 Alpine):
+
+```bash
+docker build -f apps/auth-service/Dockerfile -t mindora/auth-service .
+docker run --rm -p 3001:3001 --env-file .env mindora/auth-service
+```

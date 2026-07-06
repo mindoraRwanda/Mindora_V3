@@ -11,7 +11,7 @@ const REPROCESS_QUEUE = 'mindora.notifications.reprocess';
 const TEST_MODE = process.env.RETRY_TEST_MODE === 'true';
 
 const RETRY_DELAYS_MS: readonly [number, number, number, number] = TEST_MODE
-  ? [5_000, 15_000, 30_000, 60_000]          // test:  5s · 15s · 30s · 1m
+  ? [5_000, 15_000, 30_000, 60_000] // test:  5s · 15s · 30s · 1m
   : [60_000, 300_000, 1_800_000, 7_200_000]; // prod:  1m · 5m · 30m · 2h
 
 // Separate queue prefix per mode to prevent TTL property conflicts in RabbitMQ.
@@ -31,7 +31,10 @@ type Handler = (payload: unknown) => Promise<void>;
 
 const exchangeHandlers = new Map<string, Handler>();
 
-async function publishToRetryQueue(delayIndex: number, envelope: RetryEnvelope): Promise<void> {
+async function publishToRetryQueue(
+  delayIndex: number,
+  envelope: RetryEnvelope
+): Promise<void> {
   const connection = await connect();
   const ch = await connection.createChannel();
   const queue = `${RETRY_QUEUE_PREFIX}${delayIndex}`;
@@ -43,23 +46,37 @@ async function publishToRetryQueue(delayIndex: number, envelope: RetryEnvelope):
       'x-dead-letter-routing-key': REPROCESS_QUEUE,
     },
   });
-  ch.sendToQueue(queue, Buffer.from(JSON.stringify(envelope)), { persistent: true });
+  ch.sendToQueue(queue, Buffer.from(JSON.stringify(envelope)), {
+    persistent: true,
+  });
   await ch.close();
 }
 
-async function publishToDlq(envelope: RetryEnvelope, err: unknown): Promise<void> {
+async function publishToDlq(
+  envelope: RetryEnvelope,
+  err: unknown
+): Promise<void> {
   const connection = await connect();
   const ch = await connection.createChannel();
   await ch.assertQueue(DLQ, { durable: true });
   ch.sendToQueue(
     DLQ,
-    Buffer.from(JSON.stringify({ ...envelope, failedAt: new Date().toISOString(), error: String(err) })),
+    Buffer.from(
+      JSON.stringify({
+        ...envelope,
+        failedAt: new Date().toISOString(),
+        error: String(err),
+      })
+    ),
     { persistent: true }
   );
   await ch.close();
 }
 
-async function scheduleRetry(envelope: RetryEnvelope, err: unknown): Promise<void> {
+async function scheduleRetry(
+  envelope: RetryEnvelope,
+  err: unknown
+): Promise<void> {
   // Fatal errors (invalid/unregistered token) will never succeed — skip all retries.
   if (err instanceof FatalNotificationError) {
     console.error(
@@ -126,7 +143,9 @@ export async function setupRetryInfrastructure(): Promise<void> {
 
     const handler = exchangeHandlers.get(envelope.exchange);
     if (!handler) {
-      console.error(`[retry] no handler registered for exchange=${envelope.exchange}`);
+      console.error(
+        `[retry] no handler registered for exchange=${envelope.exchange}`
+      );
       ch.nack(msg, false, false);
       return;
     }
