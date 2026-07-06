@@ -1,7 +1,6 @@
 generator client {
-  provider        = "prisma-client-js"
-  output          = "../src/generated/client"
-  previewFeatures = ["driverAdapters"]
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
 }
 
 datasource db {
@@ -19,6 +18,9 @@ model AiInteraction {
   ai_response    String
   input_flagged  Boolean  @default(false)
   output_flagged Boolean  @default(false)
+  // DB-level CHECK constraint: crisis_level >= 0 AND crisis_level <= 5
+  // (see migration 20260706000000_crisis_level_check)
+  // Prisma 6 does not expose @@check in the schema language; constraint is enforced by PostgreSQL directly.
   crisis_level   Int      @db.SmallInt
   tokens_used    Int?
   response_ms    Int?

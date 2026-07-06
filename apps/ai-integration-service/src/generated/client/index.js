@@ -151,9 +151,7 @@ const config = {
         "native": true
       }
     ],
-    "previewFeatures": [
-      "driverAdapters"
-    ],
+    "previewFeatures": [],
     "sourceFilePath": "C:\\Users\\san\\Desktop\\Mindora_V3\\apps\\ai-integration-service\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
@@ -176,8 +174,8 @@ const config = {
       }
     }
   },
-  "inlineSchema": "generator client {\n  provider        = \"prisma-client-js\"\n  output          = \"../src/generated/client\"\n  previewFeatures = [\"driverAdapters\"]\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"AI_DATABASE_URL\")\n}\n\nmodel AiInteraction {\n  id             String   @id @default(uuid())\n  user_id        String\n  session_id     String\n  // AES-256-GCM encryption is applied at the application layer before writing this field\n  user_message   String\n  // AES-256-GCM encryption is applied at the application layer before writing this field\n  ai_response    String\n  input_flagged  Boolean  @default(false)\n  output_flagged Boolean  @default(false)\n  crisis_level   Int      @db.SmallInt\n  tokens_used    Int?\n  response_ms    Int?\n  created_at     DateTime @default(now()) @db.Timestamptz\n\n  @@map(\"ai_interactions\")\n}\n",
-  "inlineSchemaHash": "1023336070bad9828c7587e694e54544f528b02b1b345bfab3e74c307a802c2c",
+  "inlineSchema": "generator client {\n  provider = \"prisma-client-js\"\n  output   = \"../src/generated/client\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"AI_DATABASE_URL\")\n}\n\nmodel AiInteraction {\n  id             String   @id @default(uuid())\n  user_id        String\n  session_id     String\n  // AES-256-GCM encryption is applied at the application layer before writing this field\n  user_message   String\n  // AES-256-GCM encryption is applied at the application layer before writing this field\n  ai_response    String\n  input_flagged  Boolean  @default(false)\n  output_flagged Boolean  @default(false)\n  // DB-level CHECK constraint: crisis_level >= 0 AND crisis_level <= 5\n  // (see migration 20260706000000_crisis_level_check)\n  // Prisma 6 does not expose @@check in the schema language; constraint is enforced by PostgreSQL directly.\n  crisis_level   Int      @db.SmallInt\n  tokens_used    Int?\n  response_ms    Int?\n  created_at     DateTime @default(now()) @db.Timestamptz\n\n  @@map(\"ai_interactions\")\n}\n",
+  "inlineSchemaHash": "d18f94333354c2e10fd51e5b4e91d2dfabd78df0b061534b10129ba571fe16f5",
   "copyEngine": true
 }
 
