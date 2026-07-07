@@ -12,17 +12,17 @@ vi.hoisted(() => {
 
 // Auth middleware uses ioredis for JWT blacklist checks
 vi.mock('ioredis', () => {
-  const Redis = vi.fn().mockImplementation(
-    class {
-      status = 'ready' as const;
-      connect = vi.fn().mockResolvedValue(undefined);
-      exists = vi.fn().mockResolvedValue(0); // token is never blacklisted in tests
-      set = vi.fn().mockResolvedValue('OK');
-      get = vi.fn().mockResolvedValue(null);
-      del = vi.fn().mockResolvedValue(1);
-      on = vi.fn();
-    }
-  );
+  const Redis = vi.fn(function () {
+    return {
+      status: 'ready' as const,
+      connect: vi.fn().mockResolvedValue(undefined),
+      exists: vi.fn().mockResolvedValue(0), // token is never blacklisted in tests
+      set: vi.fn().mockResolvedValue('OK'),
+      get: vi.fn().mockResolvedValue(null),
+      del: vi.fn().mockResolvedValue(1),
+      on: vi.fn(),
+    };
+  });
   return { default: Redis, Redis };
 });
 
