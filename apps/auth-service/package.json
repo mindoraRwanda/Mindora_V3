@@ -25,7 +25,7 @@
     "@mindora/validation": "1.0.0",
     "argon2": "^0.41.1",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2",
+    "express": "^5.2.1",
     "express-rate-limit": "^7.5.1",
     "ioredis": "^5.6.0",
     "jsonwebtoken": "^9.0.2",
