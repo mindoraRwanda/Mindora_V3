@@ -10,7 +10,9 @@ function createPrismaClient(): PrismaClient {
     throw new Error('Missing required environment variable: AI_DATABASE_URL');
   }
   const adapter = new PrismaPg({ connectionString });
-  return new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
+  return new PrismaClient({ adapter } as ConstructorParameters<
+    typeof PrismaClient
+  >[0]);
 }
 
 const globalForPrisma = globalThis as unknown as {

@@ -1,4 +1,4 @@
-import swaggerJsdoc from 'swagger-jsdoc'
+import swaggerJsdoc from 'swagger-jsdoc';
 
 const eventArchitectureMarkdown = `
 ## Event-Driven Architecture
@@ -109,7 +109,7 @@ and are routed directly to \`mindora.notifications.dlq\`.
   "crisisLevel": 8
 }
 \`\`\`
-`
+`;
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -139,6 +139,6 @@ const options: swaggerJsdoc.Options = {
     },
   },
   apis: ['./src/index.ts'],
-}
+};
 
-export const swaggerSpec = swaggerJsdoc(options)
+export const swaggerSpec = swaggerJsdoc(options);

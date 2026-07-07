@@ -1,9 +1,9 @@
 import express from 'express';
-import swaggerUi from 'swagger-ui-express'
+import swaggerUi from 'swagger-ui-express';
 import conversationsRouter from './routes/conversations.routes.js';
 import { authenticate } from '@mindora/auth-middleware';
 import type { AuthenticatedRequest } from '@mindora/auth-middleware';
-import { swaggerSpec } from './docs/swagger.js'
+import { swaggerSpec } from './docs/swagger.js';
 import { getRedisClient } from './utils/redis.js';
 import {
   authenticatedRouteLimiter,
@@ -14,13 +14,13 @@ const SERVICE_NAME = 'messaging-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/messaging/health';
 const app = express();
 
-app.use(express.json())
+app.use(express.json());
 
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec))
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.get('/docs.json', (_req, res) => {
-  res.setHeader('Content-Type', 'application/json')
-  res.send(swaggerSpec)
-})
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
 
 const healthResponse = () => ({ status: 'ok', service: SERVICE_NAME });
 
@@ -50,14 +50,14 @@ const healthResponse = () => ({ status: 'ok', service: SERVICE_NAME });
  *               $ref: '#/components/schemas/HealthResponse'
  */
 app.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse())
-})
+  res.status(200).json(healthResponse());
+});
 
 app.get(GATEWAY_HEALTH_PATH, healthRouteLimiter, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
-app.use('/api/v1/messaging/conversations', conversationsRouter)
+app.use('/api/v1/messaging/conversations', conversationsRouter);
 
 /**
  * @swagger

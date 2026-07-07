@@ -26,7 +26,10 @@ async function start(): Promise<void> {
       server.close();
     });
   } catch (error) {
-    console.error('✗ Failed to start service:', error instanceof Error ? error.message : error);
+    console.error(
+      '✗ Failed to start service:',
+      error instanceof Error ? error.message : error
+    );
     process.exit(1);
   }
 }

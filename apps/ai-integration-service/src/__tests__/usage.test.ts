@@ -12,15 +12,17 @@ vi.hoisted(() => {
 
 // Auth middleware uses ioredis for JWT blacklist checks
 vi.mock('ioredis', () => {
-  const Redis = vi.fn().mockImplementation(class {
-    status = 'ready' as const;
-    connect = vi.fn().mockResolvedValue(undefined);
-    exists = vi.fn().mockResolvedValue(0); // token is never blacklisted in tests
-    set = vi.fn().mockResolvedValue('OK');
-    get = vi.fn().mockResolvedValue(null);
-    del = vi.fn().mockResolvedValue(1);
-    on = vi.fn();
-  });
+  const Redis = vi.fn().mockImplementation(
+    class {
+      status = 'ready' as const;
+      connect = vi.fn().mockResolvedValue(undefined);
+      exists = vi.fn().mockResolvedValue(0); // token is never blacklisted in tests
+      set = vi.fn().mockResolvedValue('OK');
+      get = vi.fn().mockResolvedValue(null);
+      del = vi.fn().mockResolvedValue(1);
+      on = vi.fn();
+    }
+  );
   return { default: Redis, Redis };
 });
 
@@ -30,16 +32,16 @@ vi.mock('@mindora/queue', () => ({
 }));
 
 const mockAggregate = vi.fn();
-const mockCount    = vi.fn();
-const mockGroupBy  = vi.fn();
+const mockCount = vi.fn();
+const mockGroupBy = vi.fn();
 const mockQueryRaw = vi.fn();
 
 vi.mock('../database.js', () => ({
   prisma: {
     aiInteraction: {
       aggregate: (...args: unknown[]) => mockAggregate(...args),
-      count:     (...args: unknown[]) => mockCount(...args),
-      groupBy:   (...args: unknown[]) => mockGroupBy(...args),
+      count: (...args: unknown[]) => mockCount(...args),
+      groupBy: (...args: unknown[]) => mockGroupBy(...args),
     },
     $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
   },
@@ -53,7 +55,11 @@ const JWT_SECRET = 'mindora-dev-jwt-secret-change-in-production';
 function makeToken(role: 'ADMIN' | 'PATIENT'): string {
   return jwt.sign(
     // auth-middleware reads decoded.sub as userId — must use sub, not userId
-    { sub: `${role.toLowerCase()}-id`, email: `${role.toLowerCase()}@test.com`, role },
+    {
+      sub: `${role.toLowerCase()}-id`,
+      email: `${role.toLowerCase()}@test.com`,
+      role,
+    },
     JWT_SECRET,
     { issuer: 'mindora-auth', expiresIn: '1h' }
   );
@@ -139,12 +145,17 @@ describe('GET /api/v1/ai/usage', () => {
       .get('/api/v1/ai/usage')
       .set('Authorization', `Bearer ${makeToken('ADMIN')}`);
 
-    const topUsers = res.body.topUsers as { userId: string; interactionCount: number }[];
+    const topUsers = res.body.topUsers as {
+      userId: string;
+      interactionCount: number;
+    }[];
     expect(topUsers[0].userId).toBe('user-001');
     expect(topUsers[0].interactionCount).toBe(4);
     // Verify counts are non-increasing
     for (let i = 1; i < topUsers.length; i++) {
-      expect(topUsers[i].interactionCount).toBeLessThanOrEqual(topUsers[i - 1].interactionCount);
+      expect(topUsers[i].interactionCount).toBeLessThanOrEqual(
+        topUsers[i - 1].interactionCount
+      );
     }
   });
 
@@ -155,7 +166,10 @@ describe('GET /api/v1/ai/usage', () => {
       .get('/api/v1/ai/usage')
       .set('Authorization', `Bearer ${makeToken('ADMIN')}`);
 
-    const breakdown = res.body.dailyBreakdown as { date: string; count: number }[];
+    const breakdown = res.body.dailyBreakdown as {
+      date: string;
+      count: number;
+    }[];
     expect(breakdown).toHaveLength(3);
     // Dates must be ISO date strings (YYYY-MM-DD)
     expect(breakdown[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -166,7 +180,10 @@ describe('GET /api/v1/ai/usage', () => {
   });
 
   it('empty table returns all zeroes and empty arrays without crashing', async () => {
-    mockAggregate.mockResolvedValue({ _sum: { tokens_used: null }, _avg: { response_ms: null } });
+    mockAggregate.mockResolvedValue({
+      _sum: { tokens_used: null },
+      _avg: { response_ms: null },
+    });
     mockCount.mockResolvedValue(0);
     mockGroupBy.mockResolvedValue([]);
     mockQueryRaw.mockResolvedValue([]);

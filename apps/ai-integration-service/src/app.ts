@@ -1,5 +1,8 @@
 import express from 'express';
-import { authenticate, type AuthenticatedRequest } from '@mindora/auth-middleware';
+import {
+  authenticate,
+  type AuthenticatedRequest,
+} from '@mindora/auth-middleware';
 import aiRouter from './routes/ai.routes.js';
 
 const SERVICE_NAME = 'ai-integration-service';

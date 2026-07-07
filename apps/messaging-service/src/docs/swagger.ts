@@ -1,4 +1,4 @@
-import swaggerJsdoc from 'swagger-jsdoc'
+import swaggerJsdoc from 'swagger-jsdoc';
 
 const socketEventsMarkdown = `
 ## Real-time Communication (Socket.io)
@@ -32,7 +32,7 @@ Message content is **encrypted at rest** (AES-256-GCM) and decrypted before bein
 | \`user_typing\` | \`{ conversationId: string, userId: string }\` | Broadcast to the room on \`typing_start\`. |
 | \`user_stopped_typing\` | \`{ conversationId: string, userId: string }\` | Broadcast to the room on \`typing_stop\`. |
 | \`error\` | \`{ message: string }\` | Emitted to the originating socket for any validation or server-side error. |
-`
+`;
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -55,7 +55,8 @@ const options: swaggerJsdoc.Options = {
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'JWT',
-          description: 'JWT access token. Obtain one from POST /api/v1/auth/login',
+          description:
+            'JWT access token. Obtain one from POST /api/v1/auth/login',
         },
       },
       schemas: {
@@ -85,17 +86,30 @@ const options: swaggerJsdoc.Options = {
         },
         ConversationSummary: {
           type: 'object',
-          description: 'Compact conversation view returned by the list endpoint.',
+          description:
+            'Compact conversation view returned by the list endpoint.',
           properties: {
-            conversationId: { type: 'string', example: '64f1a2b3c4d5e6f7a8b9c0d1' },
+            conversationId: {
+              type: 'string',
+              example: '64f1a2b3c4d5e6f7a8b9c0d1',
+            },
             participantId: {
               type: 'string',
               nullable: true,
-              description: 'The other participant — null if conversation has only one member.',
+              description:
+                'The other participant — null if conversation has only one member.',
               example: 'therapist-456',
             },
-            lastMessage: { type: 'string', nullable: true, example: 'See you Thursday!' },
-            lastMessageAt: { type: 'string', format: 'date-time', nullable: true },
+            lastMessage: {
+              type: 'string',
+              nullable: true,
+              example: 'See you Thursday!',
+            },
+            lastMessageAt: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+            },
             unreadCount: { type: 'integer', example: 3 },
           },
         },
@@ -103,7 +117,10 @@ const options: swaggerJsdoc.Options = {
           type: 'object',
           properties: {
             _id: { type: 'string', example: '64f1a2b3c4d5e6f7a8b9c0d3' },
-            conversationId: { type: 'string', example: '64f1a2b3c4d5e6f7a8b9c0d1' },
+            conversationId: {
+              type: 'string',
+              example: '64f1a2b3c4d5e6f7a8b9c0d1',
+            },
             senderId: { type: 'string', example: 'patient-123' },
             content: {
               type: 'string',
@@ -167,6 +184,6 @@ const options: swaggerJsdoc.Options = {
     },
   },
   apis: ['./src/routes/*.ts', './src/app.ts'],
-}
+};
 
-export const swaggerSpec = swaggerJsdoc(options)
+export const swaggerSpec = swaggerJsdoc(options);

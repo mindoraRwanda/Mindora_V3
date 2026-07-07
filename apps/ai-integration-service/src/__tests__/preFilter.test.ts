@@ -19,7 +19,9 @@ describe('runPreFilter', () => {
   });
 
   it('message containing both a Level 1 and a Level 5 phrase returns 5, not 1', async () => {
-    expect(await runPreFilter("I feel so sad. I'm going to kill myself")).toBe(5);
+    expect(await runPreFilter("I feel so sad. I'm going to kill myself")).toBe(
+      5
+    );
   });
 
   it('Level 5 phrase in ALL CAPS returns 5 (normalisation)', async () => {
