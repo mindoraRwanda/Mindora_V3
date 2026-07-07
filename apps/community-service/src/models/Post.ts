@@ -1,19 +1,19 @@
-import mongoose, { Document, Schema } from 'mongoose'
+import mongoose, { Document, Schema } from 'mongoose';
 
 interface IReaction {
-  type: 'LIKE' | 'HEART' | 'SUPPORT'
-  count: number
+  type: 'LIKE' | 'HEART' | 'SUPPORT';
+  count: number;
 }
 
 export interface IPost extends Document {
-  communityId: mongoose.Types.ObjectId
-  encryptedAuthorId: string
-  content: Record<string, unknown>
-  isAnonymous: boolean
-  reactions: IReaction[]
-  commentCount: number
-  createdAt: Date
-  updatedAt: Date
+  communityId: mongoose.Types.ObjectId;
+  encryptedAuthorId: string;
+  content: Record<string, unknown>;
+  isAnonymous: boolean;
+  reactions: IReaction[];
+  commentCount: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const PostSchema = new Schema<IPost>(
@@ -22,41 +22,41 @@ const PostSchema = new Schema<IPost>(
       type: Schema.Types.ObjectId,
       ref: 'CommunityGroup',
       required: true,
-      index: true
+      index: true,
     },
     encryptedAuthorId: {
       type: String,
-      required: true
+      required: true,
     },
     content: {
       type: Schema.Types.Mixed,
-      required: true
+      required: true,
     },
     isAnonymous: {
       type: Boolean,
-      default: false
+      default: false,
     },
     reactions: {
       type: [
         {
           type: { type: String, enum: ['LIKE', 'HEART', 'SUPPORT'] },
-          count: { type: Number, default: 0 }
-        }
+          count: { type: Number, default: 0 },
+        },
       ],
       default: [
         { type: 'LIKE', count: 0 },
         { type: 'HEART', count: 0 },
-        { type: 'SUPPORT', count: 0 }
-      ]
+        { type: 'SUPPORT', count: 0 },
+      ],
     },
     commentCount: {
       type: Number,
-      default: 0
-    }
+      default: 0,
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
   }
-)
+);
 
-export const Post = mongoose.model<IPost>('Post', PostSchema)
+export const Post = mongoose.model<IPost>('Post', PostSchema);

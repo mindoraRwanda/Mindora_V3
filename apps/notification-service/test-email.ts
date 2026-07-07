@@ -17,21 +17,34 @@ initResend();
 await sendEmail(
   TO,
   '[Test] Appointment Booked',
-  appointmentBookedTemplate('Jane Doe', 'Dr. Sarah Smith', '2026-07-15T10:00:00Z')
+  appointmentBookedTemplate(
+    'Jane Doe',
+    'Dr. Sarah Smith',
+    '2026-07-15T10:00:00Z'
+  )
 );
 console.log('✓ Sent: appointmentBookedTemplate');
 
 await sendEmail(
   TO,
   '[Test] Appointment Confirmed',
-  appointmentConfirmedTemplate('Jane Doe', 'Dr. Sarah Smith', '2026-07-15T10:00:00Z')
+  appointmentConfirmedTemplate(
+    'Jane Doe',
+    'Dr. Sarah Smith',
+    '2026-07-15T10:00:00Z'
+  )
 );
 console.log('✓ Sent: appointmentConfirmedTemplate');
 
 await sendEmail(
   TO,
   '[Test] Appointment Cancelled',
-  appointmentCancelledTemplate('Jane Doe', 'Dr. Sarah Smith', '2026-07-14T09:00:00Z', 'Emergency scheduling conflict')
+  appointmentCancelledTemplate(
+    'Jane Doe',
+    'Dr. Sarah Smith',
+    '2026-07-14T09:00:00Z',
+    'Emergency scheduling conflict'
+  )
 );
 console.log('✓ Sent: appointmentCancelledTemplate');
 

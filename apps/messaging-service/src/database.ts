@@ -1,13 +1,14 @@
-import mongoose from 'mongoose'
+import mongoose from 'mongoose';
 
-const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://localhost:27017/mindora_messaging'
+const MONGO_URI =
+  process.env.MONGO_URI ?? 'mongodb://localhost:27017/mindora_messaging';
 
-let isConnected = false
+let isConnected = false;
 
 export const connectDatabase = async (): Promise<void> => {
   if (isConnected) {
-    console.log('MongoDB already connected, skipping reconnect')
-    return
+    console.log('MongoDB already connected, skipping reconnect');
+    return;
   }
 
   try {
@@ -21,39 +22,46 @@ export const connectDatabase = async (): Promise<void> => {
       w: 'majority',
       directConnection: false,
       // Prevent query buffering by failing fast if connection isn't ready
-      bufferCommands: false
-    })
+      bufferCommands: false,
+    });
 
-    isConnected = true
-    console.log('\u2713 MongoDB connected successfully to', MONGO_URI)
-    console.log(`   Connection state: ${mongoose.connection.readyState}`)
-    console.log(`   Database name: ${mongoose.connection.db?.databaseName ?? 'N/A'}`)
-    console.log(`   Database names: ${(mongoose.connection.db as unknown as Record<string, unknown>)['admin'] ? 'Connected' : 'Checking...'}`)
+    isConnected = true;
+    console.log('\u2713 MongoDB connected successfully to', MONGO_URI);
+    console.log(`   Connection state: ${mongoose.connection.readyState}`);
+    console.log(
+      `   Database name: ${mongoose.connection.db?.databaseName ?? 'N/A'}`
+    );
+    console.log(
+      `   Database names: ${(mongoose.connection.db as unknown as Record<string, unknown>)['admin'] ? 'Connected' : 'Checking...'}`
+    );
 
     // Monitor connection state
     mongoose.connection.on('connected', () => {
-      console.log('✓ Mongoose connected to MongoDB')
-      isConnected = true
-    })
+      console.log('✓ Mongoose connected to MongoDB');
+      isConnected = true;
+    });
 
     mongoose.connection.on('error', (error) => {
-      console.error('✗ MongoDB connection error:', error.message)
-      isConnected = false
-    })
+      console.error('✗ MongoDB connection error:', error.message);
+      isConnected = false;
+    });
 
     mongoose.connection.on('disconnected', () => {
-      console.warn('⚠ MongoDB disconnected')
-      isConnected = false
-    })
+      console.warn('⚠ MongoDB disconnected');
+      isConnected = false;
+    });
 
     mongoose.connection.on('reconnected', () => {
-      console.log('✓ MongoDB reconnected')
-      isConnected = true
-    })
+      console.log('✓ MongoDB reconnected');
+      isConnected = true;
+    });
   } catch (error) {
-    console.error('✗ MongoDB connection failed:', error instanceof Error ? error.message : error)
-    process.exit(1)
+    console.error(
+      '✗ MongoDB connection failed:',
+      error instanceof Error ? error.message : error
+    );
+    process.exit(1);
   }
-}
+};
 
-export const isMongoConnected = (): boolean => isConnected
+export const isMongoConnected = (): boolean => isConnected;

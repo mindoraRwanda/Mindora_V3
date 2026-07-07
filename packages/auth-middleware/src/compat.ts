@@ -16,5 +16,8 @@ function getAuthenticate(): ReturnType<typeof createVerifyJwt> {
   return _authenticate;
 }
 
-export const authenticate: ReturnType<typeof createVerifyJwt> = (req, res, next) =>
-  getAuthenticate()(req, res, next);
+export const authenticate: ReturnType<typeof createVerifyJwt> = (
+  req,
+  res,
+  next
+) => getAuthenticate()(req, res, next);

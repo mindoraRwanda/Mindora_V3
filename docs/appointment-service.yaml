@@ -1,0 +1,489 @@
+openapi: 3.0.3
+info:
+  title: Mindora Appointment Service API
+  description: |
+    Appointment booking and scheduling for Mindora V3 (Sprint 3).
+
+    - **Runtime:** Node.js 24 (see `.nvmrc`)
+    - **Port:** 3003 (direct) · **8000** via Kong (`/api/v1/appointments/*`)
+    - **Auth:** Bearer JWT (`@mindora/auth-middleware`) on all routes except health
+    - **Concurrency:** POST booking uses PostgreSQL `SELECT FOR UPDATE` to prevent double-booking
+    - **Events:** State changes publish to RabbitMQ exchange `mindora.appointments` (see `@mindora/events`)
+
+    **Frontend integration:** OpenAPI spec at `GET /openapi.json` or `GET /openapi.yaml` (CORS enabled).
+    Interactive docs at `GET /docs`. Kong base: `http://localhost:8000/api/v1/appointments`.
+
+    OpenAPI source: `docs/appointment-service.yaml`
+  version: 1.0.0
+  contact:
+    name: Mindora Backend Team
+
+servers:
+  - url: http://localhost:3003
+    description: Local development (direct)
+  - url: http://localhost:8000/api/v1/appointments
+    description: Kong gateway (strip_path)
+
+tags:
+  - name: Health
+  - name: Availability
+  - name: Appointments
+  - name: Therapist actions
+  - name: Patient actions
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Service health check
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /availability/{therapistId}:
+    get:
+      tags: [Availability]
+      summary: Get therapist available slots
+      description: |
+        Returns bookable time slots for a therapist. Slots blocked by existing
+        **PENDING** or **CONFIRMED** appointments are excluded.
+      operationId: getTherapistAvailability
+      parameters:
+        - $ref: '#/components/parameters/therapistId'
+        - name: from
+          in: query
+          description: Start of range (ISO-8601). Defaults to now.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: End of range (ISO-8601). Defaults to +7 days.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Available slots
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slots]
+                properties:
+                  therapistId:
+                    type: string
+                    format: uuid
+                  slots:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AvailabilitySlot'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Therapist not found
+
+  /:
+    post:
+      tags: [Appointments]
+      summary: Book an appointment
+      description: |
+        Creates a **PENDING** appointment. Uses row-level locking (`SELECT FOR UPDATE`)
+        so concurrent requests for the same slot yield one **201** and one **409**.
+
+        Publishes `appointment.booked` to RabbitMQ exchange `mindora.appointments`.
+      operationId: bookAppointment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookAppointmentRequest'
+      responses:
+        '201':
+          description: Appointment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Slot already booked (double-booking prevented)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+
+  /mine:
+    get:
+      tags: [Patient actions]
+      summary: List my appointments (patient)
+      description: Paginated appointments for the authenticated **PATIENT**.
+      operationId: listMyAppointments
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/limit'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/AppointmentStatus'
+      responses:
+        '200':
+          description: Paginated appointment list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Requires PATIENT role
+
+  /schedule:
+    get:
+      tags: [Therapist actions]
+      summary: Therapist schedule
+      description: Appointments for the authenticated **THERAPIST**, ordered by `slotStart`.
+      operationId: getTherapistSchedule
+      parameters:
+        - name: date
+          in: query
+          description: Filter by calendar date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: Therapist schedule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Requires THERAPIST role
+
+  /{id}/confirm:
+    put:
+      tags: [Therapist actions]
+      summary: Confirm a pending appointment
+      description: |
+        Therapist only. Updates status **PENDING → CONFIRMED**.
+        Publishes `appointment.confirmed` event.
+      operationId: confirmAppointment
+      parameters:
+        - $ref: '#/components/parameters/appointmentId'
+      responses:
+        '200':
+          description: Appointment confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Non-therapist or not assigned therapist
+        '404':
+          description: Appointment not found
+        '409':
+          description: Invalid state transition
+
+  /{id}/cancel:
+    put:
+      tags: [Appointments]
+      summary: Cancel an appointment
+      description: |
+        Patient (owner) or assigned therapist may cancel.
+        Publishes `appointment.cancelled` event.
+      operationId: cancelAppointment
+      parameters:
+        - $ref: '#/components/parameters/appointmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelAppointmentRequest'
+      responses:
+        '200':
+          description: Appointment cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Neither patient owner nor assigned therapist
+        '404':
+          description: Appointment not found
+
+  /{id}/complete:
+    put:
+      tags: [Therapist actions]
+      summary: Mark appointment completed
+      description: |
+        Therapist only. Updates status to **COMPLETED**.
+        Publishes `appointment.completed` event.
+      operationId: completeAppointment
+      parameters:
+        - $ref: '#/components/parameters/appointmentId'
+      responses:
+        '200':
+          description: Appointment completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Non-therapist or not assigned therapist
+        '404':
+          description: Appointment not found
+        '409':
+          description: Invalid state transition
+
+  /{id}/rate:
+    post:
+      tags: [Patient actions]
+      summary: Rate a completed appointment
+      description: Patient submits 1–5 star rating after status is **COMPLETED**.
+      operationId: rateAppointment
+      parameters:
+        - $ref: '#/components/parameters/appointmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RateAppointmentRequest'
+      responses:
+        '200':
+          description: Rating saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not the patient who booked
+        '404':
+          description: Appointment not found
+        '422':
+          description: Appointment not yet COMPLETED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    therapistId:
+      name: therapistId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    appointmentId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 10
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+          example:
+            message: Unauthorized
+    ValidationError:
+      description: Request body failed Zod validation
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+              errors:
+                type: object
+                additionalProperties: true
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, service]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: appointment-service
+
+    ErrorMessage:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    AppointmentStatus:
+      type: string
+      enum: [PENDING, CONFIRMED, CANCELLED, COMPLETED]
+
+    SessionType:
+      type: string
+      enum: [VIDEO, IN_PERSON, CHAT]
+
+    AvailabilitySlot:
+      type: object
+      required: [slotStart, slotEnd]
+      properties:
+        slotStart:
+          type: string
+          format: date-time
+        slotEnd:
+          type: string
+          format: date-time
+
+    BookAppointmentRequest:
+      type: object
+      required: [therapistId, slotStart, slotEnd, sessionType]
+      properties:
+        therapistId:
+          type: string
+          format: uuid
+        slotStart:
+          type: string
+          format: date-time
+        slotEnd:
+          type: string
+          format: date-time
+        sessionType:
+          $ref: '#/components/schemas/SessionType'
+
+    CancelAppointmentRequest:
+      type: object
+      required: [cancellationReason]
+      properties:
+        cancellationReason:
+          type: string
+          minLength: 1
+          maxLength: 500
+
+    RateAppointmentRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+
+    Appointment:
+      type: object
+      required:
+        - id
+        - patientId
+        - therapistId
+        - slotStart
+        - slotEnd
+        - sessionType
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        therapistId:
+          type: string
+          format: uuid
+        slotStart:
+          type: string
+          format: date-time
+        slotEnd:
+          type: string
+          format: date-time
+        sessionType:
+          $ref: '#/components/schemas/SessionType'
+        status:
+          $ref: '#/components/schemas/AppointmentStatus'
+        cancellationReason:
+          type: string
+          nullable: true
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AppointmentListResponse:
+      type: object
+      required: [appointments, total, page, limit]
+      properties:
+        appointments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Appointment'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+security:
+  - bearerAuth: []

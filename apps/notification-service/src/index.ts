@@ -8,6 +8,7 @@ import { initResend } from './email.js';
 import { initSms } from './sms.js';
 import { setupRetryInfrastructure } from './retry.js';
 import { swaggerSpec } from './docs/swagger.js';
+import { healthRouteLimiter } from './middleware/rate-limit.js';
 
 const SERVICE_NAME = 'notification-service';
 const PORT = Number(process.env.PORT) || 3008;
@@ -55,7 +56,7 @@ app.get('/health', (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
-app.get(GATEWAY_HEALTH_PATH, (_req, res) => {
+app.get(GATEWAY_HEALTH_PATH, healthRouteLimiter, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 

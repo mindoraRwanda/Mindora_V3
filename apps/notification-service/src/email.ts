@@ -8,7 +8,9 @@ const FROM = 'Mindora <onboarding@resend.dev>';
 export function initResend(): void {
   const apiKey = process.env.RESEND_EMAIL_API_KEY;
   if (!apiKey) {
-    console.warn('[email] RESEND_EMAIL_API_KEY not set — email notifications disabled');
+    console.warn(
+      '[email] RESEND_EMAIL_API_KEY not set — email notifications disabled'
+    );
     return;
   }
   resend = new Resend(apiKey);
@@ -22,11 +24,15 @@ export function initResend(): void {
 async function getUserEmail(userId: string): Promise<string | null> {
   const base = process.env.USER_SERVICE_URL ?? 'http://localhost:3002';
   const url = `${base}/api/v1/users/${userId}/preferences`;
-  console.log(`[email][DEBUG] getUserEmail → userId="${userId}" (${userId.length} chars) url="${url}"`);
+  console.log(
+    `[email][DEBUG] getUserEmail → userId="${userId}" (${userId.length} chars) url="${url}"`
+  );
   try {
     const res = await fetch(url);
     if (!res.ok) {
-      console.warn(`[email] User Service returned ${res.status} for user ${userId} — no email address`);
+      console.warn(
+        `[email] User Service returned ${res.status} for user ${userId} — no email address`
+      );
       return null;
     }
     const data = (await res.json()) as { email?: string };
@@ -37,7 +43,11 @@ async function getUserEmail(userId: string): Promise<string | null> {
   }
 }
 
-export async function sendEmail(to: string, subject: string, htmlBody: string): Promise<void> {
+export async function sendEmail(
+  to: string,
+  subject: string,
+  htmlBody: string
+): Promise<void> {
   console.log(`[email] sendEmail → to=${to} subject="${subject}"`);
 
   if (!resend) {

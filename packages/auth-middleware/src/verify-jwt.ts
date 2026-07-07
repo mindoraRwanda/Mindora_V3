@@ -1,7 +1,11 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { isTokenBlacklisted } from './redis.js';
-import type { AuthMiddlewareOptions, AuthenticatedRequest, AuthUser } from './types.js';
+import type {
+  AuthMiddlewareOptions,
+  AuthenticatedRequest,
+  AuthUser,
+} from './types.js';
 
 const DEFAULT_REDIS_URL = 'redis://localhost:6379';
 const DEFAULT_ISSUER = 'mindora-auth';

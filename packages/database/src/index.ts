@@ -19,8 +19,12 @@ if (process.env.NODE_ENV !== 'production') {
 
 export { Prisma, PrismaClient };
 export type {
+  Appointment,
+  AppointmentStatus,
+  MoodEntry,
   PatientProfile,
   RefreshToken,
+  SessionType,
   TherapistProfile,
   User,
   UserRole,
