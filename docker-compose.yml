@@ -1,6 +1,11 @@
-# Local infrastructure for Mindora V3 microservices.
-# Application services run on the host with Node.js 24 (see .nvmrc).
-# Service Dockerfiles use node:24-alpine when building container images.
+# ============================================================
+# LOCAL DEVELOPMENT ONLY
+# This docker-compose.yml is strictly for local development.
+# It is NOT used in staging or production environments.
+# Several settings here (trust auth, exposed ports, default
+# credentials) are intentionally permissive for developer
+# convenience and would be serious security risks in production.
+# ============================================================
 
 services:
   postgres:
@@ -11,8 +16,17 @@ services:
       POSTGRES_USER: mindora
       POSTGRES_PASSWORD: mindora
       POSTGRES_DB: mindora
+      # ⚠️  DEVELOPMENT ONLY — NEVER use POSTGRES_HOST_AUTH_METHOD: trust in production.
+      # This disables PostgreSQL password authentication entirely for all incoming connections.
+      # It exists here solely to work around Docker Desktop's Windows bridge gateway routing,
+      # which causes Node.js host connections to arrive at PostgreSQL from 172.18.0.1 rather
+      # than 127.0.0.1, bypassing the existing trust rule for the loopback address.
+      # In production, this variable must be removed and proper scram-sha-256 authentication
+      # with strong credentials managed via AWS Secrets Manager must be used instead.
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - '5432:5432'
+      # 5433 on the host — avoids collision with any local Windows PostgreSQL install on 5432
+      - '5433:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
