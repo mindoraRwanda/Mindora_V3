@@ -1,25 +1,21 @@
-import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken'
 
-dotenv.config();
+const ROLES = ['ADMIN', 'PATIENT', 'THERAPIST'] as const
+type Role = typeof ROLES[number]
 
-const role = process.argv[2] || 'PATIENT';
+const arg = process.argv[2]?.toUpperCase() as Role | undefined
+const role: Role = ROLES.includes(arg as Role) ? (arg as Role) : 'ADMIN'
+
+const profiles: Record<Role, { sub: string; email: string }> = {
+  ADMIN:     { sub: 'test-admin-001',     email: 'admin@mindora.com'     },
+  PATIENT:   { sub: 'test-patient-001',   email: 'patient@mindora.com'   },
+  THERAPIST: { sub: 'test-therapist-001', email: 'therapist@mindora.com' },
+}
 
 const token = jwt.sign(
-  {
-    sub: 'patient-karimi-123',
-    email: 'karimi@mindora.com',
-    role,
-  },
-  process.env.JWT_SECRET as string,
-  {
-    expiresIn: '7d',
-    issuer: 'mindora-auth',
-    jwtid: 'test-jti-123'
-  }
-);
+  { ...profiles[role], role },
+  process.env.JWT_SECRET ?? 'mindora-dev-jwt-secret-change-in-production',
+  { expiresIn: '7d', issuer: 'mindora-auth', jwtid: `${role.toLowerCase()}-jti-001` }
+)
 
-console.log('Generated JWT Token:');
-console.log(token);
-console.log('\nUse this token in your requests:');
-console.log(`Authorization: Bearer ${token}`);
+console.log(`Bearer ${token}`)
