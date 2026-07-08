@@ -7,16 +7,57 @@ import {
 import { authenticate, requireRole } from '@mindora/auth-middleware';
 import type { AuthenticatedRequest } from '@mindora/auth-middleware';
 import { CommunityGroup, Post, Comment } from '../models/index.js';
+import type { IPost } from '../models/Post.js';
 import mongoose from 'mongoose';
-import { encryptUserId } from '../utils/encryption.js';
+import { encryptUserId, decryptUserId } from '../utils/encryption.js';
 import { Report } from '../models/index.js';
 import { publish } from '@mindora/queue';
+import { httpClient } from '@mindora/http-client';
 import {
   authenticatedRouteLimiter,
   publicRouteLimiter,
 } from '../middleware/rate-limit.js';
 
 const router = Router();
+
+const KONG_URL = process.env.KONG_URL ?? 'http://localhost:8000';
+
+interface UserServiceUser {
+  id: string;
+  userName: string | null;
+}
+
+interface PostAuthor {
+  userName: string | null;
+  avatarUrl: string | null;
+}
+
+async function resolveAuthor(post: IPost): Promise<PostAuthor> {
+  if (post.isAnonymous) {
+    return { userName: null, avatarUrl: null };
+  }
+
+  try {
+    const userId = decryptUserId(post.encryptedAuthorId);
+    const response = await httpClient.get<UserServiceUser>(
+      KONG_URL,
+      `/internal/users/${userId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+
+    if (response.ok && response.data) {
+      return { userName: response.data.userName ?? 'Unknown', avatarUrl: null };
+    }
+  } catch (error) {
+    console.error('Author lookup failed:', error);
+  }
+
+  return { userName: 'Unknown', avatarUrl: null };
+}
 
 /**
  * @swagger
@@ -508,7 +549,24 @@ router.get(
         Post.countDocuments({ communityId: id }),
       ]);
 
-      return res.status(200).json({ posts, total, page, limit });
+      const enrichedPosts = await Promise.all(
+        posts.map(async (post) => {
+          const author = await resolveAuthor(post);
+          return {
+            _id: post._id,
+            communityId: post.communityId,
+            content: post.content,
+            isAnonymous: post.isAnonymous,
+            reactions: post.reactions,
+            commentCount: post.commentCount,
+            createdAt: post.createdAt,
+            userName: author.userName,
+            avatarUrl: author.avatarUrl,
+          };
+        })
+      );
+
+      return res.status(200).json({ posts: enrichedPosts, total, page, limit });
     } catch (error) {
       console.error('List posts error:', error);
       return res.status(500).json({ error: 'Internal server error' });

@@ -90,6 +90,7 @@ describe('POST /register', () => {
       email: 'patient@example.com',
       password: 'securePass1',
       role: 'PATIENT',
+      userName: 'Test Patient',
     });
 
     expect(response.status).toBe(201);
@@ -104,10 +105,23 @@ describe('POST /register', () => {
       email: 'patient@example.com',
       password: 'securePass1',
       role: 'PATIENT',
+      userName: 'Test Patient',
     });
 
     expect(response.status).toBe(409);
     expect(response.body.message).toBe('Email already exists');
+  });
+
+  it('rejects missing userName with 400', async () => {
+    const app = createApp();
+    const response = await request(app).post('/register').send({
+      email: 'patient@example.com',
+      password: 'securePass1',
+      role: 'PATIENT',
+    });
+
+    expect(response.status).toBe(400);
+    expect(mockUserCreate).not.toHaveBeenCalled();
   });
 });
 

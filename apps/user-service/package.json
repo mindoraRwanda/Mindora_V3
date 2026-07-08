@@ -9,11 +9,13 @@
     "start": "node dist/index.js",
     "lint": "eslint src/",
     "test": "vitest run",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "backfill:profiles": "tsx scripts/backfill-profiles.ts"
   },
   "dependencies": {
     "@mindora/auth-middleware": "1.0.0",
     "@mindora/database": "1.0.0",
+    "@mindora/queue": "1.0.0",
     "@mindora/validation": "1.0.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

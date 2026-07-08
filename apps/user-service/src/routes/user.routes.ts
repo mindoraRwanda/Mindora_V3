@@ -4,6 +4,7 @@ import {
   updateProfileSchema,
 } from '@mindora/validation';
 import { Router } from 'express';
+import { asyncHandler } from '../middleware/async-handler.js';
 import {
   verifyJwt,
   type AuthenticatedRequest,
@@ -28,11 +29,52 @@ userRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
+// INTERNAL SERVICE ENDPOINT — not exposed through the public Kong user-api route.
+// Requires SERVICE role JWT in Authorization header.
+// SECURITY TODO: non-expiring token in use — replace with rotating credentials
+// via AWS Secrets Manager before production deployment.
+// See: BACKEND_COMPLETE.md → "Known Security Limitations"
+userRouter.get('/internal/users/:id', verifyJwt, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.user?.role !== 'SERVICE') {
+    res.status(403).json({ message: 'Forbidden' });
+    return;
+  }
+
+  const id = req.params.id as string;
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    let userName: string | null = null;
+    if (user.role === 'PATIENT') {
+      const profile = await prisma.patientProfile.findUnique({
+        where: { userId: id },
+      });
+      userName = profile?.userName ?? null;
+    } else if (user.role === 'THERAPIST') {
+      const profile = await prisma.therapistProfile.findUnique({
+        where: { userId: id },
+      });
+      userName = profile?.userName ?? null;
+    }
+
+    res.status(200).json({ id: user.id, userName });
+  } catch {
+    // Malformed id (not a UUID) or lookup failure — treat as not found
+    res.status(404).json({ message: 'User not found' });
+  }
+});
+
 userRouter.get(
   '/me',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -70,14 +112,14 @@ userRouter.get(
       message: 'No extended profile for this role',
       userId,
     });
-  }
+  })
 );
 
 userRouter.put(
   '/me',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -104,9 +146,6 @@ userRouter.put(
           bio: data.bio,
           timezone: data.timezone,
           languagePreference: data.languagePreference,
-          notificationPreferences: data.notificationPreferences as
-            | Prisma.InputJsonValue
-            | undefined,
         },
       });
       res.status(200).json({ role, profile });
@@ -121,9 +160,6 @@ userRouter.put(
           bio: data.bio,
           timezone: data.timezone,
           languagePreference: data.languagePreference,
-          notificationPreferences: data.notificationPreferences as
-            | Prisma.InputJsonValue
-            | undefined,
         },
       });
       res.status(200).json({ role, profile });
@@ -133,14 +169,14 @@ userRouter.put(
     res
       .status(400)
       .json({ message: 'Profile updates not supported for this role' });
-  }
+  })
 );
 
 userRouter.get(
   '/therapists',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const parsed = therapistListQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({
@@ -177,5 +213,5 @@ userRouter.get(
       page,
       limit,
     });
-  }
+  })
 );

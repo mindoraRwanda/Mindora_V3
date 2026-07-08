@@ -89,7 +89,6 @@ describe('GET /me', () => {
       bio: 'Hello',
       timezone: 'Africa/Kigali',
       languagePreference: 'en',
-      notificationPreferences: { email: true },
     };
     mockPatientFindUnique.mockResolvedValue(profile);
 
@@ -124,7 +123,6 @@ describe('PUT /me', () => {
       bio: 'New bio',
       timezone: 'UTC',
       languagePreference: 'fr',
-      notificationPreferences: { email: false },
     };
     mockPatientUpdate.mockResolvedValue(updated);
 
@@ -137,7 +135,6 @@ describe('PUT /me', () => {
         bio: 'New bio',
         timezone: 'UTC',
         languagePreference: 'fr',
-        notificationPreferences: { email: false },
       });
 
     expect(response.status).toBe(200);

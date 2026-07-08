@@ -133,6 +133,21 @@ routes:
           minute: 200
           policy: local
 
+  # Internal service-to-service lookup (e.g. community-service resolving post
+  # authors). Not part of the public user-api route — requires a SERVICE-role
+  # JWT, checked by user-service itself after Kong validates the signature.
+  - name: user-internal
+    service: user-service
+    paths: [/internal/users]
+    strip_path: false
+    methods: [GET]
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 300
+          policy: local
+
   - name: appointment-api
     service: appointment-service
     paths: [/api/v1/appointments]

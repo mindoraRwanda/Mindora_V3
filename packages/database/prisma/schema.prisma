@@ -63,35 +63,41 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+// NOTE: notificationPreferences column intentionally omitted.
+// Deferred as a future improvement — to be added when the notification
+// preference enforcement feature is fully implemented across the platform.
+// See: BACKEND_COMPLETE.md → "Known Limitations and Future Improvements"
 model PatientProfile {
-  id                      String   @id @default(uuid()) @db.Uuid
-  userId                  String   @unique @map("user_id") @db.Uuid
-  userName                String?  @map("user_name")
-  bio                     String?
-  timezone                String   @default("UTC")
-  languagePreference      String   @default("en") @map("language_preference")
-  notificationPreferences Json     @default("{}") @map("notification_preferences")
-  createdAt               DateTime @default(now()) @map("created_at")
-  updatedAt               DateTime @updatedAt @map("updated_at")
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @map("user_id") @db.Uuid
+  userName           String?  @map("user_name")
+  bio                String?
+  timezone           String   @default("UTC")
+  languagePreference String   @default("en") @map("language_preference")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("patient_profiles")
 }
 
+// NOTE: notificationPreferences column intentionally omitted.
+// Deferred as a future improvement — to be added when the notification
+// preference enforcement feature is fully implemented across the platform.
+// See: BACKEND_COMPLETE.md → "Known Limitations and Future Improvements"
 model TherapistProfile {
-  id                      String   @id @default(uuid()) @db.Uuid
-  userId                  String   @unique @map("user_id") @db.Uuid
-  userName                String?  @map("user_name")
-  bio                     String?
-  timezone                String   @default("UTC")
-  languagePreference      String   @default("en") @map("language_preference")
-  notificationPreferences Json     @default("{}") @map("notification_preferences")
-  specialisation          String?
-  languages               String[] @default([])
-  isAcceptingPatients     Boolean  @default(true) @map("is_accepting_patients")
-  createdAt               DateTime @default(now()) @map("created_at")
-  updatedAt               DateTime @updatedAt @map("updated_at")
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @unique @map("user_id") @db.Uuid
+  userName            String?  @map("user_name")
+  bio                 String?
+  timezone            String   @default("UTC")
+  languagePreference  String   @default("en") @map("language_preference")
+  specialisation      String?
+  languages           String[] @default([])
+  isAcceptingPatients Boolean  @default(true) @map("is_accepting_patients")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

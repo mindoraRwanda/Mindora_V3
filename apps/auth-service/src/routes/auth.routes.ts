@@ -1,5 +1,6 @@
 import { prisma } from '@mindora/database';
 import { blacklistToken, verifyAccessToken } from '@mindora/auth-middleware';
+import { publish } from '@mindora/queue';
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -65,7 +66,7 @@ authRouter.post('/register', publicAuthRouteLimiter, async (req, res) => {
     return;
   }
 
-  const { email, password, role } = parsed.data;
+  const { email, password, role, userName } = parsed.data;
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     res.status(409).json({ message: 'Email already exists' });
@@ -77,6 +78,23 @@ authRouter.post('/register', publicAuthRouteLimiter, async (req, res) => {
     data: { email, passwordHash, role },
     select: { id: true },
   });
+
+  try {
+    await publish('mindora.auth', {
+      event: 'user.registered',
+      userId: user.id,
+      email,
+      role,
+      userName,
+      registeredAt: new Date().toISOString(),
+    });
+    console.log(`Published user.registered event for userId=${user.id}`);
+  } catch (queueError) {
+    // Don't fail the request if RabbitMQ is down — the user record is
+    // already saved. Profile creation is eventually consistent, not
+    // synchronous with registration; the backfill script covers the gap.
+    console.error('Failed to publish user.registered event:', queueError);
+  }
 
   res.status(201).json({ userId: user.id });
 });
