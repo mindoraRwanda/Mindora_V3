@@ -79,7 +79,8 @@ describe('appointment handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'patient-1',
       'Appointment Booked',
-      'Video appointment scheduled.'
+      'Video appointment scheduled.',
+      'appointment.booked'
     );
   });
 
@@ -100,7 +101,8 @@ describe('appointment handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'patient-2',
       'Appointment Booked',
-      'In-person appointment scheduled.'
+      'In-person appointment scheduled.',
+      'appointment.booked'
     );
   });
 
@@ -121,7 +123,8 @@ describe('appointment handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'patient-3',
       'Appointment Booked',
-      'Chat appointment scheduled.'
+      'Chat appointment scheduled.',
+      'appointment.booked'
     );
   });
 
@@ -143,7 +146,8 @@ describe('appointment handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'patient-4',
       'Appointment Confirmed',
-      'Your appointment has been confirmed.'
+      'Your appointment has been confirmed.',
+      'appointment.confirmed'
     );
   });
 
@@ -166,7 +170,8 @@ describe('appointment handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'patient-5',
       'Appointment Cancelled',
-      'Reason: Family emergency'
+      'Reason: Family emergency',
+      'appointment.cancelled'
     );
   });
 
@@ -189,7 +194,8 @@ describe('appointment handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'therapist-6',
       'Appointment Cancelled',
-      'Reason: Schedule conflict'
+      'Reason: Schedule conflict',
+      'appointment.cancelled'
     );
   });
 
@@ -212,7 +218,8 @@ describe('appointment handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'patient-7',
       'Appointment Cancelled',
-      'Your appointment has been cancelled.'
+      'Your appointment has been cancelled.',
+      'appointment.cancelled'
     );
   });
 });
@@ -238,7 +245,8 @@ describe('message handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'recipient-1',
       'New Message',
-      shortContent
+      shortContent,
+      'message.received'
     );
   });
 
@@ -256,7 +264,8 @@ describe('message handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'recipient-2',
       'New Message',
-      exactContent
+      exactContent,
+      'message.received'
     );
   });
 
@@ -274,7 +283,8 @@ describe('message handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'recipient-3',
       'New Message',
-      `${'A'.repeat(77)}…`
+      `${'A'.repeat(77)}…`,
+      'message.received'
     );
   });
 
@@ -291,7 +301,8 @@ describe('message handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'bob',
       'New Message',
-      'Hello Bob!'
+      'Hello Bob!',
+      'message.received'
     );
     expect(mocks.sendPushNotification).not.toHaveBeenCalledWith(
       'alice',
@@ -321,7 +332,8 @@ describe('community handler', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       'post-author-1',
       'New Reply',
-      'Great insight, I totally agree!'
+      'Great insight, I totally agree!',
+      'community.reply'
     );
   });
 

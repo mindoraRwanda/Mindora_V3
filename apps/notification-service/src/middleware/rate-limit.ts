@@ -9,3 +9,11 @@ export const healthRouteLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: 'Too many requests' },
 });
+
+export const authenticatedRouteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: isTest ? 10_000 : 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests' },
+});

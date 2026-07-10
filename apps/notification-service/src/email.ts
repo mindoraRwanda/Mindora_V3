@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { logNotification } from './notificationLogger.js';
 
 let resend: Resend | null = null;
 
@@ -73,16 +74,19 @@ export async function getUserName(userId: string): Promise<string | null> {
   }
 }
 
+// Returns whether an actual send attempt was made — false for the
+// 'Resend not initialized' skip case, true once we've reached Resend
+// (throws on a real delivery failure rather than returning false for that).
 export async function sendEmail(
   to: string,
   subject: string,
   htmlBody: string
-): Promise<void> {
+): Promise<boolean> {
   console.log(`[email] sendEmail → to=${to} subject="${subject}"`);
 
   if (!resend) {
     console.warn(`[email] Resend not initialized — skipping email to ${to}`);
-    return;
+    return false;
   }
 
   const { error } = await resend.emails.send({
@@ -98,6 +102,7 @@ export async function sendEmail(
   }
 
   console.log(`[email] Email delivered → to=${to} subject="${subject}"`);
+  return true;
 }
 
 // Fetches the user's email from the User Service, then sends.
@@ -105,12 +110,40 @@ export async function sendEmail(
 export async function sendEmailToUser(
   userId: string,
   subject: string,
-  htmlBody: string
+  htmlBody: string,
+  eventType = 'unknown'
 ): Promise<void> {
   const email = await getUserEmail(userId);
   if (!email) {
     console.warn(`[email] No email address for user ${userId} — skipping`);
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'email',
+      status: 'skipped',
+      failureReason: 'No email address on file',
+    });
     return;
   }
-  await sendEmail(email, subject, htmlBody);
+
+  try {
+    const sent = await sendEmail(email, subject, htmlBody);
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'email',
+      status: sent ? 'delivered' : 'skipped',
+      failureReason: sent ? undefined : 'Resend client not initialized',
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'email',
+      status: 'failed',
+      failureReason: message,
+    });
+    throw err;
+  }
 }

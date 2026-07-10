@@ -85,6 +85,32 @@ Unlike FCM, these two *do* require a company identity before production —
 Resend needs a verified sending domain, Africa's Talking needs a registered
 sender ID. Out of scope for the current task; raised here so it isn't lost.
 
+## Notification Delivery Log — Timezone Convention
+
+`notification_logs` (in its own `mindora_notifications` database, not the
+shared `mindora` one) stores `createdAt`/`deliveredAt` as
+`timestamp without time zone`, always written in **UTC** via Prisma's
+`@default(now())`. This is the correct way to store timestamps — always
+UTC, convert only for display — and should **not** be changed to store
+local time directly.
+
+`GET /api/v1/notifications/logs` ([notifications.routes.ts](apps/notification-service/src/routes/notifications.routes.ts))
+adds `createdAtKigali`/`deliveredAtKigali` alongside the raw UTC
+`createdAt`/`deliveredAt` fields, converted to `Africa/Kigali` (UTC+3) and
+formatted as ISO 8601 with the `+03:00` offset baked into the string itself —
+e.g. `2026-07-10T20:02:53.958+03:00` — so the timezone is unambiguous from
+the value alone, no separate label needed. The raw UTC fields are kept
+untouched for anyone consuming the API programmatically.
+
+**Why this matters / what tripped us up during testing (2026-07-10):** Rwanda
+is UTC+3 with no DST, so a flat 3-hour offset is always correct — but it's
+easy to misread a raw UTC `createdAt` against a local wall clock and wrongly
+conclude a log entry is missing or stale when it's actually just displayed 3
+hours "behind." If a future timezone needs supporting (a region observing
+DST), the flat-offset approach in `toKigaliIso()` will need replacing with a
+proper timezone-aware conversion (e.g. `Intl.DateTimeFormat` with `timeZone`)
+— the current fixed `+3h` shift is only correct for Kigali specifically.
+
 ## Future Improvements — V4
 
 **SMS Notifications:** Africa's Talking SMS delivery is implemented but disabled

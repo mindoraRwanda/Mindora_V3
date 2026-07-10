@@ -3,6 +3,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { readFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { FatalNotificationError } from './errors.js';
+import { logNotification } from './notificationLogger.js';
 
 export { FatalNotificationError };
 
@@ -81,7 +82,8 @@ async function getFcmToken(userId: string): Promise<string | null> {
 export async function sendPushNotification(
   userId: string,
   title: string,
-  body: string
+  body: string,
+  eventType = 'unknown'
 ): Promise<void> {
   console.log(`[fcm] sendPushNotification → user=${userId} title="${title}"`);
 
@@ -89,12 +91,26 @@ export async function sendPushNotification(
     console.warn(
       `[fcm] Firebase not initialized — skipping push to user ${userId}`
     );
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'push',
+      status: 'skipped',
+      failureReason: 'Firebase not initialized',
+    });
     return;
   }
 
   const token = await getFcmToken(userId);
   if (!token) {
     console.warn(`[fcm] No FCM token for user ${userId} — skipping push`);
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'push',
+      status: 'skipped',
+      failureReason: 'No FCM token on file',
+    });
     return;
   }
 
@@ -105,22 +121,44 @@ export async function sendPushNotification(
     // onBackgroundMessage. 'data' gives the SW/client full and sole control.
     await getMessaging(app).send({ token, data: { title, body } });
     console.log(`[fcm] Push delivered → user=${userId} title="${title}"`);
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'push',
+      status: 'delivered',
+    });
   } catch (err: unknown) {
     const code =
       typeof err === 'object' && err !== null && 'code' in err
         ? String((err as { code: unknown }).code)
         : undefined;
+    const message = err instanceof Error ? err.message : String(err);
 
     if (code && FATAL_FCM_CODES.has(code)) {
       console.error(
         `[fcm] Fatal FCM error (${code}) for user ${userId} — token is stale/invalid, routing straight to DLQ`
       );
+      await logNotification({
+        userId,
+        eventType,
+        channel: 'push',
+        status: 'failed',
+        failureReason: `Fatal FCM error (${code}): ${message}`,
+      });
       throw new FatalNotificationError(
         `FCM ${code} for user ${userId}`,
         code,
         userId
       );
     }
+
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'push',
+      status: 'failed',
+      failureReason: message,
+    });
     throw err; // transient — let retry.ts handle backoff
   }
 }

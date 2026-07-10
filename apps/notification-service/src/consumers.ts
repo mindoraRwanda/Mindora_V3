@@ -65,7 +65,12 @@ async function handleAppointment(payload: unknown): Promise<void> {
     const body = reason
       ? `Reason: ${reason}`
       : 'Your appointment has been cancelled.';
-    await sendPushNotification(recipientId, 'Appointment Cancelled', body);
+    await sendPushNotification(
+      recipientId,
+      'Appointment Cancelled',
+      body,
+      event.eventType
+    );
     await sendEmailToUser(
       recipientId,
       'Your appointment has been cancelled',
@@ -74,7 +79,8 @@ async function handleAppointment(payload: unknown): Promise<void> {
         therapistName,
         cancelled.slotStart,
         reason
-      )
+      ),
+      event.eventType
     );
     return;
   }
@@ -84,7 +90,8 @@ async function handleAppointment(payload: unknown): Promise<void> {
     await sendPushNotification(
       confirmed.patientId,
       'Appointment Confirmed',
-      'Your appointment has been confirmed.'
+      'Your appointment has been confirmed.',
+      event.eventType
     );
     await sendEmailToUser(
       confirmed.patientId,
@@ -93,7 +100,8 @@ async function handleAppointment(payload: unknown): Promise<void> {
         patientName,
         therapistName,
         confirmed.slotStart
-      )
+      ),
+      event.eventType
     );
     return;
   }
@@ -104,12 +112,14 @@ async function handleAppointment(payload: unknown): Promise<void> {
     await sendPushNotification(
       booked.patientId,
       'Appointment Booked',
-      `${typeLabel} appointment scheduled.`
+      `${typeLabel} appointment scheduled.`,
+      event.eventType
     );
     await sendEmailToUser(
       booked.patientId,
       'Your appointment has been booked',
-      appointmentBookedTemplate(patientName, therapistName, booked.slotStart)
+      appointmentBookedTemplate(patientName, therapistName, booked.slotStart),
+      event.eventType
     );
   }
 }
@@ -120,14 +130,24 @@ async function handleMessage(payload: unknown): Promise<void> {
     event.content.length > 80
       ? `${event.content.slice(0, 77)}…`
       : event.content;
-  await sendPushNotification(event.recipientId, 'New Message', preview);
+  await sendPushNotification(
+    event.recipientId,
+    'New Message',
+    preview,
+    'message.received'
+  );
 }
 
 async function handleCommunity(payload: unknown): Promise<void> {
   // Only reply events trigger a push; reported events are admin-facing
   if (!('replyId' in (payload as object))) return;
   const event = payload as CommunityReplyEvent;
-  await sendPushNotification(event.postAuthorId, 'New Reply', event.excerpt);
+  await sendPushNotification(
+    event.postAuthorId,
+    'New Reply',
+    event.excerpt,
+    'community.reply'
+  );
 }
 
 async function handleAi(payload: unknown): Promise<void> {
@@ -135,14 +155,13 @@ async function handleAi(payload: unknown): Promise<void> {
 
   if ('crisisLevel' in (payload as object)) {
     const crisis = payload as { userId: string; crisisLevel: number };
-    // SMS disabled by default — planned for Mindora V4.
-    // Set SMS_ENABLED=true in .env and configure Africa's Talking credentials to enable.
-    if (process.env.SMS_ENABLED === 'true') {
-      await sendSms(
-        crisis.userId,
-        `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`
-      );
-    }
+    // sendSms() itself checks SMS_ENABLED and logs a 'skipped' entry when
+    // disabled — always call it so every attempt gets logged consistently.
+    await sendSms(
+      crisis.userId,
+      `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`,
+      'ai.crisis'
+    );
   }
 }
 
