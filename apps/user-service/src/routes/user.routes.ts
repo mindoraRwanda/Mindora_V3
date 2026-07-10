@@ -2,6 +2,7 @@ import { prisma, Prisma } from '@mindora/database';
 import {
   therapistListQuerySchema,
   updateFcmTokenSchema,
+  updateNotificationPreferencesSchema,
   updateProfileSchema,
 } from '@mindora/validation';
 import { Router } from 'express';
@@ -16,6 +17,10 @@ export const userRouter = Router();
 
 const SERVICE_NAME = 'user-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/users/health';
+
+// Opt-out model — matches the column default in schema.prisma. Used when a
+// profile's notificationPreferences is somehow null/absent.
+const DEFAULT_NOTIFICATION_PREFERENCES = { push: true, email: true, sms: true };
 
 const healthResponse = () => ({
   status: 'ok',
@@ -102,18 +107,23 @@ userRouter.get(
 
       let fcmToken: string | null = null;
       let userName: string | null = null;
+      let notificationPreferences: unknown = DEFAULT_NOTIFICATION_PREFERENCES;
       if (user.role === 'PATIENT') {
         const profile = await prisma.patientProfile.findUnique({
           where: { userId },
         });
         fcmToken = profile?.fcmToken ?? null;
         userName = profile?.userName ?? null;
+        notificationPreferences =
+          profile?.notificationPreferences ?? DEFAULT_NOTIFICATION_PREFERENCES;
       } else if (user.role === 'THERAPIST') {
         const profile = await prisma.therapistProfile.findUnique({
           where: { userId },
         });
         fcmToken = profile?.fcmToken ?? null;
         userName = profile?.userName ?? null;
+        notificationPreferences =
+          profile?.notificationPreferences ?? DEFAULT_NOTIFICATION_PREFERENCES;
       }
 
       res.status(200).json({
@@ -121,6 +131,7 @@ userRouter.get(
         email: user.email,
         phoneNumber: null,
         userName,
+        notificationPreferences,
       });
     } catch {
       // Malformed id (not a UUID) or lookup failure — treat as not found,
@@ -171,6 +182,74 @@ userRouter.put(
     }
 
     res.status(200).json({ message: 'FCM token updated' });
+  })
+);
+
+userRouter.put(
+  '/me/notification-preferences',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+
+    const parsed = updateNotificationPreferencesSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { userId, role } = authReq.user;
+
+    // Partial update — merge onto the current stored value (or defaults if
+    // null/absent) so e.g. {push: false} doesn't wipe out email/sms settings.
+    if (role === 'PATIENT') {
+      const existing = await prisma.patientProfile.findUnique({
+        where: { userId },
+      });
+      const current = {
+        ...DEFAULT_NOTIFICATION_PREFERENCES,
+        ...(existing?.notificationPreferences as Record<string, boolean>),
+      };
+      const notificationPreferences = { ...current, ...parsed.data };
+      const profile = await prisma.patientProfile.update({
+        where: { userId },
+        data: { notificationPreferences },
+      });
+      res
+        .status(200)
+        .json({ notificationPreferences: profile.notificationPreferences });
+      return;
+    }
+
+    if (role === 'THERAPIST') {
+      const existing = await prisma.therapistProfile.findUnique({
+        where: { userId },
+      });
+      const current = {
+        ...DEFAULT_NOTIFICATION_PREFERENCES,
+        ...(existing?.notificationPreferences as Record<string, boolean>),
+      };
+      const notificationPreferences = { ...current, ...parsed.data };
+      const profile = await prisma.therapistProfile.update({
+        where: { userId },
+        data: { notificationPreferences },
+      });
+      res
+        .status(200)
+        .json({ notificationPreferences: profile.notificationPreferences });
+      return;
+    }
+
+    res.status(400).json({
+      message: 'Notification preferences not supported for this role',
+    });
   })
 );
 

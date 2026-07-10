@@ -23,6 +23,21 @@ the column should be added back as a JSONB field with a defined schema, and
 the Notification Service preference enforcement logic (currently a stub) should
 be completed to read from it.
 
+Update: notificationPreferences column re-added as a properly typed Json
+field with default {push: true, email: true, sms: true}. All channels
+enabled by default — users must explicitly opt out.
+
+**Channel toggles are fully independent — `push` is not a master switch.**
+Disabling `push` only stops push notifications; `email` and `sms` deliveries
+for the same event are unaffected, and vice versa for either of the other
+two. Each channel is checked separately in
+`apps/notification-service/src/consumers.ts` via `sendPushIfEnabled` /
+`sendEmailIfEnabled` / `sendSmsIfEnabled` — three independent lookups against
+the same `notificationPreferences` object, with no cross-channel logic
+between them. Verified live (2026-07-10): setting `push: false` for a test
+patient and publishing `appointment.booked` produced `push: skipped` +
+`email: delivered` in `notification_logs` — email went through normally.
+
 ## Push Notifications (FCM) — Dev Account Usage
 
 FCM token registration and delivery are currently tested end-to-end using a

@@ -18,6 +18,15 @@ export const updateFcmTokenSchema = z.object({
   fcmToken: z.string().min(1, 'fcmToken is required'),
 });
 
+export const updateNotificationPreferencesSchema = z.object({
+  push: z.boolean().optional(),
+  email: z.boolean().optional(),
+  sms: z.boolean().optional(),
+});
+
 export type UpdateProfileDto = z.infer<typeof updateProfileSchema>;
 export type TherapistListQueryDto = z.infer<typeof therapistListQuerySchema>;
 export type UpdateFcmTokenDto = z.infer<typeof updateFcmTokenSchema>;
+export type UpdateNotificationPreferencesDto = z.infer<
+  typeof updateNotificationPreferencesSchema
+>;

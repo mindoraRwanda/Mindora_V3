@@ -9,6 +9,12 @@ import type {
 import { sendPushNotification } from './fcm.js';
 import { getUserName, sendEmailToUser } from './email.js';
 import { sendSms } from './sms.js';
+import { logNotification } from './notificationLogger.js';
+import {
+  getUserPreferences,
+  isChannelEnabled,
+  type UserPreferences,
+} from './preferences.js';
 import {
   appointmentBookedTemplate,
   appointmentConfirmedTemplate,
@@ -25,6 +31,70 @@ const NOTIFICATION_QUEUES = {
 } as const;
 
 export const SUBSCRIBED_EXCHANGES = Object.values(EXCHANGES);
+
+// Checks the user's channel preference before sending; logs 'skipped' with a
+// preference-specific reason and never calls the send function if disabled.
+async function sendPushIfEnabled(
+  userId: string,
+  title: string,
+  body: string,
+  eventType: string,
+  prefs: UserPreferences
+): Promise<void> {
+  if (!isChannelEnabled(prefs.notificationPreferences, 'push')) {
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'push',
+      status: 'skipped',
+      failureReason: 'Push notifications disabled by user',
+    });
+    return;
+  }
+  await sendPushNotification(userId, title, body, prefs.fcmToken, eventType);
+}
+
+async function sendEmailIfEnabled(
+  userId: string,
+  subject: string,
+  htmlBody: string,
+  eventType: string,
+  prefs: UserPreferences
+): Promise<void> {
+  if (!isChannelEnabled(prefs.notificationPreferences, 'email')) {
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'email',
+      status: 'skipped',
+      failureReason: 'Email notifications disabled by user',
+    });
+    return;
+  }
+  await sendEmailToUser(userId, subject, htmlBody, prefs.email, eventType);
+}
+
+async function sendSmsIfEnabled(
+  userId: string,
+  body: string,
+  eventType: string,
+  prefs: UserPreferences
+): Promise<void> {
+  if (!isChannelEnabled(prefs.notificationPreferences, 'sms')) {
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'sms',
+      status: 'skipped',
+      failureReason: 'SMS notifications disabled by user',
+    });
+    return;
+  }
+  // sendSms() itself also checks SMS_ENABLED and logs its own 'skipped' entry
+  // when that feature flag is off — this gate is specifically the user's
+  // per-channel preference, checked before sendSms's own flag check runs.
+  await sendSms(userId, body, prefs.phoneNumber, eventType);
+}
 
 function sessionTypeLabel(
   sessionType: AppointmentBookedEvent['sessionType']
@@ -65,13 +135,15 @@ async function handleAppointment(payload: unknown): Promise<void> {
     const body = reason
       ? `Reason: ${reason}`
       : 'Your appointment has been cancelled.';
-    await sendPushNotification(
+    const prefs = await getUserPreferences(recipientId);
+    await sendPushIfEnabled(
       recipientId,
       'Appointment Cancelled',
       body,
-      event.eventType
+      event.eventType,
+      prefs
     );
-    await sendEmailToUser(
+    await sendEmailIfEnabled(
       recipientId,
       'Your appointment has been cancelled',
       appointmentCancelledTemplate(
@@ -80,20 +152,23 @@ async function handleAppointment(payload: unknown): Promise<void> {
         cancelled.slotStart,
         reason
       ),
-      event.eventType
+      event.eventType,
+      prefs
     );
     return;
   }
 
   if (event.eventType === 'appointment.confirmed') {
     const confirmed = event as AppointmentConfirmedEvent;
-    await sendPushNotification(
+    const prefs = await getUserPreferences(confirmed.patientId);
+    await sendPushIfEnabled(
       confirmed.patientId,
       'Appointment Confirmed',
       'Your appointment has been confirmed.',
-      event.eventType
+      event.eventType,
+      prefs
     );
-    await sendEmailToUser(
+    await sendEmailIfEnabled(
       confirmed.patientId,
       'Your appointment has been confirmed',
       appointmentConfirmedTemplate(
@@ -101,7 +176,8 @@ async function handleAppointment(payload: unknown): Promise<void> {
         therapistName,
         confirmed.slotStart
       ),
-      event.eventType
+      event.eventType,
+      prefs
     );
     return;
   }
@@ -109,17 +185,20 @@ async function handleAppointment(payload: unknown): Promise<void> {
   if (event.eventType === 'appointment.booked') {
     const booked = event as AppointmentBookedEvent;
     const typeLabel = sessionTypeLabel(booked.sessionType);
-    await sendPushNotification(
+    const prefs = await getUserPreferences(booked.patientId);
+    await sendPushIfEnabled(
       booked.patientId,
       'Appointment Booked',
       `${typeLabel} appointment scheduled.`,
-      event.eventType
+      event.eventType,
+      prefs
     );
-    await sendEmailToUser(
+    await sendEmailIfEnabled(
       booked.patientId,
       'Your appointment has been booked',
       appointmentBookedTemplate(patientName, therapistName, booked.slotStart),
-      event.eventType
+      event.eventType,
+      prefs
     );
   }
 }
@@ -130,11 +209,13 @@ async function handleMessage(payload: unknown): Promise<void> {
     event.content.length > 80
       ? `${event.content.slice(0, 77)}…`
       : event.content;
-  await sendPushNotification(
+  const prefs = await getUserPreferences(event.recipientId);
+  await sendPushIfEnabled(
     event.recipientId,
     'New Message',
     preview,
-    'message.received'
+    'message.received',
+    prefs
   );
 }
 
@@ -142,11 +223,13 @@ async function handleCommunity(payload: unknown): Promise<void> {
   // Only reply events trigger a push; reported events are admin-facing
   if (!('replyId' in (payload as object))) return;
   const event = payload as CommunityReplyEvent;
-  await sendPushNotification(
+  const prefs = await getUserPreferences(event.postAuthorId);
+  await sendPushIfEnabled(
     event.postAuthorId,
     'New Reply',
     event.excerpt,
-    'community.reply'
+    'community.reply',
+    prefs
   );
 }
 
@@ -155,12 +238,12 @@ async function handleAi(payload: unknown): Promise<void> {
 
   if ('crisisLevel' in (payload as object)) {
     const crisis = payload as { userId: string; crisisLevel: number };
-    // sendSms() itself checks SMS_ENABLED and logs a 'skipped' entry when
-    // disabled — always call it so every attempt gets logged consistently.
-    await sendSms(
+    const prefs = await getUserPreferences(crisis.userId);
+    await sendSmsIfEnabled(
       crisis.userId,
       `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`,
-      'ai.crisis'
+      'ai.crisis',
+      prefs
     );
   }
 }

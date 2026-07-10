@@ -18,9 +18,11 @@ export {
 export {
   therapistListQuerySchema,
   updateFcmTokenSchema,
+  updateNotificationPreferencesSchema,
   updateProfileSchema,
   type TherapistListQueryDto,
   type UpdateFcmTokenDto,
+  type UpdateNotificationPreferencesDto,
   type UpdateProfileDto,
 } from './profile.js';
 export {

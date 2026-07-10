@@ -64,27 +64,9 @@ export function initSms(): void {
   console.log("✓ Africa's Talking SMS client initialized");
 }
 
-async function getUserPhone(userId: string): Promise<string | null> {
-  const base = process.env.USER_SERVICE_URL ?? 'http://localhost:3002';
-  try {
-    const res = await fetch(`${base}/api/v1/users/${userId}/preferences`);
-    if (!res.ok) {
-      console.warn(
-        `[sms] User Service returned ${res.status} for user ${userId} — no phone number`
-      );
-      return null;
-    }
-    const data = (await res.json()) as { phoneNumber?: string };
-    return data.phoneNumber ?? null;
-  } catch (err) {
-    console.warn(`[sms] User Service unreachable for user ${userId}:`, err);
-    return null;
-  }
-}
-
 /**
- * Sends an SMS to the user identified by `to`.
- * Looks up the user's phone number via the User Service preference endpoint.
+ * Sends an SMS to the user identified by `to`, using a pre-fetched phone
+ * number (resolved by the caller via getUserPreferences() — see preferences.ts).
  * Throws `FatalNotificationError` for permanently undeliverable numbers (invalid format,
  * blacklisted, unsupported type). Throws a plain `Error` for transient failures
  * (balance, routing, gateway) so retry.ts can schedule backoff retries.
@@ -92,12 +74,14 @@ async function getUserPhone(userId: string): Promise<string | null> {
  * SMS_ENABLED gates actual delivery here (not at the call site) so every
  * attempt — including ones made while disabled — gets logged consistently.
  *
- * @param to   - User ID whose phone number is resolved from the User Service.
- * @param body - SMS message body (160 chars per segment; AT auto-splits multi-part messages).
+ * @param to    - User ID, used only for logging (phone number comes from `phoneNumber`).
+ * @param body  - SMS message body (160 chars per segment; AT auto-splits multi-part messages).
+ * @param phoneNumber - Pre-fetched phone number, or null if none on file.
  */
 export async function sendSms(
   to: string,
   body: string,
+  phoneNumber: string | null,
   eventType = 'unknown'
 ): Promise<void> {
   console.log(`[sms] sendSms → user=${to}`);
@@ -130,7 +114,7 @@ export async function sendSms(
     return;
   }
 
-  const phone = await getUserPhone(to);
+  const phone = phoneNumber;
   if (!phone) {
     console.warn(`[sms] No phone number for user ${to} — skipping SMS`);
     await logNotification({

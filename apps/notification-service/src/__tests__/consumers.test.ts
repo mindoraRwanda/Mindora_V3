@@ -80,6 +80,7 @@ describe('appointment handler', () => {
       'patient-1',
       'Appointment Booked',
       'Video appointment scheduled.',
+      null,
       'appointment.booked'
     );
   });
@@ -102,6 +103,7 @@ describe('appointment handler', () => {
       'patient-2',
       'Appointment Booked',
       'In-person appointment scheduled.',
+      null,
       'appointment.booked'
     );
   });
@@ -124,6 +126,7 @@ describe('appointment handler', () => {
       'patient-3',
       'Appointment Booked',
       'Chat appointment scheduled.',
+      null,
       'appointment.booked'
     );
   });
@@ -147,6 +150,7 @@ describe('appointment handler', () => {
       'patient-4',
       'Appointment Confirmed',
       'Your appointment has been confirmed.',
+      null,
       'appointment.confirmed'
     );
   });
@@ -171,6 +175,7 @@ describe('appointment handler', () => {
       'patient-5',
       'Appointment Cancelled',
       'Reason: Family emergency',
+      null,
       'appointment.cancelled'
     );
   });
@@ -195,6 +200,7 @@ describe('appointment handler', () => {
       'therapist-6',
       'Appointment Cancelled',
       'Reason: Schedule conflict',
+      null,
       'appointment.cancelled'
     );
   });
@@ -219,6 +225,7 @@ describe('appointment handler', () => {
       'patient-7',
       'Appointment Cancelled',
       'Your appointment has been cancelled.',
+      null,
       'appointment.cancelled'
     );
   });
@@ -246,6 +253,7 @@ describe('message handler', () => {
       'recipient-1',
       'New Message',
       shortContent,
+      null,
       'message.received'
     );
   });
@@ -265,6 +273,7 @@ describe('message handler', () => {
       'recipient-2',
       'New Message',
       exactContent,
+      null,
       'message.received'
     );
   });
@@ -284,6 +293,7 @@ describe('message handler', () => {
       'recipient-3',
       'New Message',
       `${'A'.repeat(77)}…`,
+      null,
       'message.received'
     );
   });
@@ -302,6 +312,7 @@ describe('message handler', () => {
       'bob',
       'New Message',
       'Hello Bob!',
+      null,
       'message.received'
     );
     expect(mocks.sendPushNotification).not.toHaveBeenCalledWith(
@@ -333,6 +344,7 @@ describe('community handler', () => {
       'post-author-1',
       'New Reply',
       'Great insight, I totally agree!',
+      null,
       'community.reply'
     );
   });

@@ -57,32 +57,11 @@ export function initFirebase(): void {
   console.log('✓ Firebase Admin SDK initialized');
 }
 
-async function getFcmToken(userId: string): Promise<string | null> {
-  const base = process.env.USER_SERVICE_URL ?? 'http://localhost:3002';
-  try {
-    const res = await fetch(`${base}/api/v1/users/${userId}/preferences`, {
-      headers: {
-        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
-      },
-    });
-    if (!res.ok) {
-      console.warn(
-        `[fcm] User Service returned ${res.status} for user ${userId} — no FCM token`
-      );
-      return null;
-    }
-    const data = (await res.json()) as { fcmToken?: string };
-    return data.fcmToken ?? null;
-  } catch (err) {
-    console.warn(`[fcm] User Service unreachable for user ${userId}:`, err);
-    return null;
-  }
-}
-
 export async function sendPushNotification(
   userId: string,
   title: string,
   body: string,
+  fcmToken: string | null,
   eventType = 'unknown'
 ): Promise<void> {
   console.log(`[fcm] sendPushNotification → user=${userId} title="${title}"`);
@@ -101,8 +80,7 @@ export async function sendPushNotification(
     return;
   }
 
-  const token = await getFcmToken(userId);
-  if (!token) {
+  if (!fcmToken) {
     console.warn(`[fcm] No FCM token for user ${userId} — skipping push`);
     await logNotification({
       userId,
@@ -119,7 +97,7 @@ export async function sendPushNotification(
     // makes the browser auto-display it while backgrounded, on top of (and
     // duplicating) the notification our own service worker shows in
     // onBackgroundMessage. 'data' gives the SW/client full and sole control.
-    await getMessaging(app).send({ token, data: { title, body } });
+    await getMessaging(app).send({ token: fcmToken, data: { title, body } });
     console.log(`[fcm] Push delivered → user=${userId} title="${title}"`);
     await logNotification({
       userId,

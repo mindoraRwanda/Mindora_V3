@@ -18,35 +18,6 @@ export function initResend(): void {
   console.log('✓ Resend email client initialized');
 }
 
-// Calls the User Service preferences endpoint and reads the email field.
-// Returns null when the service is unreachable or the field is absent.
-
-async function getUserEmail(userId: string): Promise<string | null> {
-  const base = process.env.USER_SERVICE_URL ?? 'http://localhost:3002';
-  const url = `${base}/api/v1/users/${userId}/preferences`;
-  console.log(
-    `[email][DEBUG] getUserEmail → userId="${userId}" (${userId.length} chars) url="${url}"`
-  );
-  try {
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
-    },
-  });
-    if (!res.ok) {
-      console.warn(
-        `[email] User Service returned ${res.status} for user ${userId} — no email address`
-      );
-      return null;
-    }
-    const data = (await res.json()) as { email?: string };
-    return data.email ?? null;
-  } catch (err) {
-    console.warn(`[email] User Service unreachable for user ${userId}:`, err);
-    return null;
-  }
-}
-
 // Calls the same preferences endpoint for a display name, used to personalize
 // appointment emails instead of the generic 'Patient'/'[name pending]' role
 // labels. Returns null if the user hasn't set one (or the service call fails)
@@ -105,15 +76,16 @@ export async function sendEmail(
   return true;
 }
 
-// Fetches the user's email from the User Service, then sends.
-// Returns silently if no email is on file — same graceful pattern as sendPushNotification.
+// Sends to a pre-fetched email address (resolved by the caller via
+// getUserPreferences() — see preferences.ts). Returns silently (after
+// logging) if no email is on file, same graceful pattern as sendPushNotification.
 export async function sendEmailToUser(
   userId: string,
   subject: string,
   htmlBody: string,
+  email: string | null,
   eventType = 'unknown'
 ): Promise<void> {
-  const email = await getUserEmail(userId);
   if (!email) {
     console.warn(`[email] No email address for user ${userId} — skipping`);
     await logNotification({
