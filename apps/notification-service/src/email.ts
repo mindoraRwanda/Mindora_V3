@@ -19,8 +19,7 @@ export function initResend(): void {
 
 // Calls the User Service preferences endpoint and reads the email field.
 // Returns null when the service is unreachable or the field is absent.
-// NOTE: the preferences endpoint currently returns only { fcmToken }.
-// This will resolve to null until the User Service exposes { email } as well.
+
 async function getUserEmail(userId: string): Promise<string | null> {
   const base = process.env.USER_SERVICE_URL ?? 'http://localhost:3002';
   const url = `${base}/api/v1/users/${userId}/preferences`;
@@ -28,7 +27,11 @@ async function getUserEmail(userId: string): Promise<string | null> {
     `[email][DEBUG] getUserEmail → userId="${userId}" (${userId.length} chars) url="${url}"`
   );
   try {
-    const res = await fetch(url);
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+    },
+  });
     if (!res.ok) {
       console.warn(
         `[email] User Service returned ${res.status} for user ${userId} — no email address`
@@ -37,6 +40,33 @@ async function getUserEmail(userId: string): Promise<string | null> {
     }
     const data = (await res.json()) as { email?: string };
     return data.email ?? null;
+  } catch (err) {
+    console.warn(`[email] User Service unreachable for user ${userId}:`, err);
+    return null;
+  }
+}
+
+// Calls the same preferences endpoint for a display name, used to personalize
+// appointment emails instead of the generic 'Patient'/'[name pending]' role
+// labels. Returns null if the user hasn't set one (or the service call fails)
+// — callers fall back to a role-based label in that case.
+export async function getUserName(userId: string): Promise<string | null> {
+  const base = process.env.USER_SERVICE_URL ?? 'http://localhost:3002';
+  const url = `${base}/api/v1/users/${userId}/preferences`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
+    });
+    if (!res.ok) {
+      console.warn(
+        `[email] User Service returned ${res.status} for user ${userId} — no userName`
+      );
+      return null;
+    }
+    const data = (await res.json()) as { userName?: string };
+    return data.userName ?? null;
   } catch (err) {
     console.warn(`[email] User Service unreachable for user ${userId}:`, err);
     return null;

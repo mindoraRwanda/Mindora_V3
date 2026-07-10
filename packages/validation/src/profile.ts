@@ -14,5 +14,10 @@ export const therapistListQuerySchema = z.object({
   language: z.string().optional(),
 });
 
+export const updateFcmTokenSchema = z.object({
+  fcmToken: z.string().min(1, 'fcmToken is required'),
+});
+
 export type UpdateProfileDto = z.infer<typeof updateProfileSchema>;
 export type TherapistListQueryDto = z.infer<typeof therapistListQuerySchema>;
+export type UpdateFcmTokenDto = z.infer<typeof updateFcmTokenSchema>;

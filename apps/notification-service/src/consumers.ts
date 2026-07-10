@@ -7,7 +7,7 @@ import type {
   CommunityReplyEvent,
 } from '@mindora/events';
 import { sendPushNotification } from './fcm.js';
-import { sendEmailToUser } from './email.js';
+import { getUserName, sendEmailToUser } from './email.js';
 import { sendSms } from './sms.js';
 import {
   appointmentBookedTemplate,
@@ -47,10 +47,13 @@ async function handleAppointment(payload: unknown): Promise<void> {
     | AppointmentConfirmedEvent
     | AppointmentCancelledEvent;
 
-  // TODO[names]: replace these placeholders with real lookups once the User Service
-  // exposes names on GET /api/v1/users/:id/preferences (or a dedicated profile endpoint).
-  const patientName = 'Patient';
-  const therapistName = '[name pending]';
+  const [patientName, therapistName] = await Promise.all([
+    getUserName(event.patientId),
+    getUserName(event.therapistId),
+  ]).then(([patient, therapist]) => [
+    patient ?? 'Patient',
+    therapist ?? 'your therapist',
+  ]);
 
   if (event.eventType === 'appointment.cancelled') {
     const cancelled = event as AppointmentCancelledEvent;
@@ -132,18 +135,28 @@ async function handleAi(payload: unknown): Promise<void> {
 
   if ('crisisLevel' in (payload as object)) {
     const crisis = payload as { userId: string; crisisLevel: number };
-    await sendSms(
-      crisis.userId,
-      `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`
-    );
+    // SMS disabled by default — planned for Mindora V4.
+    // Set SMS_ENABLED=true in .env and configure Africa's Talking credentials to enable.
+    if (process.env.SMS_ENABLED === 'true') {
+      await sendSms(
+        crisis.userId,
+        `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`
+      );
+    }
   }
 }
 
 export async function startConsumers(): Promise<void> {
+  // 'topic' here because appointment-service/mood-tracking-service publish
+  // via publishToExchange, which declares these two exchanges as 'topic'.
+  // Left as default 'fanout' for MESSAGES/COMMUNITY/AI — messaging-service
+  // doesn't publish to mindora.messages yet, and ai-integration-service
+  // already declares mindora.ai as 'fanout' itself (see ai.routes.ts).
   await subscribeWithRetry(
     EXCHANGES.APPOINTMENTS,
     NOTIFICATION_QUEUES.APPOINTMENTS,
-    handleAppointment
+    handleAppointment,
+    'topic'
   );
 
   await subscribeWithRetry(
@@ -163,7 +176,8 @@ export async function startConsumers(): Promise<void> {
     NOTIFICATION_QUEUES.MOOD,
     async (payload) => {
       console.log(`[${EXCHANGES.MOOD}] received:`, JSON.stringify(payload));
-    }
+    },
+    'topic'
   );
 
   await subscribeWithRetry(EXCHANGES.AI, NOTIFICATION_QUEUES.AI, handleAi);

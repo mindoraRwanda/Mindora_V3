@@ -203,13 +203,14 @@ describe('sendPushNotification', () => {
     await sendPushNotification('user-1', 'Hello', 'World');
     expect(mocks.mockSend).toHaveBeenCalledWith({
       token: 'device-token-xyz',
-      notification: { title: 'Hello', body: 'World' },
+      data: { title: 'Hello', body: 'World' },
     });
   });
 
-  it('calls User Service with the correct preferences URL', async () => {
+  it('calls User Service with the correct preferences URL and service auth', async () => {
     process.env.FIREBASE_SERVICE_ACCOUNT_JSON = '{"type":"service_account"}';
     process.env.USER_SERVICE_URL = 'http://user-service:3002';
+    process.env.INTERNAL_SERVICE_TOKEN = 'test-service-token';
     mocks.mockInitializeApp.mockReturnValue({ name: 'app' });
     mocks.mockSend.mockResolvedValue('msg-id');
     const fetchMock = vi.fn().mockResolvedValue({
@@ -221,12 +222,14 @@ describe('sendPushNotification', () => {
     initFirebase();
     await sendPushNotification('user-42', 'Title', 'Body');
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://user-service:3002/api/v1/users/user-42/preferences'
+      'http://user-service:3002/api/v1/users/user-42/preferences',
+      { headers: { Authorization: 'Bearer test-service-token' } }
     );
   });
 
   it('uses default USER_SERVICE_URL when env var is not set', async () => {
     process.env.FIREBASE_SERVICE_ACCOUNT_JSON = '{"type":"service_account"}';
+    process.env.INTERNAL_SERVICE_TOKEN = 'test-service-token';
     mocks.mockInitializeApp.mockReturnValue({ name: 'app' });
     mocks.mockSend.mockResolvedValue('msg-id');
     const fetchMock = vi.fn().mockResolvedValue({
@@ -238,7 +241,8 @@ describe('sendPushNotification', () => {
     initFirebase();
     await sendPushNotification('user-5', 'T', 'B');
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:3002/api/v1/users/user-5/preferences'
+      'http://localhost:3002/api/v1/users/user-5/preferences',
+      { headers: { Authorization: 'Bearer test-service-token' } }
     );
   });
 

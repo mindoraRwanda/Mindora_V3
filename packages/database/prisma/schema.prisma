@@ -74,6 +74,7 @@ model PatientProfile {
   bio                String?
   timezone           String   @default("UTC")
   languagePreference String   @default("en") @map("language_preference")
+  fcmToken           String?  @map("fcm_token")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
@@ -96,6 +97,7 @@ model TherapistProfile {
   specialisation      String?
   languages           String[] @default([])
   isAcceptingPatients Boolean  @default(true) @map("is_accepting_patients")
+  fcmToken            String?  @map("fcm_token")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 

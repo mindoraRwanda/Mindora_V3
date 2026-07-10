@@ -176,14 +176,25 @@ async function withRetry(
 /**
  * Registers a handler for retry reprocessing and subscribes to the exchange.
  * Wraps every delivery with exponential-backoff retry + DLQ fallback.
+ *
+ * `type` must match whatever type the exchange's publisher declares it as
+ * (e.g. appointment-service and mood-tracking-service publish via
+ * publishToExchange, which asserts 'topic') — RabbitMQ rejects redeclaring
+ * an existing exchange under a different type.
  */
 export async function subscribeWithRetry(
   exchange: string,
   queue: string,
-  handler: Handler
+  handler: Handler,
+  type: 'fanout' | 'topic' = 'fanout'
 ): Promise<void> {
   exchangeHandlers.set(exchange, handler);
-  await subscribeToExchange(exchange, queue, async (payload) => {
-    await withRetry(exchange, payload, handler);
-  });
+  await subscribeToExchange(
+    exchange,
+    queue,
+    async (payload) => {
+      await withRetry(exchange, payload, handler);
+    },
+    type
+  );
 }

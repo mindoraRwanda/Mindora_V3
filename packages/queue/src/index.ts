@@ -91,13 +91,22 @@ export async function subscribeToExchange(
   exchange: string,
   queue: string,
   handler: MessageHandler,
+  type: 'fanout' | 'topic' = 'fanout',
   url?: string
 ): Promise<void> {
   const connection = await connect(url);
   const channel = await connection.createChannel();
-  await channel.assertExchange(exchange, 'fanout', { durable: true });
+  await channel.assertExchange(exchange, type, { durable: true });
   await channel.assertQueue(queue, { durable: true });
-  await channel.bindQueue(queue, exchange, '');
+  // Fanout ignores routing keys entirely, so an empty binding key receives
+  // everything. For topic exchanges (used by publishToExchange callers),
+  // '#' is the wildcard that matches every routing key — this package has
+  // no per-routing-key filtering on the consume side, only exchange-wide
+  // fan-in, so callers that need a topic exchange must declare it here too:
+  // asserting the same exchange name with two different types (e.g. a
+  // publisher using 'topic' while this asserts 'fanout') makes RabbitMQ
+  // throw PRECONDITION_FAILED on whichever side connects second.
+  await channel.bindQueue(queue, exchange, type === 'topic' ? '#' : '');
   await channel.consume(queue, async (message: ConsumeMessage | null) => {
     if (!message) return;
     try {

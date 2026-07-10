@@ -1,6 +1,7 @@
 import { prisma, Prisma } from '@mindora/database';
 import {
   therapistListQuerySchema,
+  updateFcmTokenSchema,
   updateProfileSchema,
 } from '@mindora/validation';
 import { Router } from 'express';
@@ -69,6 +70,109 @@ userRouter.get('/internal/users/:id', verifyJwt, async (req, res) => {
     res.status(404).json({ message: 'User not found' });
   }
 });
+
+// Called by Notification Service directly on USER_SERVICE_URL, bypassing
+// Kong — so it needs the full '/api/v1/users/...' path since there's no
+// Kong route in front of it to strip the prefix. Also mounted at the
+// stripped path so the user themselves can reach it through Kong's public
+// user-api route (which does strip '/api/v1/users'). Requires either a
+// SERVICE-role JWT or the caller's own userId to match the requested :userId.
+userRouter.get(
+  ['/api/v1/users/:userId/preferences', '/:userId/preferences'],
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    const userId = req.params.userId as string;
+
+    if (
+      authReq.user?.role !== 'SERVICE' &&
+      authReq.user?.userId !== userId
+    ) {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    try {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        res.status(404).json({ message: 'User not found' });
+        return;
+      }
+
+      let fcmToken: string | null = null;
+      let userName: string | null = null;
+      if (user.role === 'PATIENT') {
+        const profile = await prisma.patientProfile.findUnique({
+          where: { userId },
+        });
+        fcmToken = profile?.fcmToken ?? null;
+        userName = profile?.userName ?? null;
+      } else if (user.role === 'THERAPIST') {
+        const profile = await prisma.therapistProfile.findUnique({
+          where: { userId },
+        });
+        fcmToken = profile?.fcmToken ?? null;
+        userName = profile?.userName ?? null;
+      }
+
+      res.status(200).json({
+        fcmToken,
+        email: user.email,
+        phoneNumber: null,
+        userName,
+      });
+    } catch {
+      // Malformed id (not a UUID) or lookup failure — treat as not found,
+      // matching /internal/users/:id's convention.
+      res.status(404).json({ message: 'User not found' });
+    }
+  })
+);
+
+userRouter.put(
+  '/me/fcm-token',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+
+    const parsed = updateFcmTokenSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { userId, role } = authReq.user;
+    const { fcmToken } = parsed.data;
+
+    if (role === 'PATIENT') {
+      await prisma.patientProfile.update({
+        where: { userId },
+        data: { fcmToken },
+      });
+    } else if (role === 'THERAPIST') {
+      await prisma.therapistProfile.update({
+        where: { userId },
+        data: { fcmToken },
+      });
+    } else {
+      res
+        .status(400)
+        .json({ message: 'FCM token registration not supported for this role' });
+      return;
+    }
+
+    res.status(200).json({ message: 'FCM token updated' });
+  })
+);
 
 userRouter.get(
   '/me',

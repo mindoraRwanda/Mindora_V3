@@ -17,8 +17,10 @@ export {
 } from './community.js';
 export {
   therapistListQuerySchema,
+  updateFcmTokenSchema,
   updateProfileSchema,
   type TherapistListQueryDto,
+  type UpdateFcmTokenDto,
   type UpdateProfileDto,
 } from './profile.js';
 export {
