@@ -30,41 +30,83 @@ routes:
     paths: [/api/v1/auth/health]
     strip_path: false
     methods: [GET]
+  # Public auth endpoints — no JWT plugin (you can't present a token you
+  # don't have yet to register/login/refresh/reset). Each route matches its
+  # full exact path (needed so Kong can tell it apart from the JWT-protected
+  # auth-api route sharing the same /api/v1/auth prefix) but forwards with
+  # strip_path: false + a request-transformer rewrite, since strip_path on an
+  # exact full-path match strips the entire URI, leaving nothing to route on
+  # at the service (was: 404 "Cannot POST /" — see BACKEND_COMPLETE.md).
   - name: auth-register
     service: auth-service
     paths: [/api/v1/auth/register]
-    strip_path: true
+    strip_path: false
     methods: [POST]
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /register
   - name: auth-login
     service: auth-service
     paths: [/api/v1/auth/login]
-    strip_path: true
+    strip_path: false
     methods: [POST]
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /login
   - name: auth-refresh
     service: auth-service
     paths: [/api/v1/auth/refresh]
-    strip_path: true
+    strip_path: false
     methods: [POST]
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /refresh
   - name: auth-forgot-password
     service: auth-service
     paths: [/api/v1/auth/forgot-password]
-    strip_path: true
+    strip_path: false
     methods: [POST]
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /forgot-password
   - name: auth-reset-password
     service: auth-service
     paths: [/api/v1/auth/reset-password]
-    strip_path: true
+    strip_path: false
     methods: [POST]
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /reset-password
   - name: auth-oauth-google
     service: auth-service
     paths: [/api/v1/auth/oauth/google]
-    strip_path: true
+    strip_path: false
     methods: [GET]
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /oauth/google
   - name: auth-oauth-google-callback
     service: auth-service
     paths: [/api/v1/auth/oauth/google/callback]
-    strip_path: true
+    strip_path: false
     methods: [GET]
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /oauth/google/callback
   - name: user-health
     service: user-service
     paths: [/api/v1/users/health]

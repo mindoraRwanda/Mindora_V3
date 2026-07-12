@@ -204,3 +204,11 @@ planned event name. To enable SMS for production:
   INTERNAL_SERVICE_TOKEN. Confirmed working (200 on Test 1). End-to-end author
   resolution still returning Unknown — likely profile table population issue,
   not auth issue.
+Auth Service Kong routing: Auth Service uses 7 narrow per-endpoint routes 
+alongside the broad auth-api route. The narrow routes (auth-register, 
+auth-login, auth-refresh, auth-forgot-password, auth-reset-password, 
+auth-oauth-google, auth-oauth-google-callback) exist specifically to exempt 
+public endpoints from the JWT plugin on the broader auth-api route. They use 
+strip_path: false + request-transformer to rewrite the URI to the flat path 
+the service expects. Do not remove these routes or collapse them into auth-api 
+without first handling JWT exemption separately.
