@@ -4,7 +4,8 @@ import {
   createAppointmentConfirmedEvent,
   type AppointmentSessionType,
 } from '@mindora/events';
-import { prisma, Prisma } from '@mindora/database';
+import { prisma } from '../lib/prisma.js';
+import { Prisma } from '../generated/prisma/index.js';
 import {
   appointmentListQuerySchema,
   availabilityQuerySchema,
@@ -38,6 +39,24 @@ function routeParam(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
 }
 
+// Appointment Service has no local view of therapist_profiles (mindora_user)
+// or users (mindora_auth) — verifying a therapistId belongs to an actual
+// THERAPIST goes through Kong to Auth Service's internal endpoint instead of
+// a direct database join.
+async function isTherapist(userId: string): Promise<boolean> {
+  const base = process.env.KONG_URL ?? 'http://localhost:8000';
+  try {
+    const res = await fetch(`${base}/internal/auth/users/${userId}`, {
+      headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
+    });
+    if (!res.ok) return false;
+    const authUser = (await res.json()) as { role: string };
+    return authUser.role === 'THERAPIST';
+  } catch {
+    return false;
+  }
+}
+
 appointmentRouter.get(
   '/availability/:therapistId',
   authenticatedRouteLimiter,
@@ -54,10 +73,7 @@ appointmentRouter.get(
       return;
     }
 
-    const therapist = await prisma.therapistProfile.findUnique({
-      where: { userId: therapistId },
-    });
-    if (!therapist) {
+    if (!(await isTherapist(therapistId))) {
       res.status(404).json({ message: 'Therapist not found' });
       return;
     }
@@ -119,10 +135,7 @@ appointmentRouter.post(
       return;
     }
 
-    const therapist = await prisma.therapistProfile.findUnique({
-      where: { userId: parsed.data.therapistId },
-    });
-    if (!therapist) {
+    if (!(await isTherapist(parsed.data.therapistId))) {
       res.status(404).json({ message: 'Therapist not found' });
       return;
     }

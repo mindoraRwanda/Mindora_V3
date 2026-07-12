@@ -1,4 +1,4 @@
-import type { Appointment } from '@mindora/database';
+import type { Appointment } from '../generated/prisma/index.js';
 
 export function serializeAppointment(appointment: Appointment) {
   return {

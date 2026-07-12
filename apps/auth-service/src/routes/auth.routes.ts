@@ -1,4 +1,4 @@
-import { prisma } from '@mindora/database';
+import { prisma } from '../lib/prisma.js';
 import { blacklistToken, verifyAccessToken } from '@mindora/auth-middleware';
 import { publish } from '@mindora/queue';
 import {
@@ -298,6 +298,43 @@ authRouter.get(
       email: authReq.user.email,
       role: authReq.user.role,
     });
+  }
+);
+
+// INTERNAL SERVICE ENDPOINT — not exposed through a public Kong auth-api
+// route. Requires SERVICE role JWT in Authorization header. Same pattern as
+// User Service's GET /internal/users/:id: returns 404 rather than 500 for a
+// malformed (non-UUID) id, since that's an unauthenticated-shaped input
+// error, not a server fault.
+// SECURITY TODO: non-expiring service token in use — replace with rotating
+// credentials via AWS Secrets Manager before production deployment.
+// See: BACKEND_COMPLETE.md → "Known Security Limitations"
+authRouter.get(
+  '/internal/auth/users/:id',
+  authenticate,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const id = req.params.id as string;
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id },
+        select: { id: true, email: true, role: true },
+      });
+      if (!user) {
+        res.status(404).json({ message: 'User not found' });
+        return;
+      }
+      res.status(200).json(user);
+    } catch {
+      // Malformed id (not a UUID) or lookup failure — treat as not found
+      res.status(404).json({ message: 'User not found' });
+    }
   }
 );
 

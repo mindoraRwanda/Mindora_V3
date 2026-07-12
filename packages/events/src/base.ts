@@ -1,9 +1,17 @@
+import { z } from 'zod';
+
 export interface BaseEvent {
   /** UUID v4 — unique per event emission */
   eventId: string;
   /** ISO 8601 timestamp of when the event occurred */
   occurredAt: string;
 }
+
+/** Runtime counterpart of {@link BaseEvent} — validate before trusting a consumed message. */
+export const baseEventSchema = z.object({
+  eventId: z.string().uuid(),
+  occurredAt: z.string().datetime(),
+});
 
 export const QUEUES = {
   COMMUNITY_REPORTED: 'community.reported',

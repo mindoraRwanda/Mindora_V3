@@ -1,10 +1,15 @@
-import { EXCHANGES } from '@mindora/events';
+import {
+  EXCHANGES,
+  aiCrisisEventSchema,
+  appointmentDomainEventSchema,
+  communityDomainEventSchema,
+  messageReceivedEventSchema,
+  moodDomainEventSchema,
+} from '@mindora/events';
 import type {
   AppointmentBookedEvent,
   AppointmentConfirmedEvent,
   AppointmentCancelledEvent,
-  MessageReceivedEvent,
-  CommunityReplyEvent,
 } from '@mindora/events';
 import { sendPushNotification } from './fcm.js';
 import { getUserName, sendEmailToUser } from './email.js';
@@ -21,6 +26,7 @@ import {
   appointmentCancelledTemplate,
 } from './emailTemplates.js';
 import { subscribeWithRetry } from './retry.js';
+import { InvalidEventPayloadError } from './errors.js';
 
 const NOTIFICATION_QUEUES = {
   APPOINTMENTS: 'notification.appointments',
@@ -112,7 +118,14 @@ function sessionTypeLabel(
 }
 
 async function handleAppointment(payload: unknown): Promise<void> {
-  const event = payload as
+  const parsed = appointmentDomainEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid appointment event: ${parsed.error.message}`,
+      EXCHANGES.APPOINTMENTS
+    );
+  }
+  const event = parsed.data as
     | AppointmentBookedEvent
     | AppointmentConfirmedEvent
     | AppointmentCancelledEvent;
@@ -204,7 +217,14 @@ async function handleAppointment(payload: unknown): Promise<void> {
 }
 
 async function handleMessage(payload: unknown): Promise<void> {
-  const event = payload as MessageReceivedEvent;
+  const parsed = messageReceivedEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid message event: ${parsed.error.message}`,
+      EXCHANGES.MESSAGES
+    );
+  }
+  const event = parsed.data;
   const preview =
     event.content.length > 80
       ? `${event.content.slice(0, 77)}…`
@@ -220,9 +240,16 @@ async function handleMessage(payload: unknown): Promise<void> {
 }
 
 async function handleCommunity(payload: unknown): Promise<void> {
+  const parsed = communityDomainEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid community event: ${parsed.error.message}`,
+      EXCHANGES.COMMUNITY
+    );
+  }
   // Only reply events trigger a push; reported events are admin-facing
-  if (!('replyId' in (payload as object))) return;
-  const event = payload as CommunityReplyEvent;
+  if (!('replyId' in parsed.data)) return;
+  const event = parsed.data;
   const prefs = await getUserPreferences(event.postAuthorId);
   await sendPushIfEnabled(
     event.postAuthorId,
@@ -236,16 +263,33 @@ async function handleCommunity(payload: unknown): Promise<void> {
 async function handleAi(payload: unknown): Promise<void> {
   console.log(`[${EXCHANGES.AI}] received:`, JSON.stringify(payload));
 
-  if ('crisisLevel' in (payload as object)) {
-    const crisis = payload as { userId: string; crisisLevel: number };
-    const prefs = await getUserPreferences(crisis.userId);
-    await sendSmsIfEnabled(
-      crisis.userId,
-      `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`,
-      'ai.crisis',
-      prefs
+  const parsed = aiCrisisEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid AI event: ${parsed.error.message}`,
+      EXCHANGES.AI
     );
   }
+  const crisis = parsed.data;
+  const prefs = await getUserPreferences(crisis.userId);
+  await sendSmsIfEnabled(
+    crisis.userId,
+    `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`,
+    'ai.crisis',
+    prefs
+  );
+}
+
+async function handleMood(payload: unknown): Promise<void> {
+  console.log(`[${EXCHANGES.MOOD}] received:`, JSON.stringify(payload));
+  const parsed = moodDomainEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid mood event: ${parsed.error.message}`,
+      EXCHANGES.MOOD
+    );
+  }
+  // No push/email/SMS wired to mood events yet — validation only, for now.
 }
 
 export async function startConsumers(): Promise<void> {
@@ -276,9 +320,7 @@ export async function startConsumers(): Promise<void> {
   await subscribeWithRetry(
     EXCHANGES.MOOD,
     NOTIFICATION_QUEUES.MOOD,
-    async (payload) => {
-      console.log(`[${EXCHANGES.MOOD}] received:`, JSON.stringify(payload));
-    },
+    handleMood,
     'topic'
   );
 

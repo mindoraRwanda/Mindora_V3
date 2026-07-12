@@ -4,7 +4,8 @@ import {
   createMoodStreakEvent,
   MOOD_STREAK_MILESTONES,
 } from '@mindora/events';
-import { prisma, Prisma } from '@mindora/database';
+import { prisma } from '../lib/prisma.js';
+import { Prisma } from '../generated/prisma/index.js';
 import { logMoodSchema, moodHistoryQuerySchema } from '@mindora/validation';
 import { Router } from 'express';
 import { averageScore, shouldPublishMoodConcern } from '../lib/concern.js';

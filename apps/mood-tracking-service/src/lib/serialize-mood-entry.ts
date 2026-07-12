@@ -1,4 +1,4 @@
-import type { MoodEntry } from '@mindora/database';
+import type { MoodEntry } from '../generated/prisma/index.js';
 import { decryptJournalNote } from './journal-crypto.js';
 
 export function serializeMoodEntry(

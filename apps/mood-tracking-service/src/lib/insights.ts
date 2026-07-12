@@ -1,4 +1,4 @@
-import { prisma } from '@mindora/database';
+import { prisma } from './prisma.js';
 
 export type TrendDirection = 'improving' | 'declining' | 'stable';
 

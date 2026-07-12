@@ -24,7 +24,6 @@ vi.mock('ioredis', () => {
   return { default: Redis };
 });
 
-const mockTherapistFindUnique = vi.fn();
 const mockAppointmentFindMany = vi.fn();
 const mockAppointmentFindUnique = vi.fn();
 const mockAppointmentCount = vi.fn();
@@ -35,11 +34,8 @@ const mockTransaction = vi.fn();
 const mockPublishAppointmentEvent = vi.fn();
 const mockIsBlacklisted = vi.fn();
 
-vi.mock('@mindora/database', () => ({
+vi.mock('../lib/prisma.js', () => ({
   prisma: {
-    therapistProfile: {
-      findUnique: (...args: unknown[]) => mockTherapistFindUnique(...args),
-    },
     appointment: {
       findMany: (...args: unknown[]) => mockAppointmentFindMany(...args),
       findUnique: (...args: unknown[]) => mockAppointmentFindUnique(...args),
@@ -50,16 +46,10 @@ vi.mock('@mindora/database', () => ({
     $transaction: (...args: unknown[]) => mockTransaction(...args),
     $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
   },
-  Prisma: {
-    PrismaClientKnownRequestError: class PrismaClientKnownRequestError extends Error {
-      code: string;
-      constructor(message: string, code: string) {
-        super(message);
-        this.code = code;
-      }
-    },
-  },
 }));
+
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
 
 vi.mock('../middleware/authenticate.js', () => ({
   verifyJwt: (req, res, next) => {
@@ -165,7 +155,14 @@ describe('POST /', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsBlacklisted.mockResolvedValue(false);
-    mockTherapistFindUnique.mockResolvedValue({ userId: therapistId });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: therapistId,
+        email: 'therapist@example.com',
+        role: 'THERAPIST',
+      }),
+    });
     mockPublishAppointmentEvent.mockResolvedValue(undefined);
   });
 

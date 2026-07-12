@@ -148,6 +148,22 @@ routes:
           minute: 300
           policy: local
 
+  # Internal service-to-service lookup (e.g. user-service backfilling
+  # role/email onto profile rows). Not part of the public auth-api route —
+  # requires a SERVICE-role JWT, checked by auth-service itself after Kong
+  # validates the signature. Same pattern as user-internal above.
+  - name: auth-internal
+    service: auth-service
+    paths: [/internal/auth]
+    strip_path: false
+    methods: [GET]
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 300
+          policy: local
+
   - name: appointment-api
     service: appointment-service
     paths: [/api/v1/appointments]

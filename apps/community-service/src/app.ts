@@ -6,6 +6,10 @@ import { publicRouteLimiter } from './middleware/rate-limit.js';
 
 const app = express();
 
+// Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
+// real client IP from X-Forwarded-For instead of Kong's own container IP.
+app.set('trust proxy', 1);
+
 app.use(express.json());
 
 // Swagger docs

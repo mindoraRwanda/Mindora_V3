@@ -1,4 +1,10 @@
-import type { IsoDateTimeString, UuidString, WithMetadata } from '../common.js';
+import { z } from 'zod';
+import {
+  eventMetadataSchema,
+  type IsoDateTimeString,
+  type UuidString,
+  type WithMetadata,
+} from '../common.js';
 import type { APPOINTMENT_ROUTING_KEYS } from './constants.js';
 
 export const APPOINTMENT_SESSION_TYPES = [
@@ -67,3 +73,52 @@ export type AppointmentDomainEvent =
   | AppointmentConfirmedEvent
   | AppointmentCancelledEvent
   | AppointmentCompletedEvent;
+
+const appointmentSlotPayloadSchema = z.object({
+  appointmentId: z.string().uuid(),
+  patientId: z.string().uuid(),
+  therapistId: z.string().uuid(),
+  slotStart: z.string().datetime(),
+  slotEnd: z.string().datetime(),
+  sessionType: z.enum(APPOINTMENT_SESSION_TYPES),
+});
+
+export const appointmentBookedEventSchema = eventMetadataSchema.merge(
+  appointmentSlotPayloadSchema.extend({
+    eventType: z.literal('appointment.booked'),
+    status: z.literal('PENDING'),
+  })
+);
+
+export const appointmentConfirmedEventSchema = eventMetadataSchema.merge(
+  appointmentSlotPayloadSchema.extend({
+    eventType: z.literal('appointment.confirmed'),
+    status: z.literal('CONFIRMED'),
+    confirmedByUserId: z.string().uuid(),
+  })
+);
+
+export const appointmentCancelledEventSchema = eventMetadataSchema.merge(
+  appointmentSlotPayloadSchema.extend({
+    eventType: z.literal('appointment.cancelled'),
+    status: z.literal('CANCELLED'),
+    cancelledByUserId: z.string().uuid(),
+    cancellationReason: z.string(),
+  })
+);
+
+export const appointmentCompletedEventSchema = eventMetadataSchema.merge(
+  appointmentSlotPayloadSchema.extend({
+    eventType: z.literal('appointment.completed'),
+    status: z.literal('COMPLETED'),
+    completedByUserId: z.string().uuid(),
+  })
+);
+
+/** Matches any event published to the mindora.appointments exchange. */
+export const appointmentDomainEventSchema = z.union([
+  appointmentBookedEventSchema,
+  appointmentConfirmedEventSchema,
+  appointmentCancelledEventSchema,
+  appointmentCompletedEventSchema,
+]);

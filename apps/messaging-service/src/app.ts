@@ -14,6 +14,10 @@ const SERVICE_NAME = 'messaging-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/messaging/health';
 const app = express();
 
+// Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
+// real client IP from X-Forwarded-For instead of Kong's own container IP.
+app.set('trust proxy', 1);
+
 app.use(express.json());
 
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));

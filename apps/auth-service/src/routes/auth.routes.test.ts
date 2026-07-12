@@ -36,7 +36,7 @@ const mockStoreReset = vi.fn();
 const mockGetResetUser = vi.fn();
 const mockDeleteReset = vi.fn();
 
-vi.mock('@mindora/database', () => ({
+vi.mock('../lib/prisma.js', () => ({
   prisma: {
     user: {
       findUnique: (...args: unknown[]) => mockFindUnique(...args),

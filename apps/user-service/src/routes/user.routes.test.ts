@@ -32,7 +32,7 @@ const mockTherapistFindMany = vi.fn();
 const mockTherapistCount = vi.fn();
 const mockIsBlacklisted = vi.fn();
 
-vi.mock('@mindora/database', () => ({
+vi.mock('../lib/prisma.js', () => ({
   prisma: {
     patientProfile: {
       findUnique: (...args: unknown[]) => mockPatientFindUnique(...args),
@@ -45,7 +45,6 @@ vi.mock('@mindora/database', () => ({
       count: (...args: unknown[]) => mockTherapistCount(...args),
     },
   },
-  Prisma: {},
 }));
 
 vi.mock('@mindora/auth-middleware', async (importOriginal) => {

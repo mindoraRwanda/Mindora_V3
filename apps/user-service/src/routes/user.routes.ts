@@ -1,4 +1,4 @@
-import { prisma, Prisma } from '@mindora/database';
+import { prisma } from '../lib/prisma.js';
 import {
   therapistListQuerySchema,
   updateFcmTokenSchema,
@@ -12,6 +12,7 @@ import {
   type AuthenticatedRequest,
 } from '../middleware/authenticate.js';
 import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
+import { Prisma } from '../generated/prisma/index.js';
 
 export const userRouter = Router();
 
@@ -21,6 +22,29 @@ const GATEWAY_HEALTH_PATH = '/api/v1/users/health';
 // Opt-out model — matches the column default in schema.prisma. Used when a
 // profile's notificationPreferences is somehow null/absent.
 const DEFAULT_NOTIFICATION_PREFERENCES = { push: true, email: true, sms: true };
+
+// User Service no longer has a users table (that lives in Auth Service's
+// isolated 'mindora_auth' database) — role/email are denormalized onto the
+// profile tables for the common case, but this is the fallback for when
+// a profile doesn't exist yet (e.g. ADMIN, who never gets one) or a
+// profile's email hasn't been backfilled. Always through Kong, never
+// auth-service directly, per the internal-service-call convention.
+async function fetchAuthUser(
+  userId: string
+): Promise<{ id: string; email: string; role: string } | null> {
+  const base = process.env.KONG_URL ?? 'http://localhost:8000';
+  try {
+    const res = await fetch(`${base}/internal/auth/users/${userId}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { id: string; email: string; role: string };
+  } catch {
+    return null;
+  }
+}
 
 const healthResponse = () => ({
   status: 'ok',
@@ -50,26 +74,34 @@ userRouter.get('/internal/users/:id', verifyJwt, async (req, res) => {
   const id = req.params.id as string;
 
   try {
-    const user = await prisma.user.findUnique({ where: { id } });
-    if (!user) {
-      res.status(404).json({ message: 'User not found' });
+    const patientProfile = await prisma.patientProfile.findUnique({
+      where: { userId: id },
+    });
+    if (patientProfile) {
+      res.status(200).json({ id, userName: patientProfile.userName ?? null });
       return;
     }
 
-    let userName: string | null = null;
-    if (user.role === 'PATIENT') {
-      const profile = await prisma.patientProfile.findUnique({
-        where: { userId: id },
-      });
-      userName = profile?.userName ?? null;
-    } else if (user.role === 'THERAPIST') {
-      const profile = await prisma.therapistProfile.findUnique({
-        where: { userId: id },
-      });
-      userName = profile?.userName ?? null;
+    const therapistProfile = await prisma.therapistProfile.findUnique({
+      where: { userId: id },
+    });
+    if (therapistProfile) {
+      res
+        .status(200)
+        .json({ id, userName: therapistProfile.userName ?? null });
+      return;
     }
 
-    res.status(200).json({ id: user.id, userName });
+    // No profile row (e.g. ADMIN, who never gets one) — fall back to Auth
+    // Service to distinguish "exists, just no profile" (200, userName: null,
+    // matching the original prisma.user-backed behavior) from "genuinely
+    // doesn't exist" (404).
+    const authUser = await fetchAuthUser(id);
+    if (!authUser) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    res.status(200).json({ id, userName: null });
   } catch {
     // Malformed id (not a UUID) or lookup failure — treat as not found
     res.status(404).json({ message: 'User not found' });
@@ -99,39 +131,48 @@ userRouter.get(
     }
 
     try {
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (!user) {
-        res.status(404).json({ message: 'User not found' });
+      const patientProfile = await prisma.patientProfile.findUnique({
+        where: { userId },
+      });
+      const therapistProfile = patientProfile
+        ? null
+        : await prisma.therapistProfile.findUnique({ where: { userId } });
+      const profile = patientProfile ?? therapistProfile;
+
+      if (!profile) {
+        // No profile row (e.g. ADMIN) or a genuinely nonexistent user —
+        // Auth Service is the only place left to tell these apart.
+        const authUser = await fetchAuthUser(userId);
+        if (!authUser) {
+          res.status(404).json({ message: 'User not found' });
+          return;
+        }
+        res.status(200).json({
+          fcmToken: null,
+          email: authUser.email,
+          phoneNumber: null,
+          userName: null,
+          notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
+        });
         return;
       }
 
-      let fcmToken: string | null = null;
-      let userName: string | null = null;
-      let notificationPreferences: unknown = DEFAULT_NOTIFICATION_PREFERENCES;
-      if (user.role === 'PATIENT') {
-        const profile = await prisma.patientProfile.findUnique({
-          where: { userId },
-        });
-        fcmToken = profile?.fcmToken ?? null;
-        userName = profile?.userName ?? null;
-        notificationPreferences =
-          profile?.notificationPreferences ?? DEFAULT_NOTIFICATION_PREFERENCES;
-      } else if (user.role === 'THERAPIST') {
-        const profile = await prisma.therapistProfile.findUnique({
-          where: { userId },
-        });
-        fcmToken = profile?.fcmToken ?? null;
-        userName = profile?.userName ?? null;
-        notificationPreferences =
-          profile?.notificationPreferences ?? DEFAULT_NOTIFICATION_PREFERENCES;
+      // email is backfilled onto the profile for the common case (no
+      // network call). Falls back to Auth Service only for profiles that
+      // predate the backfill and haven't been patched yet.
+      let email = profile.email;
+      if (!email) {
+        const authUser = await fetchAuthUser(userId);
+        email = authUser?.email ?? null;
       }
 
       res.status(200).json({
-        fcmToken,
-        email: user.email,
+        fcmToken: profile.fcmToken ?? null,
+        email,
         phoneNumber: null,
-        userName,
-        notificationPreferences,
+        userName: profile.userName ?? null,
+        notificationPreferences:
+          profile.notificationPreferences ?? DEFAULT_NOTIFICATION_PREFERENCES,
       });
     } catch {
       // Malformed id (not a UUID) or lookup failure — treat as not found,

@@ -1,6 +1,5 @@
 import { subscribe } from '@mindora/queue';
-import type { UserRole } from '@mindora/database';
-import { ensureProfileForUser } from './profile-provisioning.js';
+import { ensureProfileForUser, type UserRole } from './profile-provisioning.js';
 
 // NOTE: the spec for this called for a `mindora.auth` topic exchange with a
 // `user.registered` routing key, but @mindora/queue's subscribeToExchange
@@ -18,6 +17,7 @@ interface UserRegisteredEvent {
   userId: string;
   role: UserRole;
   userName: string;
+  email: string;
 }
 
 function isUserRegisteredEvent(
@@ -29,7 +29,8 @@ function isUserRegisteredEvent(
     record.event === EVENT_NAME &&
     typeof record.userId === 'string' &&
     typeof record.role === 'string' &&
-    typeof record.userName === 'string'
+    typeof record.userName === 'string' &&
+    typeof record.email === 'string'
   );
 }
 
@@ -43,13 +44,13 @@ export async function startUserRegisteredConsumer(): Promise<void> {
       return;
     }
 
-    const { userId, role, userName } = content;
+    const { userId, role, userName, email } = content;
 
     if (role === 'ADMIN') {
       return;
     }
 
-    const created = await ensureProfileForUser(userId, role, userName);
+    const created = await ensureProfileForUser(userId, role, userName, email);
     if (created) {
       console.log(
         `[user-service] Profile created for userId=${userId} role=${role} userName=${userName}`

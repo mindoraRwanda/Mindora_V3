@@ -59,7 +59,7 @@ const mockGetInsightsCache = vi.fn();
 const mockSetInsightsCache = vi.fn();
 const mockDeleteInsightsCache = vi.fn();
 
-vi.mock('@mindora/database', () => ({
+vi.mock('../lib/prisma.js', () => ({
   prisma: {
     moodEntry: {
       create: (...args: unknown[]) => mockMoodCreate(...args),
@@ -68,7 +68,6 @@ vi.mock('@mindora/database', () => ({
     },
     $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
   },
-  Prisma: {},
 }));
 
 vi.mock('../middleware/authenticate.js', () => ({

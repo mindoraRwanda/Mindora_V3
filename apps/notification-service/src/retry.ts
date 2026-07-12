@@ -1,5 +1,5 @@
 import { connect, subscribeToExchange } from '@mindora/queue';
-import { FatalNotificationError } from './errors.js';
+import { FatalNotificationError, InvalidEventPayloadError } from './errors.js';
 
 const DLQ = 'mindora.notifications.dlq';
 const REPROCESS_QUEUE = 'mindora.notifications.reprocess';
@@ -81,6 +81,16 @@ async function scheduleRetry(
   if (err instanceof FatalNotificationError) {
     console.error(
       `[retry] fatal notification error (${err.providerCode}) for exchange=${envelope.exchange} — routing to DLQ immediately`
+    );
+    await publishToDlq(envelope, err);
+    return;
+  }
+
+  // A payload that fails schema validation will fail the exact same way on
+  // every redelivery — skip retries and go straight to the DLQ.
+  if (err instanceof InvalidEventPayloadError) {
+    console.error(
+      `[retry] invalid event payload for exchange=${envelope.exchange} — routing to DLQ immediately: ${err.message}`
     );
     await publishToDlq(envelope, err);
     return;

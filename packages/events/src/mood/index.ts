@@ -5,8 +5,11 @@ export {
   type MoodRoutingKey,
 } from './constants.js';
 export { createMoodConcernEvent, createMoodStreakEvent } from './builders.js';
-export type {
-  MoodConcernEvent,
-  MoodDomainEvent,
-  MoodStreakEvent,
+export {
+  moodConcernEventSchema,
+  moodDomainEventSchema,
+  moodStreakEventSchema,
+  type MoodConcernEvent,
+  type MoodDomainEvent,
+  type MoodStreakEvent,
 } from './types.js';
