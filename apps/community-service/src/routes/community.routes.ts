@@ -337,6 +337,51 @@ router.post(
   }
 );
 
+/**
+ * @swagger
+ * /api/v1/community/groups/{id}/posts/{postId}/comments:
+ *   post:
+ *     summary: Comment on a post
+ *     tags: [Comments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The community group ID
+ *       - in: path
+ *         name: postId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The post ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [content]
+ *             properties:
+ *               content:
+ *                 type: object
+ *                 description: TipTap document JSON
+ *               isAnonymous:
+ *                 type: boolean
+ *                 default: false
+ *     responses:
+ *       201:
+ *         description: Comment created. Post's commentCount is incremented atomically alongside creation.
+ *       400:
+ *         description: Validation failed or invalid ID format
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Post not found in the specified group
+ */
 router.post(
   '/groups/:id/posts/:postId/comments',
   authenticatedRouteLimiter,
@@ -401,6 +446,67 @@ router.post(
   }
 );
 
+/**
+ * @swagger
+ * /api/v1/community/groups/{id}/posts/{postId}/react:
+ *   post:
+ *     summary: React to a post
+ *     description: >
+ *       Every post starts with all three reaction types present at count 0; reacting
+ *       atomically increments the matching type's counter. There is no per-user
+ *       reaction tracking — this is a simple aggregate counter, not a toggle.
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The community group ID (unused by this handler, but part of the path)
+ *       - in: path
+ *         name: postId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The post ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reactionType]
+ *             properties:
+ *               reactionType:
+ *                 type: string
+ *                 enum: [LIKE, HEART, SUPPORT]
+ *     responses:
+ *       200:
+ *         description: Updated reaction counts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 reactions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       type:
+ *                         type: string
+ *                         enum: [LIKE, HEART, SUPPORT]
+ *                       count:
+ *                         type: number
+ *       400:
+ *         description: Invalid post ID or reaction type not in [LIKE, HEART, SUPPORT]
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Post not found
+ */
 router.post(
   '/groups/:id/posts/:postId/react',
   authenticatedRouteLimiter,
@@ -455,6 +561,43 @@ router.post(
   }
 );
 
+/**
+ * @swagger
+ * /api/v1/community/reports:
+ *   post:
+ *     summary: Report a post or comment
+ *     description: >
+ *       Saves the report and publishes a `community.reported` event to the
+ *       `mindora.community` RabbitMQ exchange for moderation. The event publish is
+ *       fire-and-forget — a RabbitMQ outage does not fail the request, since the
+ *       report is already persisted.
+ *     tags: [Moderation]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [contentId, contentType, reason]
+ *             properties:
+ *               contentId:
+ *                 type: string
+ *                 description: Post or comment ID being reported
+ *               contentType:
+ *                 type: string
+ *                 enum: [POST, COMMENT]
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Report created (status defaults to PENDING)
+ *       400:
+ *         description: Missing fields, invalid contentType, or invalid contentId format
+ *       401:
+ *         description: Unauthorized
+ */
 router.post(
   '/reports',
   authenticatedRouteLimiter,
@@ -522,6 +665,62 @@ router.post(
     }
   }
 );
+/**
+ * @swagger
+ * /api/v1/community/groups/{id}/posts:
+ *   get:
+ *     summary: List posts in a community group
+ *     description: >
+ *       For non-anonymous posts, resolves the author's display name via an internal
+ *       call to User Service (through Kong). Anonymous posts always return
+ *       `userName: null`. Author resolution failures degrade to `userName: "Unknown"`
+ *       rather than failing the request.
+ *     tags: [Posts]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The community group ID
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           description: Max 50
+ *     responses:
+ *       200:
+ *         description: Paginated list of posts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 posts:
+ *                   type: array
+ *                   items:
+ *                     allOf:
+ *                       - $ref: '#/components/schemas/Post'
+ *                       - type: object
+ *                         properties:
+ *                           userName:
+ *                             type: string
+ *                             nullable: true
+ *                 total:
+ *                   type: number
+ *                 page:
+ *                   type: number
+ *                 limit:
+ *                   type: number
+ *       400:
+ *         description: Invalid group ID
+ */
 router.get(
   '/groups/:id/posts',
   publicRouteLimiter,

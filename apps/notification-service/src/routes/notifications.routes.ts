@@ -31,6 +31,61 @@ function toKigaliIso(date: Date | null): string | null {
     .replace('Z', '+03:00');
 }
 
+/**
+ * @swagger
+ * /api/v1/notifications/logs:
+ *   get:
+ *     summary: List notification delivery logs
+ *     description: >
+ *       Admin only. Paginated, filterable by userId/status/channel/eventType.
+ *       Each log's UTC createdAt/deliveredAt are returned alongside
+ *       createdAtKigali/deliveredAtKigali — the same instants converted to
+ *       Africa/Kigali (UTC+3, no DST) with the +03:00 offset baked into the string.
+ *     tags: [Logs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20, maximum: 100 }
+ *       - in: query
+ *         name: userId
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [delivered, failed, skipped] }
+ *       - in: query
+ *         name: channel
+ *         schema: { type: string, enum: [push, email, sms] }
+ *       - in: query
+ *         name: eventType
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Paginated notification logs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 logs:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/NotificationLog'
+ *                 total:
+ *                   type: integer
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden — admin only
+ */
 notificationsRouter.get(
   '/api/v1/notifications/logs',
   authenticatedRouteLimiter,

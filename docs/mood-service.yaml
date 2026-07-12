@@ -54,6 +54,7 @@ paths:
   /history:
     get:
       summary: Paginated mood history
+      description: Patient only — returns the authenticated patient's own entries.
       parameters:
         - name: page
           in: query
@@ -70,14 +71,27 @@ paths:
       responses:
         '200':
           description: History list
+        '401':
+          description: Unauthorized
+        '403':
+          description: Not a patient
 
   /insights:
     get:
       summary: Weekly trend insights (TimescaleDB time_bucket)
-      description: Cached in Redis `mood:{userId}:weekly` for 1 hour.
+      description: |
+        Patient only. Buckets the last 3 months of entries into 7-day windows via
+        TimescaleDB's `time_bucket()` SQL function, averaging mood/sleep/stress/energy
+        per bucket and comparing the two most recent buckets to derive a trend
+        direction (improving/declining/stable). Cached in Redis `mood:{userId}:weekly`
+        for 1 hour.
       responses:
         '200':
           description: Weekly buckets + trend direction
+        '401':
+          description: Unauthorized
+        '403':
+          description: Not a patient
 
   /report/{userId}:
     get:
@@ -91,15 +105,24 @@ paths:
       responses:
         '200':
           description: Summary
+        '401':
+          description: Unauthorized
         '403':
           description: Not a therapist
+        '404':
+          description: No mood data for this patient in the last 30 days
 
   /streak:
     get:
       summary: Current check-in streak
+      description: Patient only.
       responses:
         '200':
           description: Streak count
+        '401':
+          description: Unauthorized
+        '403':
+          description: Not a patient
 
 components:
   securitySchemes:
