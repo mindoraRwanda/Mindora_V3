@@ -30,6 +30,7 @@ const mockRefreshCreate = vi.fn();
 const mockRefreshUpdate = vi.fn();
 const mockRefreshUpdateMany = vi.fn();
 const mockUserUpdate = vi.fn();
+const mockUserCount = vi.fn();
 const mockIsBlacklisted = vi.fn();
 const mockBlacklistToken = vi.fn();
 const mockStoreReset = vi.fn();
@@ -42,6 +43,7 @@ vi.mock('../lib/prisma.js', () => ({
       findUnique: (...args: unknown[]) => mockFindUnique(...args),
       create: (...args: unknown[]) => mockUserCreate(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
+      count: (...args: unknown[]) => mockUserCount(...args),
     },
     refreshToken: {
       findFirst: (...args: unknown[]) => mockFindFirst(...args),
@@ -327,6 +329,68 @@ describe('GET /me', () => {
     const response = await request(app)
       .get('/me')
       .set('Authorization', `Bearer ${expiredToken}`);
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe('GET /internal/auth/analytics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  function serviceToken(): string {
+    return signAccessToken({
+      userId: 'user-service',
+      email: 'service@mindora.internal',
+      role: 'SERVICE',
+    });
+  }
+
+  it('returns totalUsers and activeUsersLast30Days', async () => {
+    mockUserCount.mockResolvedValueOnce(50).mockResolvedValueOnce(12);
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/auth/analytics')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ totalUsers: 50, activeUsersLast30Days: 12 });
+    expect(mockUserCount).toHaveBeenCalledTimes(2);
+    // Second call is the "active" filter — createdAt OR refreshTokens.some within 30 days
+    expect(mockUserCount.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({ createdAt: expect.any(Object) }),
+            expect.objectContaining({ refreshTokens: expect.any(Object) }),
+          ]),
+        }),
+      })
+    );
+  });
+
+  it('rejects a non-SERVICE (ADMIN) token with 403', async () => {
+    const adminToken = signAccessToken({
+      userId: 'admin-1',
+      email: 'admin@example.com',
+      role: 'ADMIN',
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/auth/analytics')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(403);
+    expect(mockUserCount).not.toHaveBeenCalled();
+  });
+
+  it('rejects a request with no token with 401', async () => {
+    const app = createApp();
+    const response = await request(app).get('/internal/auth/analytics');
 
     expect(response.status).toBe(401);
   });

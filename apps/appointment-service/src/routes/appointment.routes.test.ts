@@ -132,6 +132,22 @@ function therapistToken() {
   );
 }
 
+function serviceToken() {
+  return jwt.sign(
+    {
+      sub: 'admin-service',
+      email: 'service@mindora.internal',
+      role: 'SERVICE',
+    },
+    process.env.JWT_SECRET!,
+    {
+      expiresIn: '15m',
+      issuer: process.env.JWT_ISSUER,
+      jwtid: randomUUID(),
+    }
+  );
+}
+
 function sampleAppointment(overrides: Record<string, unknown> = {}) {
   const slotStart = new Date('2026-06-10T10:00:00.000Z');
   const slotEnd = new Date('2026-06-10T11:00:00.000Z');
@@ -349,5 +365,45 @@ describe('POST /:id/rate', () => {
 describe('SlotConflictError', () => {
   it('is recognized as a slot conflict', () => {
     expect(new SlotConflictError().name).toBe('SlotConflictError');
+  });
+});
+
+describe('GET /internal/appointments/analytics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  it('returns totalAppointments and completedAppointments', async () => {
+    mockAppointmentCount.mockResolvedValueOnce(30).mockResolvedValueOnce(18);
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/appointments/analytics')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ totalAppointments: 30, completedAppointments: 18 });
+    expect(mockAppointmentCount).toHaveBeenCalledTimes(2);
+    expect(mockAppointmentCount.mock.calls[1]?.[0]).toEqual({
+      where: { status: 'COMPLETED' },
+    });
+  });
+
+  it('rejects a non-SERVICE (PATIENT) token with 403', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/appointments/analytics')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockAppointmentCount).not.toHaveBeenCalled();
+  });
+
+  it('rejects a request with no token with 401', async () => {
+    const app = createApp();
+    const response = await request(app).get('/internal/appointments/analytics');
+
+    expect(response.status).toBe(401);
   });
 });

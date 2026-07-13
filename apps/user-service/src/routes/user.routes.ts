@@ -71,6 +71,35 @@ userRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as /internal/users/:id
+// below, but registered BEFORE it: Express matches routes in registration
+// order, and /internal/users/:id would otherwise shadow this (treating
+// "analytics" as :id and returning 404 "User not found" — caught live while
+// testing GET /api/v1/admin/analytics through Kong, not by tsc).
+// Proxies to Auth Service, the source of truth for the users table; User
+// Service has no users table of its own to aggregate against.
+userRouter.get('/internal/users/analytics', verifyJwt, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.user?.role !== 'SERVICE') {
+    res.status(403).json({ message: 'Forbidden' });
+    return;
+  }
+
+  const response = await httpClient.get<{
+    totalUsers: number;
+    activeUsersLast30Days: number;
+  }>(KONG_URL, '/internal/auth/analytics', {
+    headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
+  });
+
+  if (!response.ok || !response.data) {
+    res.status(503).json({ message: 'Auth Service unavailable' });
+    return;
+  }
+
+  res.status(200).json(response.data);
+});
+
 // INTERNAL SERVICE ENDPOINT — not exposed through the public Kong user-api route.
 // Requires SERVICE role JWT in Authorization header.
 // SECURITY TODO: non-expiring token in use — replace with rotating credentials

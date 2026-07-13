@@ -324,3 +324,27 @@ moodRouter.get(
     });
   }
 );
+
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as Auth/User
+// Service's /internal/* routes. Backs Admin Service's platform analytics.
+moodRouter.get(
+  '/internal/mood/analytics',
+  verifyJwt,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const [totalMoodEntries, avgResult] = await Promise.all([
+      prisma.moodEntry.count(),
+      prisma.moodEntry.aggregate({ _avg: { moodScore: true } }),
+    ]);
+
+    res.status(200).json({
+      totalMoodEntries,
+      avgMoodScorePlatform: avgResult._avg.moodScore ?? null,
+    });
+  }
+);

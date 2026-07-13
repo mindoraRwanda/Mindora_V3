@@ -505,3 +505,24 @@ appointmentRouter.post(
     res.status(200).json(serializeAppointment(updated));
   }
 );
+
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as Auth/User
+// Service's /internal/* routes. Backs Admin Service's platform analytics.
+appointmentRouter.get(
+  '/internal/appointments/analytics',
+  verifyJwt,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const [totalAppointments, completedAppointments] = await Promise.all([
+      prisma.appointment.count(),
+      prisma.appointment.count({ where: { status: 'COMPLETED' } }),
+    ]);
+
+    res.status(200).json({ totalAppointments, completedAppointments });
+  }
+);

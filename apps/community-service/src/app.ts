@@ -1,5 +1,5 @@
 import express from 'express';
-import communityRoutes from './routes/community.routes.js';
+import communityRoutes, { internalRouter } from './routes/community.routes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './docs/swagger.js';
 import { publicRouteLimiter } from './middleware/rate-limit.js';
@@ -31,6 +31,10 @@ app.get('/health', publicRouteLimiter, (req, res) => {
 });
 
 app.use('/api/v1/community', communityRoutes);
+
+// Mounted at root, not under /api/v1/community — Kong's community-internal
+// route forwards /internal/community/... unchanged (strip_path: false).
+app.use(internalRouter);
 
 app.get('/api/v1/community/health', publicRouteLimiter, (_req, res) => {
   res.status(200).json({ status: 'ok', service: 'community-service' });

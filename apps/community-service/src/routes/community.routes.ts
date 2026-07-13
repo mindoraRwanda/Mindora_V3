@@ -20,6 +20,12 @@ import {
 
 const router = Router();
 
+// Mounted separately at the Express app root (not under /api/v1/community
+// like `router` below) — Kong's community-internal route forwards
+// /internal/community/... unchanged (strip_path: false), so these routes
+// must live at that exact path, not nested under the public API's prefix.
+export const internalRouter = Router();
+
 const KONG_URL = process.env.KONG_URL ?? 'http://localhost:8000';
 
 interface UserServiceUser {
@@ -768,6 +774,122 @@ router.get(
       return res.status(200).json({ posts: enrichedPosts, total, page, limit });
     } catch (error) {
       console.error('List posts error:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// INTERNAL SERVICE ENDPOINT — not exposed through the public Kong
+// community-api route. Requires SERVICE role JWT in Authorization header.
+// Backs Admin Service's moderation queue.
+internalRouter.get(
+  '/internal/community/reports',
+  authenticate,
+  async (req: AuthenticatedRequest, res: Response) => {
+    if (req.user?.role !== 'SERVICE') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const status =
+      (req.query.status as 'PENDING' | 'REVIEWED' | 'DISMISSED' | undefined) ??
+      'PENDING';
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const skip = (page - 1) * limit;
+
+    try {
+      const [reports, total] = await Promise.all([
+        Report.find({ status })
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit),
+        Report.countDocuments({ status }),
+      ]);
+
+      return res.status(200).json({ reports, total, page, limit });
+    } catch (error) {
+      console.error('List reports error:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
+// Accepts community's own status vocabulary (REVIEWED/DISMISSED) — Admin
+// Service maps its REMOVED/DISMISSED decision onto these before calling.
+internalRouter.put(
+  '/internal/community/reports/:id/resolve',
+  authenticate,
+  async (req: AuthenticatedRequest, res: Response) => {
+    if (req.user?.role !== 'SERVICE') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const id = req.params.id as string;
+    const { status } = req.body as { status?: unknown };
+    if (status !== 'REVIEWED' && status !== 'DISMISSED') {
+      return res
+        .status(400)
+        .json({ error: "status must be 'REVIEWED' or 'DISMISSED'" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+
+    try {
+      const report = await Report.findByIdAndUpdate(
+        id,
+        { status },
+        { returnDocument: 'after' }
+      );
+      if (!report) {
+        return res.status(404).json({ error: 'Report not found' });
+      }
+
+      return res.status(200).json({
+        _id: report._id,
+        contentId: report.contentId,
+        contentType: report.contentType,
+        reportedBy: report.reportedBy,
+        reason: report.reason,
+        status: report.status,
+      });
+    } catch (error) {
+      console.error('Resolve report error:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
+// Reveals the real author behind an anonymous post for moderation review —
+// works for both anonymous and non-anonymous posts (every post's author is
+// encrypted at rest; isAnonymous only controls whether resolveAuthor()
+// exposes it in normal display).
+internalRouter.get(
+  '/internal/community/posts/:postId/author',
+  authenticate,
+  async (req: AuthenticatedRequest, res: Response) => {
+    if (req.user?.role !== 'SERVICE') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const postId = req.params.postId as string;
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    try {
+      const post = await Post.findById(postId);
+      if (!post) {
+        return res.status(404).json({ error: 'Post not found' });
+      }
+
+      const userId = decryptUserId(post.encryptedAuthorId);
+      return res.status(200).json({ userId });
+    } catch (error) {
+      console.error('Decrypt post author error:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }

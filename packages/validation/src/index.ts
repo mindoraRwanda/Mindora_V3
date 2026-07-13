@@ -46,10 +46,14 @@ export {
   type MoodHistoryQueryDto,
 } from './mood.js';
 export {
+  listAlertsQuerySchema,
   listAuditLogQuerySchema,
   listUsersQuerySchema,
+  resolveModerationSchema,
   suspendUserSchema,
+  type ListAlertsQueryDto,
   type ListAuditLogQueryDto,
   type ListUsersQueryDto,
+  type ResolveModerationDto,
   type SuspendUserDto,
 } from './admin.js';

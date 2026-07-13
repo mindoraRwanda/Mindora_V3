@@ -4,9 +4,10 @@ export const openApiSpec = {
     title: 'Mindora Admin Service API',
     version: '1.0.0',
     description:
-      'Platform administration — user management, moderation, analytics, and an immutable ' +
-      'audit log. **No real logic is implemented yet** — every route below returns 501 ' +
-      'pending subsequent tasks; only routing, auth, and the ADMIN role gate are live today.',
+      'Platform administration — user management, moderation, analytics, alerts, and an ' +
+      'immutable audit log. Every route documented with a 200 response below is fully ' +
+      'implemented; `analytics` proxy is empty for a field only when its owning ' +
+      'service could not be reached.',
   },
   servers: [
     { url: 'http://localhost:3009', description: 'Local development (direct)' },
@@ -220,11 +221,17 @@ export const openApiSpec = {
       get: {
         tags: ['Moderation'],
         summary: 'List pending moderation reports (ADMIN only)',
+        description: 'Proxies live to Community Service — reports are never mirrored into Admin Service\'s own database.',
         security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'query', name: 'page', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { in: 'query', name: 'limit', schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 } },
+        ],
         responses: {
+          '200': { description: 'Paginated PENDING reports from Community Service.' },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
-          '501': { $ref: '#/components/responses/NotImplemented' },
+          '503': { description: 'Community Service unavailable', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } } },
         },
       },
     },
@@ -232,41 +239,92 @@ export const openApiSpec = {
       put: {
         tags: ['Moderation'],
         summary: 'Resolve a moderation report (ADMIN only)',
+        description:
+          'decision REMOVED maps to REVIEWED on Community Service\'s report (which has no REMOVED status) — ' +
+          'admin-service\'s own moderation_decisions row is the record of what was actually decided. ' +
+          'Writes both a moderation_decisions row and an audit_logs entry (actionType REPORT_RESOLVED), only ' +
+          'after Community Service confirms the resolution succeeded.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
         ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['decision', 'reason'],
+                properties: {
+                  decision: { type: 'string', enum: ['REMOVED', 'DISMISSED'] },
+                  reason: { type: 'string', minLength: 1, maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
         responses: {
+          '200': { description: 'Report resolved.' },
+          '400': { description: 'Invalid decision/reason', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } } },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
-          '501': { $ref: '#/components/responses/NotImplemented' },
+          '404': { description: 'Report not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } } },
+          '503': { description: 'Community Service unavailable', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } } },
         },
       },
     },
     '/moderation/decrypt/{postId}': {
       post: {
         tags: ['Moderation'],
-        summary: 'Decrypt an anonymous community post for review (ADMIN only)',
+        summary: 'Decrypt an anonymous community post\'s author for review (ADMIN only)',
+        description: 'Writes an audit_logs entry (actionType POST_AUTHOR_DECRYPTED) only after a successful lookup — revealing an anonymous author\'s identity is sensitive enough to always leave a trail.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { in: 'path', name: 'postId', required: true, schema: { type: 'string' } },
         ],
         responses: {
+          '200': { description: 'The decrypted author userId.' },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
-          '501': { $ref: '#/components/responses/NotImplemented' },
+          '404': { description: 'Post not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } } },
+          '503': { description: 'Community Service unavailable', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } } },
         },
       },
     },
     '/analytics': {
       get: {
         tags: ['Analytics'],
-        summary: 'Platform-wide analytics (ADMIN only)',
+        summary: 'Platform-wide analytics, aggregated from every service (ADMIN only)',
+        description:
+          'Fires one request per dependent service in parallel — no request waits on another. ' +
+          'A field is null if (and only if) that specific service was unreachable; the response ' +
+          'is always 200. Community Service is not deployed in V1, so totalCommunityPosts is ' +
+          'always null.',
         security: [{ bearerAuth: [] }],
         responses: {
+          '200': {
+            description: 'Aggregated platform analytics — any field may be null if that service was unreachable.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    totalUsers: { type: 'integer', nullable: true },
+                    activeUsersLast30Days: { type: 'integer', nullable: true },
+                    totalAppointments: { type: 'integer', nullable: true },
+                    completedAppointments: { type: 'integer', nullable: true },
+                    totalMoodEntries: { type: 'integer', nullable: true },
+                    avgMoodScorePlatform: { type: 'number', nullable: true },
+                    totalCommunityPosts: { type: 'integer', nullable: true, description: 'Always null — Community Service not deployed in V1.' },
+                    totalAiInteractions: { type: 'integer', nullable: true },
+                    totalCrisisEvents: { type: 'integer', nullable: true },
+                  },
+                },
+              },
+            },
+          },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
-          '501': { $ref: '#/components/responses/NotImplemented' },
         },
       },
     },
@@ -314,12 +372,62 @@ export const openApiSpec = {
     '/alerts': {
       get: {
         tags: ['Alerts'],
-        summary: 'List system alerts raised from ai.crisis / mood.concern events (ADMIN only)',
+        summary: 'List unresolved system alerts raised from ai.crisis / mood.concern events (ADMIN only)',
         security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'query', name: 'page', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { in: 'query', name: 'limit', schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 } },
+        ],
         responses: {
+          '200': {
+            description: 'Paginated unresolved alerts, newest first.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    alerts: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          eventType: { type: 'string', enum: ['AI_CRISIS', 'MOOD_CONCERN'] },
+                          severity: { type: 'string', enum: ['HIGH', 'MEDIUM', 'LOW'] },
+                          payload: { type: 'object', additionalProperties: true },
+                          resolved: { type: 'boolean' },
+                          createdAt: { type: 'string', format: 'date-time' },
+                        },
+                      },
+                    },
+                    total: { type: 'integer' },
+                    page: { type: 'integer' },
+                    limit: { type: 'integer' },
+                  },
+                },
+              },
+            },
+          },
+          '400': { description: 'Invalid query parameters', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } } },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
-          '501': { $ref: '#/components/responses/NotImplemented' },
+        },
+      },
+    },
+    '/alerts/{id}/resolve': {
+      put: {
+        tags: ['Alerts'],
+        summary: 'Mark a system alert as resolved (ADMIN only)',
+        description: 'Writes an audit_logs entry (actionType ALERT_RESOLVED). Alerts are never auto-resolved — this is always a manual admin action.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { in: 'path', name: 'id', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'Alert resolved.' },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+          '403': { $ref: '#/components/responses/Forbidden' },
+          '404': { description: 'Alert not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } } },
         },
       },
     },
@@ -327,11 +435,16 @@ export const openApiSpec = {
       get: {
         tags: ['AI Usage'],
         summary: 'Proxy AI Integration Service usage report (ADMIN only)',
+        description:
+          'Forwards the caller\'s own JWT to AI Integration Service, not the internal service ' +
+          'token — /api/v1/ai/usage requires an ADMIN-role token specifically. Writes an ' +
+          'audit_logs entry (actionType AI_USAGE_VIEWED) only after a successful proxied fetch.',
         security: [{ bearerAuth: [] }],
         responses: {
+          '200': { description: 'AI usage report, passed through unchanged from AI Integration Service.' },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
-          '501': { $ref: '#/components/responses/NotImplemented' },
+          '503': { description: 'AI Service unavailable', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } } },
         },
       },
     },

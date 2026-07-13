@@ -21,6 +21,18 @@ export const listAuditLogQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export const listAlertsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export const resolveModerationSchema = z.object({
+  decision: z.enum(['REMOVED', 'DISMISSED']),
+  reason: z.string().min(1).max(500),
+});
+
 export type SuspendUserDto = z.infer<typeof suspendUserSchema>;
 export type ListUsersQueryDto = z.infer<typeof listUsersQuerySchema>;
 export type ListAuditLogQueryDto = z.infer<typeof listAuditLogQuerySchema>;
+export type ListAlertsQueryDto = z.infer<typeof listAlertsQuerySchema>;
+export type ResolveModerationDto = z.infer<typeof resolveModerationSchema>;

@@ -2,6 +2,7 @@ import './env.js'; // must be first — loads .env before any module reads proce
 import http from 'http';
 import { createApp } from './app.js';
 import { connectDatabase } from './lib/prisma.js';
+import { startConsumers } from './consumers.js';
 
 const SERVICE_NAME = 'admin-service';
 const PORT = Number(process.env.ADMIN_SERVICE_PORT) || 3009;
@@ -9,6 +10,7 @@ const PORT = Number(process.env.ADMIN_SERVICE_PORT) || 3009;
 async function start(): Promise<void> {
   try {
     await connectDatabase();
+    await startConsumers();
 
     const app = createApp();
     const server = http.createServer(app);

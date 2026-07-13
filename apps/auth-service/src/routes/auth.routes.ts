@@ -443,6 +443,35 @@ authRouter.patch(
   }
 );
 
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
+// Backs Admin Service's platform-wide analytics aggregation.
+authRouter.get('/internal/auth/analytics', authenticate, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.user?.role !== 'SERVICE') {
+    res.status(403).json({ message: 'Forbidden' });
+    return;
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const [totalUsers, activeUsersLast30Days] = await Promise.all([
+    prisma.user.count(),
+    // "Active" = registered in the last 30 days, OR refreshed a session in
+    // the last 30 days (i.e. actually used the app, not just created once).
+    prisma.user.count({
+      where: {
+        OR: [
+          { createdAt: { gte: thirtyDaysAgo } },
+          { refreshTokens: { some: { createdAt: { gte: thirtyDaysAgo } } } },
+        ],
+      },
+    }),
+  ]);
+
+  res.status(200).json({ totalUsers, activeUsersLast30Days });
+});
+
 authRouter.get('/oauth/google', publicAuthRouteLimiter, (req, res, next) => {
   if (!isGoogleOAuthConfigured()) {
     res.status(503).json({

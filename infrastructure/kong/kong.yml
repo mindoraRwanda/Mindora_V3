@@ -217,6 +217,21 @@ routes:
           minute: 150
           policy: local
 
+  # Internal service-to-service lookup (e.g. admin-service's platform
+  # analytics aggregation). Same SERVICE-role-only pattern as user-internal
+  # and auth-internal above.
+  - name: appointment-internal
+    service: appointment-service
+    paths: [/internal/appointments]
+    strip_path: false
+    methods: [GET]
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 300
+          policy: local
+
   - name: mood-api
     service: mood-tracking-service
     paths: [/api/v1/mood]
@@ -228,10 +243,47 @@ routes:
           minute: 200
           policy: local
 
+  # Internal service-to-service lookup (e.g. admin-service's platform
+  # analytics aggregation). Same SERVICE-role-only pattern as user-internal
+  # and auth-internal above.
+  - name: mood-internal
+    service: mood-tracking-service
+    paths: [/internal/mood]
+    strip_path: false
+    methods: [GET]
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 300
+          policy: local
+
   - name: community-api
     service: community-service
+    # strip_path: false — pre-existing bug found while live-testing the new
+    # moderation feature: community-service mounts its router at
+    # app.use('/api/v1/community', communityRoutes), so it expects the full
+    # path, not the stripped remainder. strip_path: true here 404s every
+    # public community route through the gateway ('Cannot POST /groups') —
+    # unrelated to anything in this task, but it blocked verification of the
+    # E2E report -> moderate flow, and the test suite never caught it since
+    # it hits Express directly via supertest, bypassing Kong entirely.
     paths: [/api/v1/community]
-    strip_path: true
+    strip_path: false
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 300
+          policy: local
+
+  # Internal service-to-service lookup (e.g. admin-service's moderation
+  # queue). Same SERVICE-role-only pattern as user-internal/auth-internal.
+  - name: community-internal
+    service: community-service
+    paths: [/internal/community]
+    strip_path: false
+    methods: [GET, PUT]
     plugins:
       - name: jwt
       - name: rate-limiting
@@ -252,8 +304,13 @@ routes:
 
   - name: ai-api
     service: ai-integration-service
+    # strip_path: false — ai-integration-service mounts its router at
+    # app.use('/api/v1/ai', aiRouter), so its routes expect the full path
+    # (e.g. GET /api/v1/ai/usage), not the stripped remainder Kong would
+    # otherwise forward. strip_path: true here 404s every route through
+    # the gateway (confirmed: 'Cannot GET /usage').
     paths: [/api/v1/ai]
-    strip_path: true
+    strip_path: false
     plugins:
       - name: jwt
       - name: rate-limiting
