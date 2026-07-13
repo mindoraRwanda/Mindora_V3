@@ -254,7 +254,7 @@ jobs:
           cache: npm
 
       - name: Restore Turborepo cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .turbo
           # Include workspace package.json files so per-service dep changes
