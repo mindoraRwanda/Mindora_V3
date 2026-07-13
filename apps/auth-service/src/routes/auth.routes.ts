@@ -1,8 +1,13 @@
 import { prisma } from '../lib/prisma.js';
-import { blacklistToken, verifyAccessToken } from '@mindora/auth-middleware';
+import {
+  blacklistToken,
+  setUserSuspended,
+  verifyAccessToken,
+} from '@mindora/auth-middleware';
 import { publish } from '@mindora/queue';
 import {
   forgotPasswordSchema,
+  listUsersQuerySchema,
   loginSchema,
   registerSchema,
   resetPasswordSchema,
@@ -117,6 +122,11 @@ authRouter.post('/login', publicAuthRouteLimiter, async (req, res) => {
     return;
   }
 
+  if (user.isActive === false) {
+    res.status(403).json({ message: 'Account suspended' });
+    return;
+  }
+
   const { accessToken } = await issueAuthSession(res, user);
   res.status(200).json({ accessToken });
 });
@@ -181,6 +191,11 @@ authRouter.post('/refresh', publicAuthRouteLimiter, async (req, res) => {
 
   if (!stored) {
     res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+
+  if (stored.user.isActive === false) {
+    res.status(403).json({ message: 'Account suspended' });
     return;
   }
 
@@ -333,6 +348,96 @@ authRouter.get(
       res.status(200).json(user);
     } catch {
       // Malformed id (not a UUID) or lookup failure — treat as not found
+      res.status(404).json({ message: 'User not found' });
+    }
+  }
+);
+
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as
+// GET /internal/auth/users/:id above. Backs Admin Service's user list via
+// User Service's GET /internal/users proxy.
+authRouter.get('/internal/auth/users', authenticate, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.user?.role !== 'SERVICE') {
+    res.status(403).json({ message: 'Forbidden' });
+    return;
+  }
+
+  const parsed = listUsersQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({
+      message: 'Validation failed',
+      errors: parsed.error.flatten().fieldErrors,
+    });
+    return;
+  }
+
+  const { role, isActive, page, limit } = parsed.data;
+  const where = {
+    ...(role ? { role } : {}),
+    ...(isActive !== undefined ? { isActive } : {}),
+  };
+  const skip = (page - 1) * limit;
+
+  const [users, total] = await Promise.all([
+    prisma.user.findMany({
+      where,
+      select: { id: true, email: true, role: true, isActive: true, createdAt: true },
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.user.count({ where }),
+  ]);
+
+  res.status(200).json({ users, total, page, limit });
+});
+
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
+// Currently only used to flip isActive when Admin Service suspends a user.
+authRouter.patch(
+  '/internal/auth/users/:id',
+  authenticate,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const id = req.params.id as string;
+    const { isActive } = req.body as { isActive?: unknown };
+    if (typeof isActive !== 'boolean') {
+      res.status(400).json({ message: 'isActive must be a boolean' });
+      return;
+    }
+
+    try {
+      const user = await prisma.user.update({
+        where: { id },
+        data: { isActive },
+        select: { id: true, email: true, role: true, isActive: true, createdAt: true },
+      });
+
+      // Redis is the fast-path every authenticated request checks (see
+      // createVerifyJwt) — without this, a still-valid access token would
+      // keep working until it naturally expires, even though isActive
+      // (the source of truth, just written above) already says otherwise.
+      await setUserSuspended(config.redisUrl, id, !isActive);
+
+      // Revoking refresh tokens closes the other loophole: without this, a
+      // suspended user whose access token has expired could still silently
+      // mint a new one via POST /refresh.
+      if (!isActive) {
+        await prisma.refreshToken.updateMany({
+          where: { userId: id, revoked: false },
+          data: { revoked: true },
+        });
+      }
+
+      res.status(200).json(user);
+    } catch {
+      // Prisma throws on update-not-found (P2025) as well as malformed ids
       res.status(404).json({ message: 'User not found' });
     }
   }

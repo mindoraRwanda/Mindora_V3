@@ -139,6 +139,7 @@ describe('POST /login', () => {
       email: 'patient@example.com',
       passwordHash,
       role: 'PATIENT',
+      isActive: true,
     });
 
     const app = createApp();
@@ -169,6 +170,26 @@ describe('POST /login', () => {
 
     expect(response.status).toBe(401);
     expect(response.body.message).toBe('Invalid credentials');
+  });
+
+  it('rejects login for a suspended account with 403', async () => {
+    const passwordHash = await hashPassword('securePass1');
+    mockFindUnique.mockResolvedValue({
+      id: 'user-123',
+      email: 'patient@example.com',
+      passwordHash,
+      role: 'PATIENT',
+      isActive: false,
+    });
+
+    const app = createApp();
+    const response = await request(app).post('/login').send({
+      email: 'patient@example.com',
+      password: 'securePass1',
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.message).toBe('Account suspended');
   });
 });
 
@@ -212,6 +233,7 @@ describe('POST /refresh', () => {
         id: 'user-123',
         email: 'patient@example.com',
         role: 'PATIENT',
+        isActive: true,
       },
     });
     mockRefreshCreate.mockResolvedValue({ id: 'rt-new' });
@@ -241,6 +263,28 @@ describe('POST /refresh', () => {
     const response = await request(app).post('/refresh');
 
     expect(response.status).toBe(401);
+  });
+
+  it('rejects refresh for a suspended account with 403', async () => {
+    mockFindFirst.mockResolvedValue({
+      id: 'rt-old',
+      userId: 'user-123',
+      user: {
+        id: 'user-123',
+        email: 'patient@example.com',
+        role: 'PATIENT',
+        isActive: false,
+      },
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .post('/refresh')
+      .set('Cookie', 'refreshToken=some-refresh-token');
+
+    expect(response.status).toBe(403);
+    expect(response.body.message).toBe('Account suspended');
+    expect(mockRefreshCreate).not.toHaveBeenCalled();
   });
 });
 

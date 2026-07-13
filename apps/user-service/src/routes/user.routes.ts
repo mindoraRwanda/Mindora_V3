@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import {
+  listUsersQuerySchema,
+  suspendUserSchema,
   therapistListQuerySchema,
   updateFcmTokenSchema,
   updateNotificationPreferencesSchema,
@@ -13,11 +15,21 @@ import {
 } from '../middleware/authenticate.js';
 import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
 import { Prisma } from '../generated/prisma/index.js';
+import { callService, httpClient } from '@mindora/http-client';
 
 export const userRouter = Router();
 
 const SERVICE_NAME = 'user-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/users/health';
+const KONG_URL = process.env.KONG_URL ?? 'http://localhost:8000';
+
+type AuthUserRecord = {
+  id: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  createdAt: string;
+};
 
 // Opt-out model — matches the column default in schema.prisma. Used when a
 // profile's notificationPreferences is somehow null/absent.
@@ -106,6 +118,137 @@ userRouter.get('/internal/users/:id', verifyJwt, async (req, res) => {
     // Malformed id (not a UUID) or lookup failure — treat as not found
     res.status(404).json({ message: 'User not found' });
   }
+});
+
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as
+// GET /internal/users/:id above. Proxies to Auth Service, which is the
+// source of truth for the users table; User Service has no users table
+// of its own (see PatientProfile/TherapistProfile comment).
+userRouter.get('/internal/users', verifyJwt, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.user?.role !== 'SERVICE') {
+    res.status(403).json({ message: 'Forbidden' });
+    return;
+  }
+
+  const parsed = listUsersQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({
+      message: 'Validation failed',
+      errors: parsed.error.flatten().fieldErrors,
+    });
+    return;
+  }
+
+  const query = new URLSearchParams();
+  const { role, isActive, page, limit } = parsed.data;
+  if (role) query.set('role', role);
+  if (isActive !== undefined) query.set('isActive', String(isActive));
+  query.set('page', String(page));
+  query.set('limit', String(limit));
+
+  const response = await httpClient.get<{
+    users: AuthUserRecord[];
+    total: number;
+    page: number;
+    limit: number;
+  }>(KONG_URL, `/internal/auth/users?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
+  });
+
+  if (!response.ok || !response.data) {
+    res.status(503).json({ message: 'Auth Service unavailable' });
+    return;
+  }
+
+  res.status(200).json(response.data);
+});
+
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
+// Flips isActive=false on Auth Service; User Service holds no isActive
+// state of its own.
+userRouter.put('/internal/users/:id/suspend', verifyJwt, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.user?.role !== 'SERVICE') {
+    res.status(403).json({ message: 'Forbidden' });
+    return;
+  }
+
+  const parsed = suspendUserSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      message: 'Validation failed',
+      errors: parsed.error.flatten().fieldErrors,
+    });
+    return;
+  }
+
+  const id = req.params.id as string;
+
+  const response = await callService<AuthUserRecord>(
+    KONG_URL,
+    `/internal/auth/users/${id}`,
+    {
+      method: 'PATCH',
+      body: { isActive: false },
+      headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
+    }
+  );
+
+  if (response.status === 404) {
+    res.status(404).json({ message: 'User not found' });
+    return;
+  }
+
+  if (!response.ok || !response.data) {
+    res.status(503).json({ message: 'Auth Service unavailable' });
+    return;
+  }
+
+  res.status(200).json({ message: 'User suspended', userId: id });
+});
+
+// INTERNAL SERVICE ENDPOINT — mirrors /internal/users/:id/suspend above,
+// flipping isActive=true instead of false.
+userRouter.put('/internal/users/:id/reactivate', verifyJwt, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (authReq.user?.role !== 'SERVICE') {
+    res.status(403).json({ message: 'Forbidden' });
+    return;
+  }
+
+  const parsed = suspendUserSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      message: 'Validation failed',
+      errors: parsed.error.flatten().fieldErrors,
+    });
+    return;
+  }
+
+  const id = req.params.id as string;
+
+  const response = await callService<AuthUserRecord>(
+    KONG_URL,
+    `/internal/auth/users/${id}`,
+    {
+      method: 'PATCH',
+      body: { isActive: true },
+      headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
+    }
+  );
+
+  if (response.status === 404) {
+    res.status(404).json({ message: 'User not found' });
+    return;
+  }
+
+  if (!response.ok || !response.data) {
+    res.status(503).json({ message: 'Auth Service unavailable' });
+    return;
+  }
+
+  res.status(200).json({ message: 'User reactivated', userId: id });
 });
 
 // Called by Notification Service directly on USER_SERVICE_URL, bypassing

@@ -182,7 +182,7 @@ routes:
     service: user-service
     paths: [/internal/users]
     strip_path: false
-    methods: [GET]
+    methods: [GET, PUT]
     plugins:
       - name: jwt
       - name: rate-limiting
@@ -198,7 +198,7 @@ routes:
     service: auth-service
     paths: [/internal/auth]
     strip_path: false
-    methods: [GET]
+    methods: [GET, PATCH]
     plugins:
       - name: jwt
       - name: rate-limiting

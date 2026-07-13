@@ -2,18 +2,48 @@
   "name": "@mindora/admin-service",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src/",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "docs:generate": "tsx src/docs/generate.ts"
+  },
+  "prisma": {
+    "schema": "prisma/schema.prisma"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "@mindora/auth-middleware": "*",
+    "@mindora/events": "*",
+    "@mindora/http-client": "*",
+    "@mindora/queue": "*",
+    "@mindora/validation": "*",
+    "@prisma/adapter-pg": "^6.5.0",
+    "@prisma/client": "^6.5.0",
+    "@types/pg": "^8.20.0",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "pg": "^8.22.0",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^20.0.0",
+    "@types/supertest": "^6.0.3",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
+    "js-yaml": "^5.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "prisma": "^6.5.0",
+    "supertest": "^7.1.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "vitest": "^4.1.8"
