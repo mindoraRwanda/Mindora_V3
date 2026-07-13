@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import conversationsRouter from './routes/conversations.routes.js';
 import { authenticate } from '@mindora/auth-middleware';
@@ -17,6 +18,12 @@ const app = express();
 // Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
 // real client IP from X-Forwarded-For instead of Kong's own container IP.
 app.set('trust proxy', 1);
+
+// Matches the Socket.io layer's existing cors: { origin: '*' } — REST needed
+// the same treatment or cross-origin fetch() calls (e.g. a file:// test page)
+// get silently blocked by the browser before the request ever reaches here.
+// Tighten this to a real origin allowlist before production.
+app.use(cors({ origin: '*' }));
 
 app.use(express.json());
 
@@ -67,11 +74,13 @@ app.use('/api/v1/messaging/conversations', conversationsRouter);
  * @swagger
  * /api/v1/messaging/presence/{userId}:
  *   get:
- *     summary: Check if a user is currently online
+ *     summary: Check if a user is currently online, and when they were last seen
  *     description: >
- *       Returns whether the specified user has an active Socket.io presence key in Redis.
- *       Presence is set by the `register_presence` socket event and expires after 90 s
- *       unless refreshed by `heartbeat` events every 30 s.
+ *       Presence is set by the `register_presence` socket event (60 s TTL, refreshed
+ *       every 30 s by `heartbeat`). On disconnect or `logout_presence`, the key is
+ *       overwritten with `online: false` and a 5-minute TTL so `lastSeen` stays
+ *       queryable briefly after the user leaves — once that TTL expires, `lastSeen`
+ *       reverts to `null`.
  *     tags: [Presence]
  *     security:
  *       - bearerAuth: []
@@ -97,7 +106,7 @@ app.use('/api/v1/messaging/conversations', conversationsRouter);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-// GET /api/v1/messaging/presence/:userId — check if a user is currently online
+// GET /api/v1/messaging/presence/:userId — online status + last seen timestamp
 app.get(
   '/api/v1/messaging/presence/:userId',
   authenticatedRouteLimiter,
@@ -105,8 +114,13 @@ app.get(
   async (req: AuthenticatedRequest, res) => {
     const { userId } = req.params;
     try {
-      const exists = await getRedisClient().exists(`presence:${userId}`);
-      res.json({ userId, online: exists === 1 });
+      const raw = await getRedisClient().get(`presence:${userId}`);
+      if (!raw) {
+        res.json({ userId, online: false, lastSeen: null });
+        return;
+      }
+      const presence = JSON.parse(raw) as { online: boolean; lastSeen: string };
+      res.json({ userId, online: presence.online, lastSeen: presence.lastSeen });
     } catch {
       res.status(500).json({ error: 'Failed to check presence' });
     }

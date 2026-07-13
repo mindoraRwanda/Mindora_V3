@@ -6,17 +6,21 @@ const socketEventsMarkdown = `
 Connect to \`ws://localhost:3006\` using the Socket.io client library.
 Message content is **encrypted at rest** (AES-256-GCM) and decrypted before being returned by the REST API.
 
+**Recommended client sequence:** connect, then \`register_presence\`, then \`join_conversation\`.
+\`join_conversation\`'s reply includes the other participant's resolved name, which requires
+\`register_presence\` to have already run on this socket.
+
 ### Client → Server Events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| \`register_presence\` | \`{ userId: string }\` | Register online status. Sets a 90 s Redis TTL. Call immediately after connect. |
-| \`heartbeat\` | _none_ | Refresh presence TTL. Emit every 30 s to stay marked online. |
-| \`logout_presence\` | _none_ | Delete presence key immediately (e.g. on tab \`beforeunload\`). |
+| \`register_presence\` | \`{ userId: string }\` | Register online status. Sets a 60 s Redis TTL. Call immediately after connect. |
+| \`heartbeat\` | _none_ | Refresh presence TTL (60 s) and lastSeen. Emit every 30 s to stay marked online. |
+| \`logout_presence\` | _none_ | Mark offline immediately with a 5-minute lastSeen TTL (e.g. on tab \`beforeunload\`). |
 | \`create_conversation\` | \`{ participants: [userId, userId] }\` | Create or retrieve an existing conversation without an HTTP round-trip. |
 | \`join_conversation\` | \`{ conversationId: string }\` | Join a Socket.io room and receive the last 50 messages as \`message_history\`. |
-| \`send_message\` | \`{ conversationId: string, content: string, senderId: string }\` | Persist a message and broadcast to all room members. |
-| \`mark_read\` | \`{ conversationId: string, messageId: string }\` | Mark a message as read; notifies the sender's socket via \`message_read\`. |
+| \`send_message\` | \`{ conversationId: string, content: string, senderId: string }\` | Persist a message, increment the conversation's unreadCount, publish a \`message.received\` event to RabbitMQ, and broadcast to all room members. |
+| \`mark_read\` | \`{ conversationId: string, messageId: string }\` | Mark a message as read, decrement unreadCount (floored at 0); notifies the room via \`message_read\`. |
 | \`typing_start\` | \`{ conversationId: string, userId: string }\` | Broadcast typing indicator. Auto-expires from Redis after 5 s. |
 | \`typing_stop\` | \`{ conversationId: string, userId: string }\` | Clear the typing indicator immediately. |
 
@@ -25,12 +29,13 @@ Message content is **encrypted at rest** (AES-256-GCM) and decrypted before bein
 | Event | Payload | Description |
 |-------|---------|-------------|
 | \`conversation_created\` | \`{ _id: string, participants: string[] }\` | Response to \`create_conversation\`. |
-| \`joined_conversation\` | \`{ conversationId: string }\` | Confirms room join after \`join_conversation\`. |
+| \`joined_conversation\` | \`{ conversationId: string, participant: { userId: string, userName: string or null } or null }\` | Confirms room join; participant is the other side of the conversation, for a chat header. |
 | \`message_history\` | \`{ conversationId: string, messages: Message[] }\` | Sent immediately after \`join_conversation\` with the last 50 messages. |
 | \`new_message\` | \`{ _id, conversationId, senderId, content, createdAt }\` | Broadcast to all room members when a message is saved. |
-| \`message_read\` | \`{ conversationId: string, messageId: string }\` | Emitted to the room (excluding sender's socket) on \`mark_read\`. |
+| \`message_read\` | \`{ conversationId: string, messageId: string, readAt: string, readBy: string \\| null }\` | Emitted to the room (excluding sender's socket) on \`mark_read\`. |
 | \`user_typing\` | \`{ conversationId: string, userId: string }\` | Broadcast to the room on \`typing_start\`. |
 | \`user_stopped_typing\` | \`{ conversationId: string, userId: string }\` | Broadcast to the room on \`typing_stop\`. |
+| \`presence_changed\` | \`{ userId: string, online: boolean, lastSeen: string }\` | Pushed to every conversation room the user is part of whenever their online status flips — no polling required. |
 | \`error\` | \`{ message: string }\` | Emitted to the originating socket for any validation or server-side error. |
 `;
 
@@ -100,6 +105,12 @@ const options: swaggerJsdoc.Options = {
                 'The other participant — null if conversation has only one member.',
               example: 'therapist-456',
             },
+            participantName: {
+              type: 'string',
+              nullable: true,
+              description: 'Resolved via User Service through Kong. Null if the lookup failed or the user has no display name set.',
+              example: 'Dr. Jane Smith',
+            },
             lastMessage: {
               type: 'string',
               nullable: true,
@@ -136,6 +147,12 @@ const options: swaggerJsdoc.Options = {
           properties: {
             userId: { type: 'string', example: 'therapist-456' },
             online: { type: 'boolean', example: true },
+            lastSeen: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+              description: 'Null if the user has never connected, or their presence key has fully expired.',
+            },
           },
         },
         PaginatedConversations: {

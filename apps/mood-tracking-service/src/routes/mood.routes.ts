@@ -97,13 +97,18 @@ moodRouter.post(
     });
     const recentScores = recentEntries.map((item) => item.moodScore);
     if (shouldPublishMoodConcern(recentScores)) {
-      await publishMoodEvent(
-        createMoodConcernEvent({
-          userId,
-          avgMoodScore: averageScore(recentScores),
-          recentScores,
-        })
-      );
+      // RabbitMQ being down must never fail a mood log that's already saved.
+      try {
+        await publishMoodEvent(
+          createMoodConcernEvent({
+            userId,
+            avgMoodScore: averageScore(recentScores),
+            recentScores,
+          })
+        );
+      } catch (err) {
+        console.error('[mood.concern] Failed to publish event:', err);
+      }
     }
 
     const allRecordedDays = await prisma.moodEntry.findMany({
@@ -118,14 +123,18 @@ moodRouter.post(
         streak as (typeof MOOD_STREAK_MILESTONES)[number]
       )
     ) {
-      await publishMoodEvent(
-        createMoodStreakEvent({
-          userId,
-          streak,
-          milestone: streak as 7 | 14 | 30,
-          lastCheckedIn: `${lastCheckedIn}T00:00:00.000Z`,
-        })
-      );
+      try {
+        await publishMoodEvent(
+          createMoodStreakEvent({
+            userId,
+            streak,
+            milestone: streak as 7 | 14 | 30,
+            lastCheckedIn: `${lastCheckedIn}T00:00:00.000Z`,
+          })
+        );
+      } catch (err) {
+        console.error('[mood.streak] Failed to publish event:', err);
+      }
     }
 
     res.status(201).json(serializeMoodEntry(entry, { includeJournal: true }));
