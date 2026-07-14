@@ -1,8 +1,13 @@
-import express, { type Request, type Response, type NextFunction } from 'express';
+import express, {
+  type Request,
+  type Response,
+  type NextFunction,
+} from 'express';
 import swaggerUi from 'swagger-ui-express';
 import { authenticate } from '@mindora/auth-middleware';
 import { adminRouter } from './routes/admin.routes.js';
 import { openApiSpec } from './docs/openapi.js';
+import { authenticatedRouteLimiter } from './middleware/rate-limit.js';
 
 const SERVICE_NAME = 'admin-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/admin/health';
@@ -38,7 +43,7 @@ export function createApp() {
   // strip_path: true (see infrastructure/kong/kong.yml), so it forwards
   // e.g. 'GET /users' with the prefix already removed. Same convention as
   // mood-tracking-service and messaging-service.
-  app.use(authenticate, adminRouter);
+  app.use(authenticatedRouteLimiter, authenticate, adminRouter);
 
   // Global error handler
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

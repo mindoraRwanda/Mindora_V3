@@ -46,11 +46,17 @@ async function fetchAuthUser(
 ): Promise<{ id: string; email: string; role: string } | null> {
   const base = process.env.KONG_URL ?? 'http://localhost:8000';
   try {
-    const res = await fetch(`${base}/internal/auth/users/${userId}`, {
-      headers: {
-        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
-      },
-    });
+    // encodeURIComponent, not raw interpolation — userId is caller-supplied
+    // (route param or JWT sub) and must not be able to reshape the request
+    // path (e.g. inject '/', '?', '#') sent to another internal service.
+    const res = await fetch(
+      `${base}/internal/auth/users/${encodeURIComponent(userId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
     if (!res.ok) return null;
     return (await res.json()) as { id: string; email: string; role: string };
   } catch {
@@ -78,207 +84,240 @@ userRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
 // testing GET /api/v1/admin/analytics through Kong, not by tsc).
 // Proxies to Auth Service, the source of truth for the users table; User
 // Service has no users table of its own to aggregate against.
-userRouter.get('/internal/users/analytics', verifyJwt, async (req, res) => {
-  const authReq = req as AuthenticatedRequest;
-  if (authReq.user?.role !== 'SERVICE') {
-    res.status(403).json({ message: 'Forbidden' });
-    return;
+userRouter.get(
+  '/internal/users/analytics',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const response = await httpClient.get<{
+      totalUsers: number;
+      activeUsersLast30Days: number;
+    }>(KONG_URL, '/internal/auth/analytics', {
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
+    });
+
+    if (!response.ok || !response.data) {
+      res.status(503).json({ message: 'Auth Service unavailable' });
+      return;
+    }
+
+    res.status(200).json(response.data);
   }
-
-  const response = await httpClient.get<{
-    totalUsers: number;
-    activeUsersLast30Days: number;
-  }>(KONG_URL, '/internal/auth/analytics', {
-    headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
-  });
-
-  if (!response.ok || !response.data) {
-    res.status(503).json({ message: 'Auth Service unavailable' });
-    return;
-  }
-
-  res.status(200).json(response.data);
-});
+);
 
 // INTERNAL SERVICE ENDPOINT — not exposed through the public Kong user-api route.
 // Requires SERVICE role JWT in Authorization header.
 // SECURITY TODO: non-expiring token in use — replace with rotating credentials
 // via AWS Secrets Manager before production deployment.
 // See: BACKEND_COMPLETE.md → "Known Security Limitations"
-userRouter.get('/internal/users/:id', verifyJwt, async (req, res) => {
-  const authReq = req as AuthenticatedRequest;
-  if (authReq.user?.role !== 'SERVICE') {
-    res.status(403).json({ message: 'Forbidden' });
-    return;
-  }
-
-  const id = req.params.id as string;
-
-  try {
-    const patientProfile = await prisma.patientProfile.findUnique({
-      where: { userId: id },
-    });
-    if (patientProfile) {
-      res.status(200).json({ id, userName: patientProfile.userName ?? null });
+userRouter.get(
+  '/internal/users/:id',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
       return;
     }
 
-    const therapistProfile = await prisma.therapistProfile.findUnique({
-      where: { userId: id },
-    });
-    if (therapistProfile) {
-      res
-        .status(200)
-        .json({ id, userName: therapistProfile.userName ?? null });
-      return;
-    }
+    const id = req.params.id as string;
 
-    // No profile row (e.g. ADMIN, who never gets one) — fall back to Auth
-    // Service to distinguish "exists, just no profile" (200, userName: null,
-    // matching the original prisma.user-backed behavior) from "genuinely
-    // doesn't exist" (404).
-    const authUser = await fetchAuthUser(id);
-    if (!authUser) {
+    try {
+      const patientProfile = await prisma.patientProfile.findUnique({
+        where: { userId: id },
+      });
+      if (patientProfile) {
+        res.status(200).json({ id, userName: patientProfile.userName ?? null });
+        return;
+      }
+
+      const therapistProfile = await prisma.therapistProfile.findUnique({
+        where: { userId: id },
+      });
+      if (therapistProfile) {
+        res
+          .status(200)
+          .json({ id, userName: therapistProfile.userName ?? null });
+        return;
+      }
+
+      // No profile row (e.g. ADMIN, who never gets one) — fall back to Auth
+      // Service to distinguish "exists, just no profile" (200, userName: null,
+      // matching the original prisma.user-backed behavior) from "genuinely
+      // doesn't exist" (404).
+      const authUser = await fetchAuthUser(id);
+      if (!authUser) {
+        res.status(404).json({ message: 'User not found' });
+        return;
+      }
+      res.status(200).json({ id, userName: null });
+    } catch {
+      // Malformed id (not a UUID) or lookup failure — treat as not found
       res.status(404).json({ message: 'User not found' });
-      return;
     }
-    res.status(200).json({ id, userName: null });
-  } catch {
-    // Malformed id (not a UUID) or lookup failure — treat as not found
-    res.status(404).json({ message: 'User not found' });
   }
-});
+);
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as
 // GET /internal/users/:id above. Proxies to Auth Service, which is the
 // source of truth for the users table; User Service has no users table
 // of its own (see PatientProfile/TherapistProfile comment).
-userRouter.get('/internal/users', verifyJwt, async (req, res) => {
-  const authReq = req as AuthenticatedRequest;
-  if (authReq.user?.role !== 'SERVICE') {
-    res.status(403).json({ message: 'Forbidden' });
-    return;
-  }
+userRouter.get(
+  '/internal/users',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
 
-  const parsed = listUsersQuerySchema.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({
-      message: 'Validation failed',
-      errors: parsed.error.flatten().fieldErrors,
+    const parsed = listUsersQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const query = new URLSearchParams();
+    const { role, isActive, page, limit } = parsed.data;
+    if (role) query.set('role', role);
+    if (isActive !== undefined) query.set('isActive', String(isActive));
+    query.set('page', String(page));
+    query.set('limit', String(limit));
+
+    const response = await httpClient.get<{
+      users: AuthUserRecord[];
+      total: number;
+      page: number;
+      limit: number;
+    }>(KONG_URL, `/internal/auth/users?${query.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
     });
-    return;
+
+    if (!response.ok || !response.data) {
+      res.status(503).json({ message: 'Auth Service unavailable' });
+      return;
+    }
+
+    res.status(200).json(response.data);
   }
-
-  const query = new URLSearchParams();
-  const { role, isActive, page, limit } = parsed.data;
-  if (role) query.set('role', role);
-  if (isActive !== undefined) query.set('isActive', String(isActive));
-  query.set('page', String(page));
-  query.set('limit', String(limit));
-
-  const response = await httpClient.get<{
-    users: AuthUserRecord[];
-    total: number;
-    page: number;
-    limit: number;
-  }>(KONG_URL, `/internal/auth/users?${query.toString()}`, {
-    headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
-  });
-
-  if (!response.ok || !response.data) {
-    res.status(503).json({ message: 'Auth Service unavailable' });
-    return;
-  }
-
-  res.status(200).json(response.data);
-});
+);
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
 // Flips isActive=false on Auth Service; User Service holds no isActive
 // state of its own.
-userRouter.put('/internal/users/:id/suspend', verifyJwt, async (req, res) => {
-  const authReq = req as AuthenticatedRequest;
-  if (authReq.user?.role !== 'SERVICE') {
-    res.status(403).json({ message: 'Forbidden' });
-    return;
-  }
-
-  const parsed = suspendUserSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({
-      message: 'Validation failed',
-      errors: parsed.error.flatten().fieldErrors,
-    });
-    return;
-  }
-
-  const id = req.params.id as string;
-
-  const response = await callService<AuthUserRecord>(
-    KONG_URL,
-    `/internal/auth/users/${id}`,
-    {
-      method: 'PATCH',
-      body: { isActive: false },
-      headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
+userRouter.put(
+  '/internal/users/:id/suspend',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
     }
-  );
 
-  if (response.status === 404) {
-    res.status(404).json({ message: 'User not found' });
-    return;
+    const parsed = suspendUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const id = req.params.id as string;
+
+    const response = await callService<AuthUserRecord>(
+      KONG_URL,
+      `/internal/auth/users/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        body: { isActive: false },
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+
+    if (response.status === 404) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    if (!response.ok || !response.data) {
+      res.status(503).json({ message: 'Auth Service unavailable' });
+      return;
+    }
+
+    res.status(200).json({ message: 'User suspended', userId: id });
   }
-
-  if (!response.ok || !response.data) {
-    res.status(503).json({ message: 'Auth Service unavailable' });
-    return;
-  }
-
-  res.status(200).json({ message: 'User suspended', userId: id });
-});
+);
 
 // INTERNAL SERVICE ENDPOINT — mirrors /internal/users/:id/suspend above,
 // flipping isActive=true instead of false.
-userRouter.put('/internal/users/:id/reactivate', verifyJwt, async (req, res) => {
-  const authReq = req as AuthenticatedRequest;
-  if (authReq.user?.role !== 'SERVICE') {
-    res.status(403).json({ message: 'Forbidden' });
-    return;
-  }
-
-  const parsed = suspendUserSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({
-      message: 'Validation failed',
-      errors: parsed.error.flatten().fieldErrors,
-    });
-    return;
-  }
-
-  const id = req.params.id as string;
-
-  const response = await callService<AuthUserRecord>(
-    KONG_URL,
-    `/internal/auth/users/${id}`,
-    {
-      method: 'PATCH',
-      body: { isActive: true },
-      headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
+userRouter.put(
+  '/internal/users/:id/reactivate',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
     }
-  );
 
-  if (response.status === 404) {
-    res.status(404).json({ message: 'User not found' });
-    return;
+    const parsed = suspendUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const id = req.params.id as string;
+
+    const response = await callService<AuthUserRecord>(
+      KONG_URL,
+      `/internal/auth/users/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        body: { isActive: true },
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+
+    if (response.status === 404) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    if (!response.ok || !response.data) {
+      res.status(503).json({ message: 'Auth Service unavailable' });
+      return;
+    }
+
+    res.status(200).json({ message: 'User reactivated', userId: id });
   }
-
-  if (!response.ok || !response.data) {
-    res.status(503).json({ message: 'Auth Service unavailable' });
-    return;
-  }
-
-  res.status(200).json({ message: 'User reactivated', userId: id });
-});
+);
 
 // Called by Notification Service directly on USER_SERVICE_URL, bypassing
 // Kong — so it needs the full '/api/v1/users/...' path since there's no
@@ -294,10 +333,7 @@ userRouter.get(
     const authReq = req as AuthenticatedRequest;
     const userId = req.params.userId as string;
 
-    if (
-      authReq.user?.role !== 'SERVICE' &&
-      authReq.user?.userId !== userId
-    ) {
+    if (authReq.user?.role !== 'SERVICE' && authReq.user?.userId !== userId) {
       res.status(403).json({ message: 'Forbidden' });
       return;
     }
@@ -388,9 +424,9 @@ userRouter.put(
         data: { fcmToken },
       });
     } else {
-      res
-        .status(400)
-        .json({ message: 'FCM token registration not supported for this role' });
+      res.status(400).json({
+        message: 'FCM token registration not supported for this role',
+      });
       return;
     }
 

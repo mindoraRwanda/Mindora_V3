@@ -112,7 +112,15 @@ describe('GET /users', () => {
       ok: true,
       status: 200,
       data: {
-        users: [{ id: 'u1', email: 'a@example.com', role: 'PATIENT', isActive: true, createdAt: '2026-01-01' }],
+        users: [
+          {
+            id: 'u1',
+            email: 'a@example.com',
+            role: 'PATIENT',
+            isActive: true,
+            createdAt: '2026-01-01',
+          },
+        ],
         total: 1,
         page: 1,
         limit: 20,
@@ -267,10 +275,16 @@ describe('PUT /users/:id/reactivate', () => {
     expect(mockCallService).toHaveBeenCalledWith(
       'http://localhost:8000',
       '/internal/users/u1/reactivate',
-      expect.objectContaining({ method: 'PUT', body: { reason: 'appeal approved' } })
+      expect.objectContaining({
+        method: 'PUT',
+        body: { reason: 'appeal approved' },
+      })
     );
     expect(mockAuditCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({ actionType: 'USER_REACTIVATED', targetId: 'u1' }),
+      data: expect.objectContaining({
+        actionType: 'USER_REACTIVATED',
+        targetId: 'u1',
+      }),
     });
   });
 
@@ -291,7 +305,14 @@ describe('PUT /users/:id/reactivate', () => {
 describe('GET /audit-log', () => {
   it('returns paginated entries', async () => {
     mockAuditFindMany.mockResolvedValue([
-      { id: 'a1', adminId: 'admin-1', actionType: 'USER_SUSPENDED', targetId: 'u1', metadata: {}, createdAt: new Date() },
+      {
+        id: 'a1',
+        adminId: 'admin-1',
+        actionType: 'USER_SUSPENDED',
+        targetId: 'u1',
+        metadata: {},
+        createdAt: new Date(),
+      },
     ]);
     mockAuditCount.mockResolvedValue(1);
 
@@ -348,7 +369,14 @@ describe('GET /audit-log', () => {
 describe('GET /alerts', () => {
   it('returns unresolved alerts only, paginated', async () => {
     mockAlertFindMany.mockResolvedValue([
-      { id: 'a1', eventType: 'AI_CRISIS', severity: 'HIGH', payload: {}, resolved: false, createdAt: new Date() },
+      {
+        id: 'a1',
+        eventType: 'AI_CRISIS',
+        severity: 'HIGH',
+        payload: {},
+        resolved: false,
+        createdAt: new Date(),
+      },
     ]);
     mockAlertCount.mockResolvedValue(1);
 
@@ -424,7 +452,12 @@ describe('GET /moderation/queue', () => {
     mockHttpGet.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { reports: [{ _id: 'r1', status: 'PENDING' }], total: 1, page: 1, limit: 20 },
+      data: {
+        reports: [{ _id: 'r1', status: 'PENDING' }],
+        total: 1,
+        page: 1,
+        limit: 20,
+      },
     });
 
     const app = createApp();
@@ -489,7 +522,10 @@ describe('PUT /moderation/:id/resolve', () => {
       data: expect.objectContaining({
         actionType: 'REPORT_RESOLVED',
         targetId: 'r1',
-        metadata: expect.objectContaining({ contentId: 'c1', contentType: 'POST' }),
+        metadata: expect.objectContaining({
+          contentId: 'c1',
+          contentType: 'POST',
+        }),
       }),
     });
   });
@@ -592,23 +628,41 @@ describe('GET /analytics', () => {
   it('aggregates all four dependent services, forwarding the caller JWT only to ai/usage', async () => {
     mockHttpGet.mockImplementation((_base: string, path: string) => {
       if (path === '/internal/users/analytics') {
-        return Promise.resolve({ ok: true, status: 200, data: { totalUsers: 10, activeUsersLast30Days: 4 } });
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          data: { totalUsers: 10, activeUsersLast30Days: 4 },
+        });
       }
       if (path === '/internal/appointments/analytics') {
-        return Promise.resolve({ ok: true, status: 200, data: { totalAppointments: 5, completedAppointments: 3 } });
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          data: { totalAppointments: 5, completedAppointments: 3 },
+        });
       }
       if (path === '/internal/mood/analytics') {
-        return Promise.resolve({ ok: true, status: 200, data: { totalMoodEntries: 20, avgMoodScorePlatform: 6.5 } });
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          data: { totalMoodEntries: 20, avgMoodScorePlatform: 6.5 },
+        });
       }
       if (path === '/api/v1/ai/usage') {
-        return Promise.resolve({ ok: true, status: 200, data: { totalInteractions: 100, totalCrisisEvents: 2 } });
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          data: { totalInteractions: 100, totalCrisisEvents: 2 },
+        });
       }
       throw new Error(`unexpected path: ${path}`);
     });
 
     const app = createApp();
     const token = adminToken();
-    const response = await request(app).get('/analytics').set('Authorization', `Bearer ${token}`);
+    const response = await request(app)
+      .get('/analytics')
+      .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
@@ -645,7 +699,11 @@ describe('GET /analytics', () => {
       if (path === '/internal/users/analytics') {
         return Promise.resolve({ ok: false, status: 503, data: null });
       }
-      return Promise.resolve({ ok: true, status: 200, data: { placeholder: true } });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        data: { placeholder: true },
+      });
     });
 
     const app = createApp();
@@ -666,7 +724,9 @@ describe('GET /analytics', () => {
     });
 
     const app = createApp();
-    await request(app).get('/analytics').set('Authorization', `Bearer ${adminToken()}`);
+    await request(app)
+      .get('/analytics')
+      .set('Authorization', `Bearer ${adminToken()}`);
 
     // All four requests were dispatched before any of them could have resolved
     // sequentially — Promise.all starts them together, so call order reflects
@@ -686,10 +746,15 @@ describe('GET /ai/usage', () => {
 
     const app = createApp();
     const token = adminToken();
-    const response = await request(app).get('/ai/usage').set('Authorization', `Bearer ${token}`);
+    const response = await request(app)
+      .get('/ai/usage')
+      .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ totalInteractions: 100, totalCrisisEvents: 2 });
+    expect(response.body).toEqual({
+      totalInteractions: 100,
+      totalCrisisEvents: 2,
+    });
     expect(mockHttpGet).toHaveBeenCalledWith(
       'http://localhost:8000',
       '/api/v1/ai/usage',

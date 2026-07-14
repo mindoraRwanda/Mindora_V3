@@ -143,7 +143,11 @@ function patientToken() {
 
 function serviceToken() {
   return jwt.sign(
-    { sub: 'admin-service', email: 'service@mindora.internal', role: 'SERVICE' },
+    {
+      sub: 'admin-service',
+      email: 'service@mindora.internal',
+      role: 'SERVICE',
+    },
     process.env.JWT_SECRET!,
     {
       expiresIn: '15m',
@@ -390,8 +394,13 @@ describe('GET /internal/mood/analytics', () => {
       .set('Authorization', `Bearer ${serviceToken()}`);
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ totalMoodEntries: 120, avgMoodScorePlatform: 5.8 });
-    expect(mockMoodAggregate).toHaveBeenCalledWith({ _avg: { moodScore: true } });
+    expect(response.body).toEqual({
+      totalMoodEntries: 120,
+      avgMoodScorePlatform: 5.8,
+    });
+    expect(mockMoodAggregate).toHaveBeenCalledWith({
+      _avg: { moodScore: true },
+    });
   });
 
   it('returns null (not an error) for avgMoodScorePlatform when there are no entries', async () => {
@@ -404,7 +413,10 @@ describe('GET /internal/mood/analytics', () => {
       .set('Authorization', `Bearer ${serviceToken()}`);
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ totalMoodEntries: 0, avgMoodScorePlatform: null });
+    expect(response.body).toEqual({
+      totalMoodEntries: 0,
+      avgMoodScorePlatform: null,
+    });
   });
 
   it('rejects a non-SERVICE (PATIENT) token with 403', async () => {

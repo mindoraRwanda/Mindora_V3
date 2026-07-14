@@ -1,5 +1,9 @@
 import './env.js'; // must be first — loads .env before any module reads process.env
-import express, { type NextFunction, type Request, type Response } from 'express';
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from 'express';
 import swaggerUi from 'swagger-ui-express';
 import { connect } from '@mindora/queue';
 import { startConsumers, SUBSCRIBED_EXCHANGES } from './consumers.js';

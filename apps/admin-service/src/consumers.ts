@@ -1,5 +1,9 @@
 import { subscribeToExchange } from '@mindora/queue';
-import { EXCHANGES, aiCrisisEventSchema, moodDomainEventSchema } from '@mindora/events';
+import {
+  EXCHANGES,
+  aiCrisisEventSchema,
+  moodDomainEventSchema,
+} from '@mindora/events';
 import { prisma } from './lib/prisma.js';
 
 const ADMIN_QUEUES = {
@@ -68,11 +72,25 @@ async function handleMoodConcern(payload: unknown): Promise<void> {
 
 export async function startConsumers(): Promise<void> {
   // mindora.ai is a fanout exchange (see ai-integration-service/ai.routes.ts).
-  await subscribeToExchange(EXCHANGES.AI, ADMIN_QUEUES.AI, handleAiCrisis, 'fanout');
-  console.log(`[admin] Subscribed to ${EXCHANGES.AI} exchange (queue: ${ADMIN_QUEUES.AI})`);
+  await subscribeToExchange(
+    EXCHANGES.AI,
+    ADMIN_QUEUES.AI,
+    handleAiCrisis,
+    'fanout'
+  );
+  console.log(
+    `[admin] Subscribed to ${EXCHANGES.AI} exchange (queue: ${ADMIN_QUEUES.AI})`
+  );
 
   // mindora.mood is a topic exchange (mood-tracking-service publishes via
   // publishToExchange) — must match or RabbitMQ throws PRECONDITION_FAILED.
-  await subscribeToExchange(EXCHANGES.MOOD, ADMIN_QUEUES.MOOD, handleMoodConcern, 'topic');
-  console.log(`[admin] Subscribed to ${EXCHANGES.MOOD} exchange (queue: ${ADMIN_QUEUES.MOOD})`);
+  await subscribeToExchange(
+    EXCHANGES.MOOD,
+    ADMIN_QUEUES.MOOD,
+    handleMoodConcern,
+    'topic'
+  );
+  console.log(
+    `[admin] Subscribed to ${EXCHANGES.MOOD} exchange (queue: ${ADMIN_QUEUES.MOOD})`
+  );
 }

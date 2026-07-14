@@ -11,7 +11,10 @@ export const openApiSpec = {
   },
   servers: [
     { url: 'http://localhost:3002', description: 'Local development (direct)' },
-    { url: 'http://localhost:8000/api/v1/users', description: 'Via Kong gateway' },
+    {
+      url: 'http://localhost:8000/api/v1/users',
+      description: 'Via Kong gateway',
+    },
   ],
   tags: [
     { name: 'Health' },
@@ -69,7 +72,9 @@ export const openApiSpec = {
           timezone: { type: 'string', example: 'UTC' },
           languagePreference: { type: 'string', example: 'en' },
           fcmToken: { type: 'string', nullable: true },
-          notificationPreferences: { $ref: '#/components/schemas/NotificationPreferences' },
+          notificationPreferences: {
+            $ref: '#/components/schemas/NotificationPreferences',
+          },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
         },
@@ -87,7 +92,9 @@ export const openApiSpec = {
           languages: { type: 'array', items: { type: 'string' } },
           isAcceptingPatients: { type: 'boolean' },
           fcmToken: { type: 'string', nullable: true },
-          notificationPreferences: { $ref: '#/components/schemas/NotificationPreferences' },
+          notificationPreferences: {
+            $ref: '#/components/schemas/NotificationPreferences',
+          },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
         },
@@ -123,20 +130,35 @@ export const openApiSpec = {
       },
       PreferencesResponse: {
         type: 'object',
-        required: ['fcmToken', 'email', 'phoneNumber', 'userName', 'notificationPreferences'],
+        required: [
+          'fcmToken',
+          'email',
+          'phoneNumber',
+          'userName',
+          'notificationPreferences',
+        ],
         properties: {
           fcmToken: { type: 'string', nullable: true },
           email: { type: 'string', format: 'email', nullable: true },
-          phoneNumber: { type: 'string', nullable: true, description: 'Always null — not currently collected.' },
+          phoneNumber: {
+            type: 'string',
+            nullable: true,
+            description: 'Always null — not currently collected.',
+          },
           userName: { type: 'string', nullable: true },
-          notificationPreferences: { $ref: '#/components/schemas/NotificationPreferences' },
+          notificationPreferences: {
+            $ref: '#/components/schemas/NotificationPreferences',
+          },
         },
       },
       TherapistListResponse: {
         type: 'object',
         required: ['therapists', 'total', 'page', 'limit'],
         properties: {
-          therapists: { type: 'array', items: { $ref: '#/components/schemas/TherapistProfile' } },
+          therapists: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/TherapistProfile' },
+          },
           total: { type: 'integer' },
           page: { type: 'integer' },
           limit: { type: 'integer' },
@@ -172,7 +194,11 @@ export const openApiSpec = {
         responses: {
           '200': {
             description: 'Service is healthy',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/HealthResponse' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/HealthResponse' },
+              },
+            },
           },
         },
       },
@@ -181,12 +207,17 @@ export const openApiSpec = {
       get: {
         tags: ['Health'],
         summary: 'Service health check (Kong gateway path)',
-        description: 'Same response as GET /health. Kong forwards this path unchanged (strip_path: false).',
+        description:
+          'Same response as GET /health. Kong forwards this path unchanged (strip_path: false).',
         security: [],
         responses: {
           '200': {
             description: 'Service is healthy',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/HealthResponse' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/HealthResponse' },
+              },
+            },
           },
         },
       },
@@ -203,12 +234,20 @@ export const openApiSpec = {
         responses: {
           '200': {
             description: 'Own profile (or ADMIN placeholder)',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/MeResponse' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/MeResponse' },
+              },
+            },
           },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '404': {
             description: 'No profile row exists yet for this user',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorMessage' },
+              },
+            },
           },
           '429': { description: 'Rate limit exceeded' },
         },
@@ -222,16 +261,29 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/UpdateProfileRequest' } } },
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateProfileRequest' },
+            },
+          },
         },
         responses: {
           '200': {
             description: 'Updated profile',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/MeResponse' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/MeResponse' },
+              },
+            },
           },
           '400': {
-            description: 'Validation error, or role does not support profile updates (e.g. ADMIN)',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ValidationError' } } },
+            description:
+              'Validation error, or role does not support profile updates (e.g. ADMIN)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ValidationError' },
+              },
+            },
           },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '429': { description: 'Rate limit exceeded' },
@@ -246,21 +298,33 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/UpdateFcmTokenRequest' } } },
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateFcmTokenRequest' },
+            },
+          },
         },
         responses: {
           '200': {
             description: 'Token updated',
             content: {
               'application/json': {
-                schema: { type: 'object', properties: { message: { type: 'string' } } },
+                schema: {
+                  type: 'object',
+                  properties: { message: { type: 'string' } },
+                },
                 example: { message: 'FCM token updated' },
               },
             },
           },
           '400': {
-            description: 'Validation error, or role does not support FCM registration (e.g. ADMIN)',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ValidationError' } } },
+            description:
+              'Validation error, or role does not support FCM registration (e.g. ADMIN)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ValidationError' },
+              },
+            },
           },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '429': { description: 'Rate limit exceeded' },
@@ -281,7 +345,11 @@ export const openApiSpec = {
             'application/json': {
               schema: {
                 type: 'object',
-                properties: { push: { type: 'boolean' }, email: { type: 'boolean' }, sms: { type: 'boolean' } },
+                properties: {
+                  push: { type: 'boolean' },
+                  email: { type: 'boolean' },
+                  sms: { type: 'boolean' },
+                },
               },
             },
           },
@@ -293,14 +361,23 @@ export const openApiSpec = {
               'application/json': {
                 schema: {
                   type: 'object',
-                  properties: { notificationPreferences: { $ref: '#/components/schemas/NotificationPreferences' } },
+                  properties: {
+                    notificationPreferences: {
+                      $ref: '#/components/schemas/NotificationPreferences',
+                    },
+                  },
                 },
               },
             },
           },
           '400': {
-            description: 'Validation error, or role does not support notification preferences (e.g. ADMIN)',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ValidationError' } } },
+            description:
+              'Validation error, or role does not support notification preferences (e.g. ADMIN)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ValidationError' },
+              },
+            },
           },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '429': { description: 'Rate limit exceeded' },
@@ -318,17 +395,31 @@ export const openApiSpec = {
           'role/email backfill, and for users with no profile row at all (e.g. ADMIN).',
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            name: 'userId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
         ],
         responses: {
           '200': {
             description: 'Contact info and preferences',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/PreferencesResponse' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PreferencesResponse' },
+              },
+            },
           },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': {
-            description: 'Caller is neither the requested user nor a SERVICE-role caller',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } },
+            description:
+              'Caller is neither the requested user nor a SERVICE-role caller',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorMessage' },
+              },
+            },
           },
           '404': { $ref: '#/components/responses/NotFound' },
           '429': { description: 'Rate limit exceeded' },
@@ -344,15 +435,27 @@ export const openApiSpec = {
           'language. Only returns therapists with `isAcceptingPatients: true`.',
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 } },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+          },
           { name: 'specialisation', in: 'query', schema: { type: 'string' } },
           { name: 'language', in: 'query', schema: { type: 'string' } },
         ],
         responses: {
           '200': {
             description: 'Paginated therapist list',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/TherapistListResponse' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/TherapistListResponse' },
+              },
+            },
           },
           '400': { description: 'Invalid query parameters' },
           '401': { $ref: '#/components/responses/Unauthorized' },

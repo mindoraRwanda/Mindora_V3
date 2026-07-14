@@ -9,17 +9,17 @@ independently, with no cross-service Prisma relations. All PostgreSQL
 databases run on the same `mindora-postgres` container (host port 5433).
 Admin Service has no database of its own — it has no persistent storage.
 
-| Service | Database | Port |
-|---|---|---|
-| Auth Service | mindora_auth | 5433 |
-| User Service | mindora_user | 5433 |
-| Appointment Service | mindora_appointment | 5433 |
-| Mood Tracking Service | mindora_mood (TimescaleDB hypertable) | 5433 |
-| AI Integration Service | mindora_ai | 5433 |
-| Notification Service | mindora_notifications | 5433 |
-| Community Service | mindora_community | MongoDB |
-| Messaging Service | mindora_messaging | MongoDB |
-| Admin Service | — (not database-backed) | — |
+| Service                | Database                              | Port    |
+| ---------------------- | ------------------------------------- | ------- |
+| Auth Service           | mindora_auth                          | 5433    |
+| User Service           | mindora_user                          | 5433    |
+| Appointment Service    | mindora_appointment                   | 5433    |
+| Mood Tracking Service  | mindora_mood (TimescaleDB hypertable) | 5433    |
+| AI Integration Service | mindora_ai                            | 5433    |
+| Notification Service   | mindora_notifications                 | 5433    |
+| Community Service      | mindora_community                     | MongoDB |
+| Messaging Service      | mindora_messaging                     | MongoDB |
+| Admin Service          | — (not database-backed)               | —       |
 
 ## Internal Service Authentication
 
@@ -106,7 +106,7 @@ for the real mobile app.** `sendPushNotification()` in
 `apps/notification-service/src/fcm.ts` sends `{ token, data: { title, body } }`
 rather than `{ token, notification: { title, body } }`. This was a deliberate
 fix (2026-07-10): a `notification` payload makes the browser auto-display it
-while backgrounded, *in addition to* our own service worker's
+while backgrounded, _in addition to_ our own service worker's
 `onBackgroundMessage` also calling `showNotification()` with the same
 content — two independent triggers, same popup, appearing as a duplicate
 notification regardless of tab focus. Switching to `data` means only our own
@@ -131,7 +131,7 @@ would reintroduce the double-notification bug this fixed.
 **Flagged for later, not FCM-related, do not action yet:** Resend (email) and
 Africa's Talking (SMS) both currently use personal/sandbox credentials
 (`RESEND_EMAIL_API_KEY`, `AT_API_KEY`/`AT_USERNAME=sandbox` in `.env`).
-Unlike FCM, these two *do* require a company identity before production —
+Unlike FCM, these two _do_ require a company identity before production —
 Resend needs a verified sending domain, Africa's Talking needs a registered
 sender ID. Out of scope for the current task; raised here so it isn't lost.
 
@@ -170,6 +170,7 @@ event only (`handleAi` in `apps/notification-service/src/consumers.ts`) —
 **`appointment.reminder` is not implemented anywhere in this codebase**; there
 is no reminder-scheduling logic or consumer for it yet, despite being a
 planned event name. To enable SMS for production:
+
 1. Set `SMS_ENABLED=true` in environment variables
 2. Configure `AT_API_KEY`, `AT_USERNAME`, `AT_SENDER_ID` with live credentials
 3. Register a sender ID with Africa's Talking for Rwanda
@@ -181,6 +182,7 @@ planned event name. To enable SMS for production:
 **Deployment status:** Not included in initial deployment per CEO decision.
 
 **What works:**
+
 - Community group creation, listing, pagination
 - Anonymous and non-anonymous post creation with AES-256-GCM author encryption
 - Comments with atomic commentCount increments
@@ -190,7 +192,8 @@ planned event name. To enable SMS for production:
 - Seed script and Vitest test suite (14/14 passing)
 
 **Known gaps:**
-- Author name resolution: GET /groups/:id/posts returns userName: "Unknown" 
+
+- Author name resolution: GET /groups/:id/posts returns userName: "Unknown"
   for all non-anonymous posts. Root cause: inter-service call to User Service
   via @mindora/http-client is implemented but userName is returning null from
   User Service because patient_profiles table population via RabbitMQ consumer
@@ -204,11 +207,11 @@ planned event name. To enable SMS for production:
   INTERNAL_SERVICE_TOKEN. Confirmed working (200 on Test 1). End-to-end author
   resolution still returning Unknown — likely profile table population issue,
   not auth issue.
-Auth Service Kong routing: Auth Service uses 7 narrow per-endpoint routes 
-alongside the broad auth-api route. The narrow routes (auth-register, 
-auth-login, auth-refresh, auth-forgot-password, auth-reset-password, 
-auth-oauth-google, auth-oauth-google-callback) exist specifically to exempt 
-public endpoints from the JWT plugin on the broader auth-api route. They use 
-strip_path: false + request-transformer to rewrite the URI to the flat path 
-the service expects. Do not remove these routes or collapse them into auth-api 
-without first handling JWT exemption separately.
+  Auth Service Kong routing: Auth Service uses 7 narrow per-endpoint routes
+  alongside the broad auth-api route. The narrow routes (auth-register,
+  auth-login, auth-refresh, auth-forgot-password, auth-reset-password,
+  auth-oauth-google, auth-oauth-google-callback) exist specifically to exempt
+  public endpoints from the JWT plugin on the broader auth-api route. They use
+  strip_path: false + request-transformer to rewrite the URI to the flat path
+  the service expects. Do not remove these routes or collapse them into auth-api
+  without first handling JWT exemption separately.

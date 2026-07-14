@@ -46,7 +46,8 @@ export async function getUserPreferences(
     const data = (await res.json()) as UserPreferences;
     return {
       ...data,
-      notificationPreferences: data.notificationPreferences ?? DEFAULT_PREFERENCES,
+      notificationPreferences:
+        data.notificationPreferences ?? DEFAULT_PREFERENCES,
     };
   } catch (err) {
     console.warn(

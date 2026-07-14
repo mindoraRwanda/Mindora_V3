@@ -383,7 +383,10 @@ describe('GET /internal/appointments/analytics', () => {
       .set('Authorization', `Bearer ${serviceToken()}`);
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ totalAppointments: 30, completedAppointments: 18 });
+    expect(response.body).toEqual({
+      totalAppointments: 30,
+      completedAppointments: 18,
+    });
     expect(mockAppointmentCount).toHaveBeenCalledTimes(2);
     expect(mockAppointmentCount.mock.calls[1]?.[0]).toEqual({
       where: { status: 'COMPLETED' },

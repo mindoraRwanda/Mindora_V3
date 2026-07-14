@@ -10,7 +10,7 @@ const options: swaggerJsdoc.Options = {
         'API documentation for the Mindora Community Service. Handles community groups, ' +
         'posts, comments, and reactions.\n\n' +
         '**Not included in initial deployment, per CEO decision.**\n\n' +
-        '**Anonymous posts and comments encrypt the author\'s user ID (AES-256-GCM) — the ' +
+        "**Anonymous posts and comments encrypt the author's user ID (AES-256-GCM) — the " +
         'author is never revealed through this API for anonymous content.** There is ' +
         'currently no Admin Service capability to decrypt it; the encrypted ID exists only ' +
         'to correlate moderation actions back to a specific author internally if needed.',

@@ -46,9 +46,16 @@ function routeParam(value: string | string[]): string {
 async function isTherapist(userId: string): Promise<boolean> {
   const base = process.env.KONG_URL ?? 'http://localhost:8000';
   try {
-    const res = await fetch(`${base}/internal/auth/users/${userId}`, {
-      headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
-    });
+    // encodeURIComponent — userId is a caller-supplied route param and must
+    // not be able to reshape the request path sent to another service.
+    const res = await fetch(
+      `${base}/internal/auth/users/${encodeURIComponent(userId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
     if (!res.ok) return false;
     const authUser = (await res.json()) as { role: string };
     return authUser.role === 'THERAPIST';
@@ -510,6 +517,7 @@ appointmentRouter.post(
 // Service's /internal/* routes. Backs Admin Service's platform analytics.
 appointmentRouter.get(
   '/internal/appointments/analytics',
+  authenticatedRouteLimiter,
   verifyJwt,
   async (req, res) => {
     const authReq = req as AuthenticatedRequest;

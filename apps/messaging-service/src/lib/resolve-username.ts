@@ -15,7 +15,9 @@ async function fetchUserName(userId: string): Promise<string | null> {
   const base = process.env.KONG_URL ?? 'http://localhost:8000';
   try {
     const res = await fetch(`${base}/internal/users/${userId}`, {
-      headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { id: string; userName: string | null };

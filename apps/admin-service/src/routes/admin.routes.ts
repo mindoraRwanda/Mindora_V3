@@ -83,11 +83,13 @@ adminRouter.put('/users/:id/suspend', async (req, res) => {
 
   const response = await callService<{ message: string; userId: string }>(
     KONG_URL,
-    `/internal/users/${userId}/suspend`,
+    `/internal/users/${encodeURIComponent(userId)}/suspend`,
     {
       method: 'PUT',
       body: { reason },
-      headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
     }
   );
 
@@ -139,11 +141,13 @@ adminRouter.put('/users/:id/reactivate', async (req, res) => {
 
   const response = await callService<{ message: string; userId: string }>(
     KONG_URL,
-    `/internal/users/${userId}/reactivate`,
+    `/internal/users/${encodeURIComponent(userId)}/reactivate`,
     {
       method: 'PUT',
       body: { reason },
-      headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
     }
   );
 
@@ -192,7 +196,11 @@ adminRouter.get('/moderation/queue', async (req, res) => {
   }>(
     KONG_URL,
     `/internal/community/reports?status=PENDING&page=${page}&limit=${limit}`,
-    { headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` } }
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
+    }
   );
 
   if (!response.ok || !response.data) {
@@ -226,11 +234,17 @@ adminRouter.put('/moderation/:id/resolve', async (req, res) => {
     _id: string;
     contentId: string;
     contentType: string;
-  }>(KONG_URL, `/internal/community/reports/${reportId}/resolve`, {
-    method: 'PUT',
-    body: { status: communityStatus },
-    headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` },
-  });
+  }>(
+    KONG_URL,
+    `/internal/community/reports/${encodeURIComponent(reportId)}/resolve`,
+    {
+      method: 'PUT',
+      body: { status: communityStatus },
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
+    }
+  );
 
   if (response.status === 404) {
     res.status(404).json({ message: 'Report not found' });
@@ -279,8 +293,12 @@ adminRouter.post('/moderation/decrypt/:postId', async (req, res) => {
 
   const response = await httpClient.get<{ userId: string }>(
     KONG_URL,
-    `/internal/community/posts/${postId}/author`,
-    { headers: { Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` } }
+    `/internal/community/posts/${encodeURIComponent(postId)}/author`,
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
+    }
   );
 
   if (response.status === 404) {
@@ -319,16 +337,16 @@ adminRouter.get('/analytics', async (req, res) => {
       '/internal/users/analytics',
       { headers: serviceHeaders }
     ),
-    httpClient.get<{ totalAppointments: number; completedAppointments: number }>(
-      KONG_URL,
-      '/internal/appointments/analytics',
-      { headers: serviceHeaders }
-    ),
-    httpClient.get<{ totalMoodEntries: number; avgMoodScorePlatform: number | null }>(
-      KONG_URL,
-      '/internal/mood/analytics',
-      { headers: serviceHeaders }
-    ),
+    httpClient.get<{
+      totalAppointments: number;
+      completedAppointments: number;
+    }>(KONG_URL, '/internal/appointments/analytics', {
+      headers: serviceHeaders,
+    }),
+    httpClient.get<{
+      totalMoodEntries: number;
+      avgMoodScorePlatform: number | null;
+    }>(KONG_URL, '/internal/mood/analytics', { headers: serviceHeaders }),
     // /api/v1/ai/usage requires an ADMIN JWT specifically (requireRole('ADMIN')
     // in ai-integration-service) — the SERVICE token used for every other call
     // here would be rejected there, so this one forwards the caller's own token.
@@ -360,7 +378,9 @@ adminRouter.get('/analytics', async (req, res) => {
     totalAiInteractions: aiStats.ok
       ? (aiStats.data?.totalInteractions ?? null)
       : null,
-    totalCrisisEvents: aiStats.ok ? (aiStats.data?.totalCrisisEvents ?? null) : null,
+    totalCrisisEvents: aiStats.ok
+      ? (aiStats.data?.totalCrisisEvents ?? null)
+      : null,
   });
 });
 
@@ -477,7 +497,9 @@ adminRouter.get('/ai/usage', async (req, res) => {
   );
 
   if (!response.ok || !response.data) {
-    res.status(response.status || 503).json({ message: 'AI Service unavailable' });
+    res
+      .status(response.status || 503)
+      .json({ message: 'AI Service unavailable' });
     return;
   }
 

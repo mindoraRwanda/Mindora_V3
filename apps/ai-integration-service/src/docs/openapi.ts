@@ -16,11 +16,7 @@ export const openApiSpec = {
     { url: 'http://localhost:3007', description: 'Local development (direct)' },
     { url: 'http://localhost:8000/api/v1/ai', description: 'Via Kong gateway' },
   ],
-  tags: [
-    { name: 'Chat' },
-    { name: 'History' },
-    { name: 'Usage' },
-  ],
+  tags: [{ name: 'Chat' }, { name: 'History' }, { name: 'Usage' }],
   components: {
     securitySchemes: {
       bearerAuth: {
@@ -65,7 +61,8 @@ export const openApiSpec = {
             type: 'integer',
             minimum: 0,
             maximum: 4,
-            description: 'Present on POST /chat only, for levels below the immediate-escalation threshold.',
+            description:
+              'Present on POST /chat only, for levels below the immediate-escalation threshold.',
           },
         },
       },
@@ -82,7 +79,10 @@ export const openApiSpec = {
         properties: {
           totalInteractions: { type: 'integer' },
           totalTokensUsed: { type: 'integer' },
-          totalCrisisEvents: { type: 'integer', description: 'Interactions where the pre-filter returned level 5.' },
+          totalCrisisEvents: {
+            type: 'integer',
+            description: 'Interactions where the pre-filter returned level 5.',
+          },
           avgResponseMs: { type: 'integer' },
           topUsers: {
             type: 'array',
@@ -121,7 +121,11 @@ export const openApiSpec = {
       },
       Forbidden: {
         description: 'Wrong role for this endpoint',
-        content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } },
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/ErrorMessage' },
+          },
+        },
       },
     },
   },
@@ -141,7 +145,10 @@ export const openApiSpec = {
               'application/json': {
                 schema: {
                   type: 'object',
-                  properties: { status: { type: 'string', example: 'ok' }, service: { type: 'string' } },
+                  properties: {
+                    status: { type: 'string', example: 'ok' },
+                    service: { type: 'string' },
+                  },
                 },
               },
             },
@@ -173,22 +180,40 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/ChatRequest' } } },
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ChatRequest' },
+            },
+          },
         },
         responses: {
           '200': {
-            description: 'Level 5 crisis response — AI bypassed, helpline information returned',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/CrisisChatResponse' } } },
+            description:
+              'Level 5 crisis response — AI bypassed, helpline information returned',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CrisisChatResponse' },
+              },
+            },
           },
           '400': {
             description: 'message missing or empty',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorMessage' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorMessage' },
+              },
+            },
           },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
           '501': {
-            description: 'Pre-filter level 0–4 — AI provider integration not implemented yet',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/NotImplementedResponse' } } },
+            description:
+              'Pre-filter level 0–4 — AI provider integration not implemented yet',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/NotImplementedResponse' },
+              },
+            },
           },
         },
       },
@@ -197,28 +222,38 @@ export const openApiSpec = {
       get: {
         tags: ['History'],
         summary: 'Get chat session history (PATIENT only)',
-        description: 'Not implemented yet — pending AI team chatbot integration.',
+        description:
+          'Not implemented yet — pending AI team chatbot integration.',
         security: [{ bearerAuth: [] }],
         responses: {
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
           '501': {
             description: 'Not implemented yet',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/NotImplementedResponse' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/NotImplementedResponse' },
+              },
+            },
           },
         },
       },
       delete: {
         tags: ['History'],
         summary: 'Delete all chat session history (PATIENT only)',
-        description: 'Not implemented yet — pending AI team chatbot integration.',
+        description:
+          'Not implemented yet — pending AI team chatbot integration.',
         security: [{ bearerAuth: [] }],
         responses: {
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
           '501': {
             description: 'Not implemented yet',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/NotImplementedResponse' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/NotImplementedResponse' },
+              },
+            },
           },
         },
       },
@@ -234,7 +269,11 @@ export const openApiSpec = {
         responses: {
           '200': {
             description: 'Usage report',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/UsageResponse' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UsageResponse' },
+              },
+            },
           },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },

@@ -10,7 +10,10 @@ export const openApiSpec = {
   },
   servers: [
     { url: 'http://localhost:3001', description: 'Local development (direct)' },
-    { url: 'http://localhost:8000/api/v1/auth', description: 'Via Kong gateway' },
+    {
+      url: 'http://localhost:8000/api/v1/auth',
+      description: 'Via Kong gateway',
+    },
   ],
   tags: [
     { name: 'Health' },
@@ -297,7 +300,7 @@ export const openApiSpec = {
         tags: ['Session'],
         summary: 'Log out the current session',
         description:
-          'Requires a valid access token. Blacklists the current access token\'s JWT ID ' +
+          "Requires a valid access token. Blacklists the current access token's JWT ID " +
           '(via Redis, TTL matching its remaining lifetime) and revokes the associated ' +
           'refresh token, then clears the refresh cookie. Still returns 200 and clears the ' +
           'cookie even if the access token has already expired.',
@@ -338,7 +341,8 @@ export const openApiSpec = {
             },
           },
           '401': {
-            description: 'Missing, invalid, expired, or already-revoked refresh token',
+            description:
+              'Missing, invalid, expired, or already-revoked refresh token',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorMessage' },
@@ -374,7 +378,9 @@ export const openApiSpec = {
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/MessageResponse' },
-                example: { message: 'If that email exists, a reset link has been sent.' },
+                example: {
+                  message: 'If that email exists, a reset link has been sent.',
+                },
               },
             },
           },
@@ -389,7 +395,7 @@ export const openApiSpec = {
         summary: 'Reset password using a reset token',
         description:
           'Consumes the token issued by POST /forgot-password. Revokes all of the ' +
-          'user\'s existing refresh tokens on success, forcing re-login on every device.',
+          "user's existing refresh tokens on success, forcing re-login on every device.",
         security: [],
         requestBody: {
           required: true,
@@ -425,7 +431,8 @@ export const openApiSpec = {
       get: {
         tags: ['Session'],
         summary: 'Get the current authenticated user',
-        description: 'Returns identity claims decoded directly from the presented JWT.',
+        description:
+          'Returns identity claims decoded directly from the presented JWT.',
         security: [{ bearerAuth: [] }],
         responses: {
           '200': {
@@ -446,11 +453,11 @@ export const openApiSpec = {
         tags: ['OAuth'],
         summary: 'Start Google OAuth login',
         description:
-          'Redirects the browser to Google\'s consent screen. Not usable directly from ' +
+          "Redirects the browser to Google's consent screen. Not usable directly from " +
           'Swagger UI\'s "Try it out" (it is a redirect flow, not a JSON API call).',
         security: [],
         responses: {
-          '302': { description: 'Redirect to Google\'s OAuth consent screen' },
+          '302': { description: "Redirect to Google's OAuth consent screen" },
           '503': {
             description: 'Google OAuth is not configured on this deployment',
             content: {

@@ -326,6 +326,7 @@ authRouter.get(
 // See: BACKEND_COMPLETE.md → "Known Security Limitations"
 authRouter.get(
   '/internal/auth/users/:id',
+  authenticatedRouteLimiter,
   authenticate,
   async (req, res) => {
     const authReq = req as AuthenticatedRequest;
@@ -356,47 +357,59 @@ authRouter.get(
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as
 // GET /internal/auth/users/:id above. Backs Admin Service's user list via
 // User Service's GET /internal/users proxy.
-authRouter.get('/internal/auth/users', authenticate, async (req, res) => {
-  const authReq = req as AuthenticatedRequest;
-  if (authReq.user?.role !== 'SERVICE') {
-    res.status(403).json({ message: 'Forbidden' });
-    return;
+authRouter.get(
+  '/internal/auth/users',
+  authenticatedRouteLimiter,
+  authenticate,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const parsed = listUsersQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { role, isActive, page, limit } = parsed.data;
+    const where = {
+      ...(role ? { role } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
+    };
+    const skip = (page - 1) * limit;
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          isActive: true,
+          createdAt: true,
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    res.status(200).json({ users, total, page, limit });
   }
-
-  const parsed = listUsersQuerySchema.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({
-      message: 'Validation failed',
-      errors: parsed.error.flatten().fieldErrors,
-    });
-    return;
-  }
-
-  const { role, isActive, page, limit } = parsed.data;
-  const where = {
-    ...(role ? { role } : {}),
-    ...(isActive !== undefined ? { isActive } : {}),
-  };
-  const skip = (page - 1) * limit;
-
-  const [users, total] = await Promise.all([
-    prisma.user.findMany({
-      where,
-      select: { id: true, email: true, role: true, isActive: true, createdAt: true },
-      skip,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.user.count({ where }),
-  ]);
-
-  res.status(200).json({ users, total, page, limit });
-});
+);
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
 // Currently only used to flip isActive when Admin Service suspends a user.
 authRouter.patch(
   '/internal/auth/users/:id',
+  authenticatedRouteLimiter,
   authenticate,
   async (req, res) => {
     const authReq = req as AuthenticatedRequest;
@@ -416,7 +429,13 @@ authRouter.patch(
       const user = await prisma.user.update({
         where: { id },
         data: { isActive },
-        select: { id: true, email: true, role: true, isActive: true, createdAt: true },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          isActive: true,
+          createdAt: true,
+        },
       });
 
       // Redis is the fast-path every authenticated request checks (see
@@ -445,32 +464,37 @@ authRouter.patch(
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
 // Backs Admin Service's platform-wide analytics aggregation.
-authRouter.get('/internal/auth/analytics', authenticate, async (req, res) => {
-  const authReq = req as AuthenticatedRequest;
-  if (authReq.user?.role !== 'SERVICE') {
-    res.status(403).json({ message: 'Forbidden' });
-    return;
+authRouter.get(
+  '/internal/auth/analytics',
+  authenticatedRouteLimiter,
+  authenticate,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const [totalUsers, activeUsersLast30Days] = await Promise.all([
+      prisma.user.count(),
+      // "Active" = registered in the last 30 days, OR refreshed a session in
+      // the last 30 days (i.e. actually used the app, not just created once).
+      prisma.user.count({
+        where: {
+          OR: [
+            { createdAt: { gte: thirtyDaysAgo } },
+            { refreshTokens: { some: { createdAt: { gte: thirtyDaysAgo } } } },
+          ],
+        },
+      }),
+    ]);
+
+    res.status(200).json({ totalUsers, activeUsersLast30Days });
   }
-
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-  const [totalUsers, activeUsersLast30Days] = await Promise.all([
-    prisma.user.count(),
-    // "Active" = registered in the last 30 days, OR refreshed a session in
-    // the last 30 days (i.e. actually used the app, not just created once).
-    prisma.user.count({
-      where: {
-        OR: [
-          { createdAt: { gte: thirtyDaysAgo } },
-          { refreshTokens: { some: { createdAt: { gte: thirtyDaysAgo } } } },
-        ],
-      },
-    }),
-  ]);
-
-  res.status(200).json({ totalUsers, activeUsersLast30Days });
-});
+);
 
 authRouter.get('/oauth/google', publicAuthRouteLimiter, (req, res, next) => {
   if (!isGoogleOAuthConfigured()) {

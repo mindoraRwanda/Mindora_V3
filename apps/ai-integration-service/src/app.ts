@@ -20,7 +20,9 @@ app.use(express.json());
 app.use(
   '/docs',
   swaggerUi.serve,
-  swaggerUi.setup(openApiSpec, { customSiteTitle: 'AI Integration Service API Docs' })
+  swaggerUi.setup(openApiSpec, {
+    customSiteTitle: 'AI Integration Service API Docs',
+  })
 );
 app.get('/docs/openapi.json', (_req, res) => {
   res.json(openApiSpec);

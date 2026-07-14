@@ -38,18 +38,17 @@ function getBreaker(baseUrl: string): CircuitBreaker {
 
     breaker.on('open', () => {
       console.warn(
-        `Circuit breaker OPEN for ${baseUrl} — requests are being blocked`
+        'Circuit breaker OPEN — requests are being blocked:',
+        baseUrl
       );
     });
 
     breaker.on('halfOpen', () => {
-      console.info(
-        `Circuit breaker HALF-OPEN for ${baseUrl} — testing recovery`
-      );
+      console.info('Circuit breaker HALF-OPEN — testing recovery:', baseUrl);
     });
 
     breaker.on('close', () => {
-      console.info(`Circuit breaker CLOSED for ${baseUrl} — service recovered`);
+      console.info('Circuit breaker CLOSED — service recovered:', baseUrl);
     });
 
     breakers.set(baseUrl, breaker);
@@ -99,7 +98,12 @@ export async function callService<T>(
   } catch (error: unknown) {
     // Circuit is open or request failed
     if (error instanceof Error && error.message === 'Breaker is open') {
-      console.error(`Circuit open — ${baseUrl} is unavailable`);
+      // baseUrl/url are passed as separate console.error arguments, never
+      // interpolated into the first (format-string) argument — Node's
+      // console.error runs util.format on that argument, so embedding
+      // caller-influenced data there lets a crafted path containing '%s'
+      // etc. alter how subsequent arguments are formatted.
+      console.error('Circuit open — service unavailable:', baseUrl);
       return {
         data: null,
         status: 503,
@@ -120,7 +124,7 @@ export async function callService<T>(
       };
     }
 
-    console.error(`HTTP client error calling ${url}:`, error);
+    console.error('HTTP client error calling:', url, error);
     return {
       data: null,
       status: 500,

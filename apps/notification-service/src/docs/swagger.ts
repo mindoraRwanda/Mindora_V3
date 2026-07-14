@@ -159,12 +159,21 @@ const options: swaggerJsdoc.Options = {
               enum: ['delivered', 'failed', 'skipped'],
             },
             failureReason: { type: 'string', nullable: true },
-            createdAt: { type: 'string', format: 'date-time', description: 'UTC.' },
+            createdAt: {
+              type: 'string',
+              format: 'date-time',
+              description: 'UTC.',
+            },
             createdAtKigali: {
               type: 'string',
-              description: 'Same instant as createdAt, converted to Africa/Kigali (UTC+3) with the offset baked into the string.',
+              description:
+                'Same instant as createdAt, converted to Africa/Kigali (UTC+3) with the offset baked into the string.',
             },
-            deliveredAt: { type: 'string', format: 'date-time', nullable: true },
+            deliveredAt: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+            },
             deliveredAtKigali: { type: 'string', nullable: true },
           },
         },

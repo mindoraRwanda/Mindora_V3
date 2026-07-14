@@ -329,6 +329,7 @@ moodRouter.get(
 // Service's /internal/* routes. Backs Admin Service's platform analytics.
 moodRouter.get(
   '/internal/mood/analytics',
+  authenticatedRouteLimiter,
   verifyJwt,
   async (req, res) => {
     const authReq = req as AuthenticatedRequest;

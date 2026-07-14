@@ -7,7 +7,9 @@ import { PrismaClient } from '../generated/prisma/index.js';
 function createPrismaClient(): PrismaClient {
   const connectionString = process.env.ADMIN_DATABASE_URL;
   if (!connectionString) {
-    throw new Error('Missing required environment variable: ADMIN_DATABASE_URL');
+    throw new Error(
+      'Missing required environment variable: ADMIN_DATABASE_URL'
+    );
   }
   const adapter = new PrismaPg({ connectionString });
   return new PrismaClient({ adapter } as ConstructorParameters<

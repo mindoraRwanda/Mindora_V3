@@ -120,7 +120,11 @@ app.get(
         return;
       }
       const presence = JSON.parse(raw) as { online: boolean; lastSeen: string };
-      res.json({ userId, online: presence.online, lastSeen: presence.lastSeen });
+      res.json({
+        userId,
+        online: presence.online,
+        lastSeen: presence.lastSeen,
+      });
     } catch {
       res.status(500).json({ error: 'Failed to check presence' });
     }

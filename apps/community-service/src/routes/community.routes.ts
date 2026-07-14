@@ -47,7 +47,7 @@ async function resolveAuthor(post: IPost): Promise<PostAuthor> {
     const userId = decryptUserId(post.encryptedAuthorId);
     const response = await httpClient.get<UserServiceUser>(
       KONG_URL,
-      `/internal/users/${userId}`,
+      `/internal/users/${encodeURIComponent(userId)}`,
       {
         headers: {
           Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
@@ -784,25 +784,36 @@ router.get(
 // Backs Admin Service's moderation queue.
 internalRouter.get(
   '/internal/community/reports',
+  authenticatedRouteLimiter,
   authenticate,
   async (req: AuthenticatedRequest, res: Response) => {
     if (req.user?.role !== 'SERVICE') {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const status =
-      (req.query.status as 'PENDING' | 'REVIEWED' | 'DISMISSED' | undefined) ??
-      'PENDING';
+    // Rebuilt from literals, not a type-cast pass-through of req.query.status
+    // — a raw `as` cast performs no runtime check, so any string (or, via
+    // Express's bracket-notation query parser, an object like
+    // ?status[$ne]=PENDING) would have flowed straight into the Mongo query.
+    const requestedStatus = req.query.status;
+    let status: 'PENDING' | 'REVIEWED' | 'DISMISSED';
+    if (requestedStatus === 'REVIEWED') {
+      status = 'REVIEWED';
+    } else if (requestedStatus === 'DISMISSED') {
+      status = 'DISMISSED';
+    } else {
+      status = 'PENDING';
+    }
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const limit = Math.min(
+      50,
+      Math.max(1, parseInt(req.query.limit as string) || 20)
+    );
     const skip = (page - 1) * limit;
 
     try {
       const [reports, total] = await Promise.all([
-        Report.find({ status })
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(limit),
+        Report.find({ status }).sort({ createdAt: -1 }).skip(skip).limit(limit),
         Report.countDocuments({ status }),
       ]);
 
@@ -819,6 +830,7 @@ internalRouter.get(
 // Service maps its REMOVED/DISMISSED decision onto these before calling.
 internalRouter.put(
   '/internal/community/reports/:id/resolve',
+  authenticatedRouteLimiter,
   authenticate,
   async (req: AuthenticatedRequest, res: Response) => {
     if (req.user?.role !== 'SERVICE') {
@@ -826,8 +838,17 @@ internalRouter.put(
     }
 
     const id = req.params.id as string;
-    const { status } = req.body as { status?: unknown };
-    if (status !== 'REVIEWED' && status !== 'DISMISSED') {
+    const requestedStatus = (req.body as { status?: unknown })?.status;
+
+    // Rebuilt from literals (see GET /internal/community/reports above for
+    // why) — status only ever reaches the Mongo update as one of these two
+    // hardcoded strings, never a pass-through of req.body.status itself.
+    let status: 'REVIEWED' | 'DISMISSED';
+    if (requestedStatus === 'REVIEWED') {
+      status = 'REVIEWED';
+    } else if (requestedStatus === 'DISMISSED') {
+      status = 'DISMISSED';
+    } else {
       return res
         .status(400)
         .json({ error: "status must be 'REVIEWED' or 'DISMISSED'" });
@@ -869,6 +890,7 @@ internalRouter.put(
 // exposes it in normal display).
 internalRouter.get(
   '/internal/community/posts/:postId/author',
+  authenticatedRouteLimiter,
   authenticate,
   async (req: AuthenticatedRequest, res: Response) => {
     if (req.user?.role !== 'SERVICE') {

@@ -108,7 +108,8 @@ const options: swaggerJsdoc.Options = {
             participantName: {
               type: 'string',
               nullable: true,
-              description: 'Resolved via User Service through Kong. Null if the lookup failed or the user has no display name set.',
+              description:
+                'Resolved via User Service through Kong. Null if the lookup failed or the user has no display name set.',
               example: 'Dr. Jane Smith',
             },
             lastMessage: {
@@ -151,7 +152,8 @@ const options: swaggerJsdoc.Options = {
               type: 'string',
               format: 'date-time',
               nullable: true,
-              description: 'Null if the user has never connected, or their presence key has fully expired.',
+              description:
+                'Null if the user has never connected, or their presence key has fully expired.',
             },
           },
         },

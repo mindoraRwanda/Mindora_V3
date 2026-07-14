@@ -89,7 +89,9 @@ export async function sendSms(
   // SMS disabled by default — planned for Mindora V4.
   // Set SMS_ENABLED=true in .env and configure Africa's Talking credentials to enable.
   if (process.env.SMS_ENABLED !== 'true') {
-    console.warn(`[sms] SMS disabled (SMS_ENABLED!=true) — skipping user ${to}`);
+    console.warn(
+      `[sms] SMS disabled (SMS_ENABLED!=true) — skipping user ${to}`
+    );
     await logNotification({
       userId: to,
       eventType,

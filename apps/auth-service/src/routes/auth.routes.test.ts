@@ -357,7 +357,10 @@ describe('GET /internal/auth/analytics', () => {
       .set('Authorization', `Bearer ${serviceToken()}`);
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ totalUsers: 50, activeUsersLast30Days: 12 });
+    expect(response.body).toEqual({
+      totalUsers: 50,
+      activeUsersLast30Days: 12,
+    });
     expect(mockUserCount).toHaveBeenCalledTimes(2);
     // Second call is the "active" filter — createdAt OR refreshTokens.some within 30 days
     expect(mockUserCount.mock.calls[1]?.[0]).toEqual(
