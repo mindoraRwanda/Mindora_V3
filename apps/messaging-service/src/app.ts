@@ -10,6 +10,7 @@ import {
   authenticatedRouteLimiter,
   healthRouteLimiter,
 } from './middleware/rate-limit.js';
+import { corsOriginCallback } from './lib/cors-origin.js';
 
 const SERVICE_NAME = 'messaging-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/messaging/health';
@@ -19,11 +20,11 @@ const app = express();
 // real client IP from X-Forwarded-For instead of Kong's own container IP.
 app.set('trust proxy', 1);
 
-// Matches the Socket.io layer's existing cors: { origin: '*' } — REST needed
-// the same treatment or cross-origin fetch() calls (e.g. a file:// test page)
-// get silently blocked by the browser before the request ever reaches here.
-// Tighten this to a real origin allowlist before production.
-app.use(cors({ origin: '*' }));
+// Wide open outside production (matches the Socket.io layer) so cross-origin
+// fetch() calls from e.g. a file:// test page aren't silently blocked before
+// the request reaches here. In production, only origins listed in
+// CORS_ALLOWED_ORIGINS are allowed — see lib/cors-origin.ts.
+app.use(cors({ origin: corsOriginCallback }));
 
 app.use(express.json());
 

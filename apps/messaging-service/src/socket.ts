@@ -8,6 +8,7 @@ import { isMongoConnected } from './database.js';
 import { getRedisClient } from './utils/redis.js';
 import { publishMessageReceivedEvent } from './lib/publish-message-event.js';
 import { resolveUserName } from './lib/resolve-username.js';
+import { corsOriginCallback } from './lib/cors-origin.js';
 
 export let io: SocketIOServer;
 
@@ -17,7 +18,7 @@ export const initializeSocket = async (
 ): Promise<SocketIOServer> => {
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: '*', // tighten this in production
+      origin: corsOriginCallback,
       methods: ['GET', 'POST'],
     },
   });
