@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { FatalNotificationError } from './errors.js';
+import { logNotification } from './notificationLogger.js';
 
 const require = createRequire(import.meta.url);
 
@@ -63,47 +64,68 @@ export function initSms(): void {
   console.log("✓ Africa's Talking SMS client initialized");
 }
 
-async function getUserPhone(userId: string): Promise<string | null> {
-  const base = process.env.USER_SERVICE_URL ?? 'http://localhost:3002';
-  try {
-    const res = await fetch(`${base}/api/v1/users/${userId}/preferences`);
-    if (!res.ok) {
-      console.warn(
-        `[sms] User Service returned ${res.status} for user ${userId} — no phone number`
-      );
-      return null;
-    }
-    const data = (await res.json()) as { phoneNumber?: string };
-    return data.phoneNumber ?? null;
-  } catch (err) {
-    console.warn(`[sms] User Service unreachable for user ${userId}:`, err);
-    return null;
-  }
-}
-
 /**
- * Sends an SMS to the user identified by `to`.
- * Looks up the user's phone number via the User Service preference endpoint.
+ * Sends an SMS to the user identified by `to`, using a pre-fetched phone
+ * number (resolved by the caller via getUserPreferences() — see preferences.ts).
  * Throws `FatalNotificationError` for permanently undeliverable numbers (invalid format,
  * blacklisted, unsupported type). Throws a plain `Error` for transient failures
  * (balance, routing, gateway) so retry.ts can schedule backoff retries.
  *
- * @param to   - User ID whose phone number is resolved from the User Service.
- * @param body - SMS message body (160 chars per segment; AT auto-splits multi-part messages).
+ * SMS_ENABLED gates actual delivery here (not at the call site) so every
+ * attempt — including ones made while disabled — gets logged consistently.
+ *
+ * @param to    - User ID, used only for logging (phone number comes from `phoneNumber`).
+ * @param body  - SMS message body (160 chars per segment; AT auto-splits multi-part messages).
+ * @param phoneNumber - Pre-fetched phone number, or null if none on file.
  */
-export async function sendSms(to: string, body: string): Promise<void> {
+export async function sendSms(
+  to: string,
+  body: string,
+  phoneNumber: string | null,
+  eventType = 'unknown'
+): Promise<void> {
   console.log(`[sms] sendSms → user=${to}`);
+
+  // SMS disabled by default — planned for Mindora V4.
+  // Set SMS_ENABLED=true in .env and configure Africa's Talking credentials to enable.
+  if (process.env.SMS_ENABLED !== 'true') {
+    console.warn(
+      `[sms] SMS disabled (SMS_ENABLED!=true) — skipping user ${to}`
+    );
+    await logNotification({
+      userId: to,
+      eventType,
+      channel: 'sms',
+      status: 'skipped',
+      failureReason: 'SMS disabled — planned for V4',
+    });
+    return;
+  }
 
   if (!smsClient) {
     console.warn(
       `[sms] SMS client not initialized — skipping SMS to user ${to}`
     );
+    await logNotification({
+      userId: to,
+      eventType,
+      channel: 'sms',
+      status: 'skipped',
+      failureReason: 'SMS client not initialized',
+    });
     return;
   }
 
-  const phone = await getUserPhone(to);
+  const phone = phoneNumber;
   if (!phone) {
     console.warn(`[sms] No phone number for user ${to} — skipping SMS`);
+    await logNotification({
+      userId: to,
+      eventType,
+      channel: 'sms',
+      status: 'skipped',
+      failureReason: 'No phone number on file',
+    });
     return;
   }
 
@@ -114,6 +136,12 @@ export async function sendSms(to: string, body: string): Promise<void> {
     console.log(
       `[sms] SMS delivered → user=${to} phone=${phone} status=${recipient?.status ?? 'unknown'}`
     );
+    await logNotification({
+      userId: to,
+      eventType,
+      channel: 'sms',
+      status: 'delivered',
+    });
     return;
   }
 
@@ -124,6 +152,13 @@ export async function sendSms(to: string, body: string): Promise<void> {
     console.error(
       `[sms] Fatal AT error (${label}) for user ${to} — number ${phone} is permanently unreachable, routing straight to DLQ`
     );
+    await logNotification({
+      userId: to,
+      eventType,
+      channel: 'sms',
+      status: 'failed',
+      failureReason: `Fatal AT error (${label})`,
+    });
     throw new FatalNotificationError(
       `AT ${label} for user ${to}`,
       String(statusCode),
@@ -132,6 +167,13 @@ export async function sendSms(to: string, body: string): Promise<void> {
   }
 
   // Transient: balance low (405), risk hold (401), routing failure (407), gateway errors (500/501/502)
+  await logNotification({
+    userId: to,
+    eventType,
+    channel: 'sms',
+    status: 'failed',
+    failureReason: `AT status ${statusCode}`,
+  });
   throw new Error(
     `SMS delivery failed (AT status ${statusCode}) for user ${to} — will retry`
   );

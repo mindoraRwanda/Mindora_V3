@@ -1,5 +1,15 @@
 import CircuitBreaker from 'opossum';
 
+// Strips CR/LF and other control characters before a value is written to the
+// console — without this, a crafted baseUrl/path containing a newline could
+// forge fake-looking log lines (log injection), independent of the
+// format-string concern already handled by never interpolating these values
+// into the first console.error argument.
+function sanitizeForLog(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\x00-\x1f\x7f]/g, '');
+}
+
 // The shape of every response that comes back from an internal service call
 export type ServiceResponse<T> = {
   data: T | null;
@@ -38,18 +48,23 @@ function getBreaker(baseUrl: string): CircuitBreaker {
 
     breaker.on('open', () => {
       console.warn(
-        `Circuit breaker OPEN for ${baseUrl} — requests are being blocked`
+        'Circuit breaker OPEN — requests are being blocked:',
+        sanitizeForLog(baseUrl)
       );
     });
 
     breaker.on('halfOpen', () => {
       console.info(
-        `Circuit breaker HALF-OPEN for ${baseUrl} — testing recovery`
+        'Circuit breaker HALF-OPEN — testing recovery:',
+        sanitizeForLog(baseUrl)
       );
     });
 
     breaker.on('close', () => {
-      console.info(`Circuit breaker CLOSED for ${baseUrl} — service recovered`);
+      console.info(
+        'Circuit breaker CLOSED — service recovered:',
+        sanitizeForLog(baseUrl)
+      );
     });
 
     breakers.set(baseUrl, breaker);
@@ -99,7 +114,15 @@ export async function callService<T>(
   } catch (error: unknown) {
     // Circuit is open or request failed
     if (error instanceof Error && error.message === 'Breaker is open') {
-      console.error(`Circuit open — ${baseUrl} is unavailable`);
+      // baseUrl/url are passed as separate console.error arguments, never
+      // interpolated into the first (format-string) argument — Node's
+      // console.error runs util.format on that argument, so embedding
+      // caller-influenced data there lets a crafted path containing '%s'
+      // etc. alter how subsequent arguments are formatted.
+      console.error(
+        'Circuit open — service unavailable:',
+        sanitizeForLog(baseUrl)
+      );
       return {
         data: null,
         status: 503,
@@ -120,7 +143,7 @@ export async function callService<T>(
       };
     }
 
-    console.error(`HTTP client error calling ${url}:`, error);
+    console.error('HTTP client error calling:', sanitizeForLog(url), error);
     return {
       data: null,
       status: 500,

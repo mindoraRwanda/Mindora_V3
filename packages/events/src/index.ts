@@ -1,24 +1,41 @@
-export type {
-  EventMetadata,
-  IsoDateTimeString,
-  UuidString,
-  WithMetadata,
+export {
+  eventMetadataSchema,
+  type EventMetadata,
+  type IsoDateTimeString,
+  type UuidString,
+  type WithMetadata,
 } from './common.js';
 
 export type { BaseEvent, QueueName, ExchangeName } from './base.js';
-export { QUEUES, EXCHANGES } from './base.js';
-export type {
-  CommunityReportedEvent,
-  CommunityReplyEvent,
+export { QUEUES, EXCHANGES, baseEventSchema } from './base.js';
+export {
+  communityDomainEventSchema,
+  communityReportedEventSchema,
+  communityReplyEventSchema,
+  type CommunityReportedEvent,
+  type CommunityReplyEvent,
 } from './community.js';
-export type { MessageReceivedEvent } from './messaging.js';
-export type { AIUsageLoggedEvent } from './ai.js';
+export {
+  messageReceivedEventSchema,
+  type MessageReceivedEvent,
+} from './messaging.js';
+export {
+  aiCrisisEventSchema,
+  aiUsageLoggedEventSchema,
+  type AICrisisEvent,
+  type AIUsageLoggedEvent,
+} from './ai.js';
 
 export {
   APPOINTMENTS_EXCHANGE,
   APPOINTMENT_ROUTING_KEYS,
   APPOINTMENT_SESSION_TYPES,
   APPOINTMENT_STATUSES,
+  appointmentBookedEventSchema,
+  appointmentCancelledEventSchema,
+  appointmentCompletedEventSchema,
+  appointmentConfirmedEventSchema,
+  appointmentDomainEventSchema,
   createAppointmentBookedEvent,
   createAppointmentCancelledEvent,
   createAppointmentCompletedEvent,
@@ -40,6 +57,9 @@ export {
   MOOD_STREAK_MILESTONES,
   createMoodConcernEvent,
   createMoodStreakEvent,
+  moodConcernEventSchema,
+  moodDomainEventSchema,
+  moodStreakEventSchema,
   type MoodConcernEvent,
   type MoodDomainEvent,
   type MoodRoutingKey,

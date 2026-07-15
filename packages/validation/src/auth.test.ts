@@ -7,6 +7,7 @@ describe('registerSchema', () => {
       email: 'patient@example.com',
       password: 'securePass1',
       role: 'PATIENT',
+      userName: 'Test Patient',
     });
     expect(result.success).toBe(true);
   });
@@ -16,6 +17,7 @@ describe('registerSchema', () => {
       email: 'not-an-email',
       password: 'securePass1',
       role: 'PATIENT',
+      userName: 'Test Patient',
     });
     expect(result.success).toBe(false);
   });
@@ -25,6 +27,26 @@ describe('registerSchema', () => {
       email: 'patient@example.com',
       password: 'short',
       role: 'PATIENT',
+      userName: 'Test Patient',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects missing userName', () => {
+    const result = registerSchema.safeParse({
+      email: 'patient@example.com',
+      password: 'securePass1',
+      role: 'PATIENT',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects userName shorter than 2 characters', () => {
+    const result = registerSchema.safeParse({
+      email: 'patient@example.com',
+      password: 'securePass1',
+      role: 'PATIENT',
+      userName: 'A',
     });
     expect(result.success).toBe(false);
   });

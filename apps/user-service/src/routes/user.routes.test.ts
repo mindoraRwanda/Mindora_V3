@@ -31,8 +31,9 @@ const mockTherapistUpdate = vi.fn();
 const mockTherapistFindMany = vi.fn();
 const mockTherapistCount = vi.fn();
 const mockIsBlacklisted = vi.fn();
+const mockHttpGet = vi.fn();
 
-vi.mock('@mindora/database', () => ({
+vi.mock('../lib/prisma.js', () => ({
   prisma: {
     patientProfile: {
       findUnique: (...args: unknown[]) => mockPatientFindUnique(...args),
@@ -45,7 +46,11 @@ vi.mock('@mindora/database', () => ({
       count: (...args: unknown[]) => mockTherapistCount(...args),
     },
   },
-  Prisma: {},
+}));
+
+vi.mock('@mindora/http-client', () => ({
+  httpClient: { get: (...args: unknown[]) => mockHttpGet(...args) },
+  callService: vi.fn(),
 }));
 
 vi.mock('@mindora/auth-middleware', async (importOriginal) => {
@@ -75,6 +80,22 @@ function patientToken() {
   );
 }
 
+function serviceToken() {
+  return jwt.sign(
+    {
+      sub: 'admin-service',
+      email: 'service@mindora.internal',
+      role: 'SERVICE',
+    },
+    process.env.JWT_SECRET!,
+    {
+      expiresIn: '15m',
+      issuer: process.env.JWT_ISSUER,
+      jwtid: randomUUID(),
+    }
+  );
+}
+
 describe('GET /me', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -89,7 +110,6 @@ describe('GET /me', () => {
       bio: 'Hello',
       timezone: 'Africa/Kigali',
       languagePreference: 'en',
-      notificationPreferences: { email: true },
     };
     mockPatientFindUnique.mockResolvedValue(profile);
 
@@ -124,7 +144,6 @@ describe('PUT /me', () => {
       bio: 'New bio',
       timezone: 'UTC',
       languagePreference: 'fr',
-      notificationPreferences: { email: false },
     };
     mockPatientUpdate.mockResolvedValue(updated);
 
@@ -137,7 +156,6 @@ describe('PUT /me', () => {
         bio: 'New bio',
         timezone: 'UTC',
         languagePreference: 'fr',
-        notificationPreferences: { email: false },
       });
 
     expect(response.status).toBe(200);
@@ -168,5 +186,59 @@ describe('GET /therapists', () => {
       page: 1,
       limit: 10,
     });
+  });
+});
+
+describe('GET /internal/users/analytics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  it('proxies to Auth Service via httpClient — not shadowed by /internal/users/:id', async () => {
+    mockHttpGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { totalUsers: 17, activeUsersLast30Days: 5 },
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/users/analytics')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ totalUsers: 17, activeUsersLast30Days: 5 });
+    // If /internal/users/:id had shadowed this route (the exact bug found
+    // live earlier — "analytics" matched as :id), httpClient.get would
+    // never be called at all; that handler only queries prisma directly.
+    expect(mockHttpGet).toHaveBeenCalledWith(
+      expect.any(String),
+      '/internal/auth/analytics',
+      expect.objectContaining({ headers: expect.any(Object) })
+    );
+    expect(mockPatientFindUnique).not.toHaveBeenCalled();
+    expect(mockTherapistFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 when Auth Service is unreachable', async () => {
+    mockHttpGet.mockResolvedValue({ ok: false, status: 503, data: null });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/users/analytics')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(503);
+  });
+
+  it('rejects a non-SERVICE (PATIENT) token with 403', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/users/analytics')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockHttpGet).not.toHaveBeenCalled();
   });
 });

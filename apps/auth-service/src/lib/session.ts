@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { prisma } from '@mindora/database';
+import { prisma } from './prisma.js';
 import { config } from '../config.js';
 import {
   createRefreshToken,

@@ -2,7 +2,8 @@ import {
   createAppointmentBookedEvent,
   type AppointmentSessionType,
 } from '@mindora/events';
-import { prisma, Prisma } from '@mindora/database';
+import { prisma } from './prisma.js';
+import { Prisma } from '../generated/prisma/index.js';
 import type { BookAppointmentDto } from '@mindora/validation';
 import { publishAppointmentEvent } from './publish-appointment-event.js';
 import { config } from '../config.js';
@@ -28,12 +29,13 @@ export async function bookAppointmentWithLock(
   input: BookAppointmentDto
 ) {
   const appointment = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`
-      SELECT user_id
-      FROM therapist_profiles
-      WHERE user_id = ${input.therapistId}::uuid
-      FOR UPDATE
-    `;
+    // Serializes concurrent booking attempts for the same therapist. This
+    // was previously a `SELECT ... FOR UPDATE` row lock on therapist_profiles,
+    // but that table now lives in mindora_user (a separate database) and
+    // Postgres locks can't cross databases. A transaction-scoped advisory
+    // lock keyed by therapistId gives the same mutex without needing a local
+    // row to lock — it's released automatically at commit/rollback.
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.therapistId}))`;
 
     const conflicts = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT id

@@ -115,131 +115,42 @@ describe('sendPushNotification', () => {
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { sendPushNotification } = await import('../fcm.js');
     // app is null — initFirebase was never called in this fresh module
-    await sendPushNotification('user-1', 'Title', 'Body');
+    await sendPushNotification('user-1', 'Title', 'Body', 'device-token');
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Firebase not initialized')
     );
     expect(mocks.mockSend).not.toHaveBeenCalled();
   });
 
-  it('skips push when User Service returns no FCM token', async () => {
+  it('warns and skips when fcmToken is null', async () => {
     process.env.FIREBASE_SERVICE_ACCOUNT_JSON = '{"type":"service_account"}';
     mocks.mockInitializeApp.mockReturnValue({ name: 'app' });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({}),
-      })
-    );
-    const { initFirebase, sendPushNotification } = await import('../fcm.js');
-    initFirebase();
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    await sendPushNotification('user-1', 'Title', 'Body');
-    expect(mocks.mockSend).not.toHaveBeenCalled();
-  });
-
-  it('warns when no FCM token is present', async () => {
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = '{"type":"service_account"}';
-    mocks.mockInitializeApp.mockReturnValue({ name: 'app' });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({}),
-      })
-    );
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { initFirebase, sendPushNotification } = await import('../fcm.js');
     initFirebase();
-    await sendPushNotification('user-99', 'Title', 'Body');
+    await sendPushNotification('user-99', 'Title', 'Body', null);
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('No FCM token')
     );
-  });
-
-  it('skips push when User Service returns non-ok response', async () => {
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = '{"type":"service_account"}';
-    mocks.mockInitializeApp.mockReturnValue({ name: 'app' });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 404 })
-    );
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { initFirebase, sendPushNotification } = await import('../fcm.js');
-    initFirebase();
-    await sendPushNotification('user-1', 'Title', 'Body');
     expect(mocks.mockSend).not.toHaveBeenCalled();
   });
 
-  it('skips push when User Service is unreachable', async () => {
+  it('sends push with the given token and data payload — no internal fetch', async () => {
     process.env.FIREBASE_SERVICE_ACCOUNT_JSON = '{"type":"service_account"}';
-    mocks.mockInitializeApp.mockReturnValue({ name: 'app' });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
-    );
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { initFirebase, sendPushNotification } = await import('../fcm.js');
-    initFirebase();
-    await sendPushNotification('user-1', 'Title', 'Body');
-    expect(mocks.mockSend).not.toHaveBeenCalled();
-  });
-
-  it('sends push with correct token and notification payload', async () => {
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = '{"type":"service_account"}';
-    process.env.USER_SERVICE_URL = 'http://user-service:3002';
     mocks.mockInitializeApp.mockReturnValue({ name: 'app' });
     mocks.mockSend.mockResolvedValue('msg-id-abc');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ fcmToken: 'device-token-xyz' }),
-      })
-    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
     const { initFirebase, sendPushNotification } = await import('../fcm.js');
     initFirebase();
-    await sendPushNotification('user-1', 'Hello', 'World');
+    await sendPushNotification('user-1', 'Hello', 'World', 'device-token-xyz');
     expect(mocks.mockSend).toHaveBeenCalledWith({
       token: 'device-token-xyz',
-      notification: { title: 'Hello', body: 'World' },
+      data: { title: 'Hello', body: 'World' },
     });
-  });
-
-  it('calls User Service with the correct preferences URL', async () => {
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = '{"type":"service_account"}';
-    process.env.USER_SERVICE_URL = 'http://user-service:3002';
-    mocks.mockInitializeApp.mockReturnValue({ name: 'app' });
-    mocks.mockSend.mockResolvedValue('msg-id');
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ fcmToken: 'token-abc' }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    const { initFirebase, sendPushNotification } = await import('../fcm.js');
-    initFirebase();
-    await sendPushNotification('user-42', 'Title', 'Body');
-    expect(fetchMock).toHaveBeenCalledWith(
-      'http://user-service:3002/api/v1/users/user-42/preferences'
-    );
-  });
-
-  it('uses default USER_SERVICE_URL when env var is not set', async () => {
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = '{"type":"service_account"}';
-    mocks.mockInitializeApp.mockReturnValue({ name: 'app' });
-    mocks.mockSend.mockResolvedValue('msg-id');
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ fcmToken: 'token' }),
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    const { initFirebase, sendPushNotification } = await import('../fcm.js');
-    initFirebase();
-    await sendPushNotification('user-5', 'T', 'B');
-    expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:3002/api/v1/users/user-5/preferences'
-    );
+    // sendPushNotification no longer resolves its own token — that's
+    // preferences.ts's job now, called once by the consumer beforehand.
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('throws FatalNotificationError for messaging/invalid-registration-token', async () => {
@@ -248,19 +159,12 @@ describe('sendPushNotification', () => {
     mocks.mockSend.mockRejectedValue({
       code: 'messaging/invalid-registration-token',
     });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ fcmToken: 'stale-token' }),
-      })
-    );
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const { initFirebase, sendPushNotification, FatalNotificationError } =
       await import('../fcm.js');
     initFirebase();
     await expect(
-      sendPushNotification('user-1', 'T', 'B')
+      sendPushNotification('user-1', 'T', 'B', 'stale-token')
     ).rejects.toBeInstanceOf(FatalNotificationError);
   });
 
@@ -270,19 +174,12 @@ describe('sendPushNotification', () => {
     mocks.mockSend.mockRejectedValue({
       code: 'messaging/registration-token-not-registered',
     });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ fcmToken: 'unregistered-token' }),
-      })
-    );
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const { initFirebase, sendPushNotification, FatalNotificationError } =
       await import('../fcm.js');
     initFirebase();
     await expect(
-      sendPushNotification('user-1', 'T', 'B')
+      sendPushNotification('user-1', 'T', 'B', 'unregistered-token')
     ).rejects.toBeInstanceOf(FatalNotificationError);
   });
 
@@ -292,19 +189,12 @@ describe('sendPushNotification', () => {
     mocks.mockSend.mockRejectedValue({
       code: 'messaging/registration-token-not-registered',
     });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ fcmToken: 'old-token' }),
-      })
-    );
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const { initFirebase, sendPushNotification, FatalNotificationError } =
       await import('../fcm.js');
     initFirebase();
     try {
-      await sendPushNotification('user-99', 'T', 'B');
+      await sendPushNotification('user-99', 'T', 'B', 'old-token');
       expect.fail('should have thrown FatalNotificationError');
     } catch (err) {
       expect(err).toBeInstanceOf(FatalNotificationError);
@@ -322,17 +212,10 @@ describe('sendPushNotification', () => {
     mocks.mockInitializeApp.mockReturnValue({ name: 'app' });
     const transientError = new Error('Network timeout');
     mocks.mockSend.mockRejectedValue(transientError);
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ fcmToken: 'valid-token' }),
-      })
-    );
     const { initFirebase, sendPushNotification } = await import('../fcm.js');
     initFirebase();
-    await expect(sendPushNotification('user-1', 'T', 'B')).rejects.toBe(
-      transientError
-    );
+    await expect(
+      sendPushNotification('user-1', 'T', 'B', 'valid-token')
+    ).rejects.toBe(transientError);
   });
 });

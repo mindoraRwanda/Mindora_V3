@@ -23,7 +23,6 @@ async function main() {
         bio: 'Sprint 2 seeded patient profile',
         timezone: 'Africa/Kigali',
         languagePreference: 'en',
-        notificationPreferences: { email: true, push: false },
       },
     });
     console.log('Seeded patient profile');
@@ -42,7 +41,6 @@ async function main() {
         specialisation: 'CBT',
         languages: ['en', 'fr'],
         isAcceptingPatients: true,
-        notificationPreferences: { email: true },
       },
     });
     console.log('Seeded therapist profile');

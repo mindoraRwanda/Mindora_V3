@@ -61,7 +61,20 @@ describe('subscribeWithRetry', () => {
     expect(mocks.mockSubscribeToExchange).toHaveBeenCalledWith(
       'mindora.test',
       'test.queue',
-      expect.any(Function)
+      expect.any(Function),
+      'fanout'
+    );
+  });
+
+  it('passes through a topic exchange type when specified', async () => {
+    const { subscribeWithRetry } = await import('../retry.js');
+    const handler = vi.fn().mockResolvedValue(undefined);
+    await subscribeWithRetry('mindora.test', 'test.queue', handler, 'topic');
+    expect(mocks.mockSubscribeToExchange).toHaveBeenCalledWith(
+      'mindora.test',
+      'test.queue',
+      expect.any(Function),
+      'topic'
     );
   });
 

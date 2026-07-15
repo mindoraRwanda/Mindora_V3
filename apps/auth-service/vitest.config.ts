@@ -13,10 +13,6 @@ export default defineConfig({
         __dirname,
         '../../packages/auth-middleware/src/index.ts'
       ),
-      '@mindora/database': path.resolve(
-        __dirname,
-        '../../packages/database/src/index.ts'
-      ),
     },
   },
   test: {

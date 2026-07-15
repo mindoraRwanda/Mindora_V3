@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /** ISO-8601 UTC timestamp string (e.g. 2026-06-15T12:00:00.000Z). */
 export type IsoDateTimeString = string;
 
@@ -17,3 +19,10 @@ export interface EventMetadata {
 }
 
 export type WithMetadata<TPayload> = TPayload & EventMetadata;
+
+/** Runtime counterpart of {@link EventMetadata} — validate before trusting a consumed message. */
+export const eventMetadataSchema = z.object({
+  eventId: z.string().uuid(),
+  occurredAt: z.string().datetime(),
+  schemaVersion: z.literal(1),
+});

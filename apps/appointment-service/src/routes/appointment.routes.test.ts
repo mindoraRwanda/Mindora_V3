@@ -24,7 +24,6 @@ vi.mock('ioredis', () => {
   return { default: Redis };
 });
 
-const mockTherapistFindUnique = vi.fn();
 const mockAppointmentFindMany = vi.fn();
 const mockAppointmentFindUnique = vi.fn();
 const mockAppointmentCount = vi.fn();
@@ -35,11 +34,8 @@ const mockTransaction = vi.fn();
 const mockPublishAppointmentEvent = vi.fn();
 const mockIsBlacklisted = vi.fn();
 
-vi.mock('@mindora/database', () => ({
+vi.mock('../lib/prisma.js', () => ({
   prisma: {
-    therapistProfile: {
-      findUnique: (...args: unknown[]) => mockTherapistFindUnique(...args),
-    },
     appointment: {
       findMany: (...args: unknown[]) => mockAppointmentFindMany(...args),
       findUnique: (...args: unknown[]) => mockAppointmentFindUnique(...args),
@@ -50,16 +46,10 @@ vi.mock('@mindora/database', () => ({
     $transaction: (...args: unknown[]) => mockTransaction(...args),
     $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
   },
-  Prisma: {
-    PrismaClientKnownRequestError: class PrismaClientKnownRequestError extends Error {
-      code: string;
-      constructor(message: string, code: string) {
-        super(message);
-        this.code = code;
-      }
-    },
-  },
 }));
+
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
 
 vi.mock('../middleware/authenticate.js', () => ({
   verifyJwt: (req, res, next) => {
@@ -142,6 +132,22 @@ function therapistToken() {
   );
 }
 
+function serviceToken() {
+  return jwt.sign(
+    {
+      sub: 'admin-service',
+      email: 'service@mindora.internal',
+      role: 'SERVICE',
+    },
+    process.env.JWT_SECRET!,
+    {
+      expiresIn: '15m',
+      issuer: process.env.JWT_ISSUER,
+      jwtid: randomUUID(),
+    }
+  );
+}
+
 function sampleAppointment(overrides: Record<string, unknown> = {}) {
   const slotStart = new Date('2026-06-10T10:00:00.000Z');
   const slotEnd = new Date('2026-06-10T11:00:00.000Z');
@@ -165,7 +171,14 @@ describe('POST /', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsBlacklisted.mockResolvedValue(false);
-    mockTherapistFindUnique.mockResolvedValue({ userId: therapistId });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: therapistId,
+        email: 'therapist@example.com',
+        role: 'THERAPIST',
+      }),
+    });
     mockPublishAppointmentEvent.mockResolvedValue(undefined);
   });
 
@@ -352,5 +365,48 @@ describe('POST /:id/rate', () => {
 describe('SlotConflictError', () => {
   it('is recognized as a slot conflict', () => {
     expect(new SlotConflictError().name).toBe('SlotConflictError');
+  });
+});
+
+describe('GET /internal/appointments/analytics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  it('returns totalAppointments and completedAppointments', async () => {
+    mockAppointmentCount.mockResolvedValueOnce(30).mockResolvedValueOnce(18);
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/appointments/analytics')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      totalAppointments: 30,
+      completedAppointments: 18,
+    });
+    expect(mockAppointmentCount).toHaveBeenCalledTimes(2);
+    expect(mockAppointmentCount.mock.calls[1]?.[0]).toEqual({
+      where: { status: 'COMPLETED' },
+    });
+  });
+
+  it('rejects a non-SERVICE (PATIENT) token with 403', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/appointments/analytics')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockAppointmentCount).not.toHaveBeenCalled();
+  });
+
+  it('rejects a request with no token with 401', async () => {
+    const app = createApp();
+    const response = await request(app).get('/internal/appointments/analytics');
+
+    expect(response.status).toBe(401);
   });
 });

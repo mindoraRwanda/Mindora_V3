@@ -1,4 +1,5 @@
-import type { BaseEvent } from './base.js';
+import { z } from 'zod';
+import { baseEventSchema, type BaseEvent } from './base.js';
 
 export interface MessageReceivedEvent extends BaseEvent {
   messageId: string;
@@ -9,3 +10,12 @@ export interface MessageReceivedEvent extends BaseEvent {
   /** ISO 8601 — present only after the message has been read */
   readAt?: string;
 }
+
+export const messageReceivedEventSchema = baseEventSchema.extend({
+  messageId: z.string(),
+  conversationId: z.string(),
+  senderId: z.string(),
+  recipientId: z.string(),
+  content: z.string(),
+  readAt: z.string().datetime().optional(),
+});

@@ -156,6 +156,14 @@ jobs:
         run: npm run format:check
 
   # ─── 4. Tests with real service containers ───────────────────────────────
+  # Uses the same docker-compose.yml as local dev (Postgres, Redis, MongoDB,
+  # RabbitMQ, Kong) instead of a separate, hand-maintained set of GitHub
+  # Actions `services:` containers — that duplication was exactly how this
+  # job drifted out of sync with the per-service-database architecture:
+  # Kong and RabbitMQ were missing entirely, and the one Postgres container
+  # only ever got a single shared `mindora` database, never the seven
+  # per-service ones (mindora_auth, mindora_admin, etc.) every current
+  # service actually reads from.
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -163,48 +171,26 @@ jobs:
     needs: [detect-changes]
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://mindora:mindora@localhost:5432/mindora
+      # Compose maps Postgres to host port 5433, not 5432 — see
+      # docker-compose.yml's comment on the Windows Docker Desktop bridge
+      # workaround. Matching it here (not 5432) is what the old config got wrong.
+      DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora
+      AUTH_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_auth
+      USER_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_user
+      APPOINTMENT_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_appointment
+      MOOD_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_mood
+      ADMIN_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_admin
+      AI_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_ai
+      NOTIFICATION_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_notifications
       REDIS_URL: redis://localhost:6379
+      MONGODB_URI: mongodb://localhost:27017/mindora
+      RABBITMQ_URL: amqp://mindora:mindora@localhost:5672
+      KONG_URL: http://localhost:8000
       # Fall back to a deterministic CI-only secret when repo secrets are not set.
       # Set JWT_SECRET / REFRESH_SECRET in GitHub → Settings → Secrets for
       # production-accurate test coverage.
       JWT_SECRET: ${{ secrets.JWT_SECRET || 'ci-only-jwt-secret-not-for-production' }}
       REFRESH_SECRET: ${{ secrets.REFRESH_SECRET || 'ci-only-refresh-secret-not-for-production' }}
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: mindora
-          POSTGRES_PASSWORD: mindora
-          POSTGRES_DB: mindora
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U mindora -d mindora"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -216,12 +202,34 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - name: Start infrastructure (Postgres, Redis, MongoDB, RabbitMQ, Kong)
+        run: docker compose up -d --wait
+
       - name: Install dependencies
-        # postinstall runs `prisma generate` automatically
         run: npm ci
 
-      - name: Apply database migrations
-        run: npm run migrate:deploy -w @mindora/database
+      - name: Create per-service databases
+        # The postgres container only auto-creates the single POSTGRES_DB
+        # ('mindora') from docker-compose.yml — every service that migrated
+        # to its own isolated database needs its database created explicitly.
+        run: |
+          for db in mindora_auth mindora_user mindora_appointment mindora_mood mindora_admin mindora_ai mindora_notifications; do
+            exists=$(docker exec mindora-postgres psql -U mindora -tAc "SELECT 1 FROM pg_database WHERE datname = '$db'")
+            if [ "$exists" != "1" ]; then
+              docker exec mindora-postgres psql -U mindora -c "CREATE DATABASE $db"
+            fi
+          done
+
+      - name: Generate Prisma clients and apply migrations
+        # No global postinstall runs `prisma generate` — each service with
+        # its own schema needs this explicitly, in its own directory, against
+        # its own DATABASE_URL env var (see the per-service urls above).
+        run: |
+          for dir in apps/auth-service apps/user-service apps/appointment-service apps/mood-tracking-service apps/admin-service apps/ai-integration-service apps/notification-service; do
+            echo "::group::$dir"
+            (cd "$dir" && npx prisma generate && npx prisma migrate deploy)
+            echo "::endgroup::"
+          done
 
       - name: Run tests for affected packages
         run: npx turbo run test ${{ needs.detect-changes.outputs.turbo-filter }}
@@ -243,6 +251,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [quality, detect-changes]
+    env:
+      # prisma generate only needs these to be non-empty strings — it
+      # validates the schema's env("...") reference but never connects.
+      AUTH_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_auth
+      USER_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_user
+      APPOINTMENT_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_appointment
+      MOOD_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_mood
+      ADMIN_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_admin
+      AI_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_ai
+      NOTIFICATION_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_notifications
     steps:
       - uses: actions/checkout@v4
         with:
@@ -266,6 +284,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Generate Prisma clients
+        # tsc resolves each service's `../generated/prisma/index.js` import —
+        # without this, every Prisma-backed service fails to build. No global
+        # postinstall does this automatically (see the Test job for why).
+        run: |
+          for dir in apps/auth-service apps/user-service apps/appointment-service apps/mood-tracking-service apps/admin-service apps/ai-integration-service apps/notification-service; do
+            (cd "$dir" && npx prisma generate)
+          done
 
       - name: Build affected workspaces
         run: npx turbo run build ${{ needs.detect-changes.outputs.turbo-filter }}

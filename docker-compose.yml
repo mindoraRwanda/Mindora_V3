@@ -12,6 +12,10 @@ services:
     image: timescale/timescaledb:latest-pg16
     container_name: mindora-postgres
     restart: unless-stopped
+    # Required for `CREATE EXTENSION timescaledb` (used by mindora_mood for
+    # time_bucket()/hypertables) — the extension must be preloaded at server
+    # start, not just enabled per-database.
+    command: postgres -c shared_preload_libraries=timescaledb
     environment:
       POSTGRES_USER: mindora
       POSTGRES_PASSWORD: mindora

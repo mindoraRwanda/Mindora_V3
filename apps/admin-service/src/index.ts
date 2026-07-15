@@ -1,24 +1,40 @@
-import express from 'express';
+import './env.js'; // must be first — loads .env before any module reads process.env
+import http from 'http';
+import { createApp } from './app.js';
+import { connectDatabase } from './lib/prisma.js';
+import { startConsumers } from './consumers.js';
 
 const SERVICE_NAME = 'admin-service';
-const PORT = Number(process.env.PORT) || 3009;
-const GATEWAY_HEALTH_PATH = '/api/v1/admin/health';
+const PORT = Number(process.env.ADMIN_SERVICE_PORT) || 3009;
 
-const app = express();
+async function start(): Promise<void> {
+  try {
+    await connectDatabase();
+    await startConsumers();
 
-const healthResponse = () => ({
-  status: 'ok',
-  service: SERVICE_NAME,
-});
+    const app = createApp();
+    const server = http.createServer(app);
 
-app.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse());
-});
+    server.listen(PORT, () => {
+      console.log(`✓ ${SERVICE_NAME} running on http://localhost:${PORT}`);
+    });
 
-app.get(GATEWAY_HEALTH_PATH, (_req, res) => {
-  res.status(200).json(healthResponse());
-});
+    process.on('SIGTERM', () => {
+      console.log('⏳ SIGTERM received, closing gracefully...');
+      server.close();
+    });
 
-app.listen(PORT, () => {
-  console.log(`${SERVICE_NAME} listening on http://localhost:${PORT}`);
-});
+    process.on('SIGINT', () => {
+      console.log('⏳ SIGINT received, closing gracefully...');
+      server.close();
+    });
+  } catch (error) {
+    console.error(
+      '✗ Failed to start service:',
+      error instanceof Error ? error.message : error
+    );
+    process.exit(1);
+  }
+}
+
+start();

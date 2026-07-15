@@ -1,20 +1,32 @@
-import { EXCHANGES } from '@mindora/events';
+import {
+  EXCHANGES,
+  aiCrisisEventSchema,
+  appointmentDomainEventSchema,
+  communityDomainEventSchema,
+  messageReceivedEventSchema,
+  moodDomainEventSchema,
+} from '@mindora/events';
 import type {
   AppointmentBookedEvent,
   AppointmentConfirmedEvent,
   AppointmentCancelledEvent,
-  MessageReceivedEvent,
-  CommunityReplyEvent,
 } from '@mindora/events';
 import { sendPushNotification } from './fcm.js';
-import { sendEmailToUser } from './email.js';
+import { getUserName, sendEmailToUser } from './email.js';
 import { sendSms } from './sms.js';
+import { logNotification } from './notificationLogger.js';
+import {
+  getUserPreferences,
+  isChannelEnabled,
+  type UserPreferences,
+} from './preferences.js';
 import {
   appointmentBookedTemplate,
   appointmentConfirmedTemplate,
   appointmentCancelledTemplate,
 } from './emailTemplates.js';
 import { subscribeWithRetry } from './retry.js';
+import { InvalidEventPayloadError } from './errors.js';
 
 const NOTIFICATION_QUEUES = {
   APPOINTMENTS: 'notification.appointments',
@@ -25,6 +37,70 @@ const NOTIFICATION_QUEUES = {
 } as const;
 
 export const SUBSCRIBED_EXCHANGES = Object.values(EXCHANGES);
+
+// Checks the user's channel preference before sending; logs 'skipped' with a
+// preference-specific reason and never calls the send function if disabled.
+async function sendPushIfEnabled(
+  userId: string,
+  title: string,
+  body: string,
+  eventType: string,
+  prefs: UserPreferences
+): Promise<void> {
+  if (!isChannelEnabled(prefs.notificationPreferences, 'push')) {
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'push',
+      status: 'skipped',
+      failureReason: 'Push notifications disabled by user',
+    });
+    return;
+  }
+  await sendPushNotification(userId, title, body, prefs.fcmToken, eventType);
+}
+
+async function sendEmailIfEnabled(
+  userId: string,
+  subject: string,
+  htmlBody: string,
+  eventType: string,
+  prefs: UserPreferences
+): Promise<void> {
+  if (!isChannelEnabled(prefs.notificationPreferences, 'email')) {
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'email',
+      status: 'skipped',
+      failureReason: 'Email notifications disabled by user',
+    });
+    return;
+  }
+  await sendEmailToUser(userId, subject, htmlBody, prefs.email, eventType);
+}
+
+async function sendSmsIfEnabled(
+  userId: string,
+  body: string,
+  eventType: string,
+  prefs: UserPreferences
+): Promise<void> {
+  if (!isChannelEnabled(prefs.notificationPreferences, 'sms')) {
+    await logNotification({
+      userId,
+      eventType,
+      channel: 'sms',
+      status: 'skipped',
+      failureReason: 'SMS notifications disabled by user',
+    });
+    return;
+  }
+  // sendSms() itself also checks SMS_ENABLED and logs its own 'skipped' entry
+  // when that feature flag is off — this gate is specifically the user's
+  // per-channel preference, checked before sendSms's own flag check runs.
+  await sendSms(userId, body, prefs.phoneNumber, eventType);
+}
 
 function sessionTypeLabel(
   sessionType: AppointmentBookedEvent['sessionType']
@@ -42,15 +118,25 @@ function sessionTypeLabel(
 }
 
 async function handleAppointment(payload: unknown): Promise<void> {
-  const event = payload as
+  const parsed = appointmentDomainEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid appointment event: ${parsed.error.message}`,
+      EXCHANGES.APPOINTMENTS
+    );
+  }
+  const event = parsed.data as
     | AppointmentBookedEvent
     | AppointmentConfirmedEvent
     | AppointmentCancelledEvent;
 
-  // TODO[names]: replace these placeholders with real lookups once the User Service
-  // exposes names on GET /api/v1/users/:id/preferences (or a dedicated profile endpoint).
-  const patientName = 'Patient';
-  const therapistName = '[name pending]';
+  const [patientName, therapistName] = await Promise.all([
+    getUserName(event.patientId),
+    getUserName(event.therapistId),
+  ]).then(([patient, therapist]) => [
+    patient ?? 'Patient',
+    therapist ?? 'your therapist',
+  ]);
 
   if (event.eventType === 'appointment.cancelled') {
     const cancelled = event as AppointmentCancelledEvent;
@@ -62,8 +148,15 @@ async function handleAppointment(payload: unknown): Promise<void> {
     const body = reason
       ? `Reason: ${reason}`
       : 'Your appointment has been cancelled.';
-    await sendPushNotification(recipientId, 'Appointment Cancelled', body);
-    await sendEmailToUser(
+    const prefs = await getUserPreferences(recipientId);
+    await sendPushIfEnabled(
+      recipientId,
+      'Appointment Cancelled',
+      body,
+      event.eventType,
+      prefs
+    );
+    await sendEmailIfEnabled(
       recipientId,
       'Your appointment has been cancelled',
       appointmentCancelledTemplate(
@@ -71,26 +164,33 @@ async function handleAppointment(payload: unknown): Promise<void> {
         therapistName,
         cancelled.slotStart,
         reason
-      )
+      ),
+      event.eventType,
+      prefs
     );
     return;
   }
 
   if (event.eventType === 'appointment.confirmed') {
     const confirmed = event as AppointmentConfirmedEvent;
-    await sendPushNotification(
+    const prefs = await getUserPreferences(confirmed.patientId);
+    await sendPushIfEnabled(
       confirmed.patientId,
       'Appointment Confirmed',
-      'Your appointment has been confirmed.'
+      'Your appointment has been confirmed.',
+      event.eventType,
+      prefs
     );
-    await sendEmailToUser(
+    await sendEmailIfEnabled(
       confirmed.patientId,
       'Your appointment has been confirmed',
       appointmentConfirmedTemplate(
         patientName,
         therapistName,
         confirmed.slotStart
-      )
+      ),
+      event.eventType,
+      prefs
     );
     return;
   }
@@ -98,52 +198,111 @@ async function handleAppointment(payload: unknown): Promise<void> {
   if (event.eventType === 'appointment.booked') {
     const booked = event as AppointmentBookedEvent;
     const typeLabel = sessionTypeLabel(booked.sessionType);
-    await sendPushNotification(
+    const prefs = await getUserPreferences(booked.patientId);
+    await sendPushIfEnabled(
       booked.patientId,
       'Appointment Booked',
-      `${typeLabel} appointment scheduled.`
+      `${typeLabel} appointment scheduled.`,
+      event.eventType,
+      prefs
     );
-    await sendEmailToUser(
+    await sendEmailIfEnabled(
       booked.patientId,
       'Your appointment has been booked',
-      appointmentBookedTemplate(patientName, therapistName, booked.slotStart)
+      appointmentBookedTemplate(patientName, therapistName, booked.slotStart),
+      event.eventType,
+      prefs
     );
   }
 }
 
 async function handleMessage(payload: unknown): Promise<void> {
-  const event = payload as MessageReceivedEvent;
+  const parsed = messageReceivedEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid message event: ${parsed.error.message}`,
+      EXCHANGES.MESSAGES
+    );
+  }
+  const event = parsed.data;
   const preview =
     event.content.length > 80
       ? `${event.content.slice(0, 77)}…`
       : event.content;
-  await sendPushNotification(event.recipientId, 'New Message', preview);
+  const prefs = await getUserPreferences(event.recipientId);
+  await sendPushIfEnabled(
+    event.recipientId,
+    'New Message',
+    preview,
+    'message.received',
+    prefs
+  );
 }
 
 async function handleCommunity(payload: unknown): Promise<void> {
+  const parsed = communityDomainEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid community event: ${parsed.error.message}`,
+      EXCHANGES.COMMUNITY
+    );
+  }
   // Only reply events trigger a push; reported events are admin-facing
-  if (!('replyId' in (payload as object))) return;
-  const event = payload as CommunityReplyEvent;
-  await sendPushNotification(event.postAuthorId, 'New Reply', event.excerpt);
+  if (!('replyId' in parsed.data)) return;
+  const event = parsed.data;
+  const prefs = await getUserPreferences(event.postAuthorId);
+  await sendPushIfEnabled(
+    event.postAuthorId,
+    'New Reply',
+    event.excerpt,
+    'community.reply',
+    prefs
+  );
 }
 
 async function handleAi(payload: unknown): Promise<void> {
   console.log(`[${EXCHANGES.AI}] received:`, JSON.stringify(payload));
 
-  if ('crisisLevel' in (payload as object)) {
-    const crisis = payload as { userId: string; crisisLevel: number };
-    await sendSms(
-      crisis.userId,
-      `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`
+  const parsed = aiCrisisEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid AI event: ${parsed.error.message}`,
+      EXCHANGES.AI
     );
   }
+  const crisis = parsed.data;
+  const prefs = await getUserPreferences(crisis.userId);
+  await sendSmsIfEnabled(
+    crisis.userId,
+    `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`,
+    'ai.crisis',
+    prefs
+  );
+}
+
+async function handleMood(payload: unknown): Promise<void> {
+  console.log(`[${EXCHANGES.MOOD}] received:`, JSON.stringify(payload));
+  const parsed = moodDomainEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid mood event: ${parsed.error.message}`,
+      EXCHANGES.MOOD
+    );
+  }
+  // No push/email/SMS wired to mood events yet — validation only, for now.
 }
 
 export async function startConsumers(): Promise<void> {
+  // 'topic' here because appointment-service/mood-tracking-service publish
+  // via publishToExchange, which declares these two exchanges as 'topic'.
+  // Left as default 'fanout' for MESSAGES/COMMUNITY/AI — messaging-service
+  // doesn't publish to mindora.messages yet, and ai-integration-service
+  // already declares mindora.ai as 'fanout' itself (see ai.routes.ts).
   await subscribeWithRetry(
     EXCHANGES.APPOINTMENTS,
     NOTIFICATION_QUEUES.APPOINTMENTS,
-    handleAppointment
+    handleAppointment,
+    'topic'
   );
 
   await subscribeWithRetry(
@@ -161,9 +320,8 @@ export async function startConsumers(): Promise<void> {
   await subscribeWithRetry(
     EXCHANGES.MOOD,
     NOTIFICATION_QUEUES.MOOD,
-    async (payload) => {
-      console.log(`[${EXCHANGES.MOOD}] received:`, JSON.stringify(payload));
-    }
+    handleMood,
+    'topic'
   );
 
   await subscribeWithRetry(EXCHANGES.AI, NOTIFICATION_QUEUES.AI, handleAi);

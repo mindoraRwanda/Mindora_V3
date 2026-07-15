@@ -22,3 +22,25 @@ export const encryptUserId = (userId: string): string => {
   // Store as iv:authTag:encryptedData — all needed to decrypt later
   return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
 };
+
+export const decryptUserId = (encryptedAuthorId: string): string => {
+  const [ivHex, authTagHex, dataHex] = encryptedAuthorId.split(':');
+  if (!ivHex || !authTagHex || !dataHex) {
+    throw new Error('Malformed encrypted author id');
+  }
+
+  const key = encryptionKey();
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm',
+    key,
+    Buffer.from(ivHex, 'hex')
+  );
+  decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(dataHex, 'hex')),
+    decipher.final(),
+  ]);
+
+  return decrypted.toString('utf8');
+};

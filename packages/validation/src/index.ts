@@ -17,8 +17,12 @@ export {
 } from './community.js';
 export {
   therapistListQuerySchema,
+  updateFcmTokenSchema,
+  updateNotificationPreferencesSchema,
   updateProfileSchema,
   type TherapistListQueryDto,
+  type UpdateFcmTokenDto,
+  type UpdateNotificationPreferencesDto,
   type UpdateProfileDto,
 } from './profile.js';
 export {
@@ -41,3 +45,15 @@ export {
   type LogMoodDto,
   type MoodHistoryQueryDto,
 } from './mood.js';
+export {
+  listAlertsQuerySchema,
+  listAuditLogQuerySchema,
+  listUsersQuerySchema,
+  resolveModerationSchema,
+  suspendUserSchema,
+  type ListAlertsQueryDto,
+  type ListAuditLogQueryDto,
+  type ListUsersQueryDto,
+  type ResolveModerationDto,
+  type SuspendUserDto,
+} from './admin.js';

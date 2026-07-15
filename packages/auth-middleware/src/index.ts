@@ -3,7 +3,10 @@ export {
   blacklistToken,
   getRedisClient,
   isTokenBlacklisted,
+  isUserSuspended,
   passwordResetKey,
+  setUserSuspended,
+  suspendedKey,
 } from './redis.js';
 export type {
   AuthMiddlewareOptions,

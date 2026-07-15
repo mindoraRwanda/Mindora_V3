@@ -7,6 +7,11 @@ export interface IConversation extends Document {
     senderId: string;
     sentAt: Date;
   };
+  // Single counter for the conversation (not per-participant). Maintained by
+  // the socket layer: incremented on send_message, decremented on mark_read.
+  // GET /conversations still computes its own unread count via aggregation,
+  // independent of this field — see conversations.routes.ts.
+  unreadCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,6 +30,11 @@ const ConversationSchema = new Schema<IConversation>(
       content: { type: String },
       senderId: { type: String },
       sentAt: { type: Date },
+    },
+    unreadCount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
   },
   { timestamps: true }

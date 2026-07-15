@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("USER_DATABASE_URL")
+}
+
+// Copied from packages/database/prisma/schema.prisma. userId is a plain
+// identifier — no @relation, no foreign key. User Service looks up user
+// data via Auth Service's internal API, not through a Prisma join; the
+// User model lives in Auth Service's isolated 'mindora_auth' database now.
+model PatientProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @map("user_id") @db.Uuid
+
+  userName                String?  @map("user_name")
+  bio                     String?
+  timezone                String   @default("UTC")
+  languagePreference      String   @default("en") @map("language_preference")
+  fcmToken                String?  @map("fcm_token")
+  notificationPreferences Json     @default("{\"push\": true, \"email\": true, \"sms\": true}") @map("notification_preferences")
+  // Denormalized copies from Auth Service's users table (role, email),
+  // populated at profile creation via the user.registered event. Nullable —
+  // existing rows predate this and are backfilled separately, not via a
+  // migration default. Not a source of truth; Auth Service's
+  // GET /internal/auth/users/:id is the authoritative source if these ever
+  // need to be refreshed.
+  role                    String?
+  email                   String?
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@map("patient_profiles")
+}
+
+model TherapistProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @map("user_id") @db.Uuid
+
+  userName                String?  @map("user_name")
+  bio                     String?
+  timezone                String   @default("UTC")
+  languagePreference      String   @default("en") @map("language_preference")
+  specialisation          String?
+  languages               String[] @default([])
+  isAcceptingPatients     Boolean  @default(true) @map("is_accepting_patients")
+  fcmToken                String?  @map("fcm_token")
+  notificationPreferences Json     @default("{\"push\": true, \"email\": true, \"sms\": true}") @map("notification_preferences")
+  // Denormalized copies from Auth Service's users table (role, email),
+  // populated at profile creation via the user.registered event. Nullable —
+  // existing rows predate this and are backfilled separately, not via a
+  // migration default. Not a source of truth; Auth Service's
+  // GET /internal/auth/users/:id is the authoritative source if these ever
+  // need to be refreshed.
+  role                    String?
+  email                   String?
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@index([isAcceptingPatients])
+  @@index([specialisation])
+  @@map("therapist_profiles")
+}
