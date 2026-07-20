@@ -25,7 +25,7 @@
     "@mindora/auth-middleware": "1.0.0",
     "@mindora/queue": "1.0.0",
     "@mindora/validation": "1.0.0",
-    "argon2": "^0.41.1",
+    "argon2": "^0.45.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.1",
@@ -49,7 +49,7 @@
     "js-yaml": "^5.2.1",
     "prisma": "^6.19.3",
     "supertest": "^7.1.0",
-    "tsx": "^4.19.3",
+    "tsx": "^4.23.1",
     "typescript": "^5.8.2",
     "vitest": "^4.1.8"
   },
