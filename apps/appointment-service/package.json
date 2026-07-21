@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@mindora/auth-middleware": "1.0.0",
-    "@mindora/database": "1.0.0",
     "@mindora/events": "1.0.0",
     "@mindora/queue": "1.0.0",
     "@mindora/validation": "1.0.0",

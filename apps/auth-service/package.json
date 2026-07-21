@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@mindora/auth-middleware": "1.0.0",
-    "@mindora/database": "1.0.0",
     "@mindora/validation": "1.0.0",
     "argon2": "^0.41.1",
     "dotenv": "^16.4.7",
