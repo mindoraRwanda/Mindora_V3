@@ -15,4 +15,4 @@ test_script.js
 node_modules
 .claude
 node_modules/
-generate-test-token.ts
+package-lock.json
