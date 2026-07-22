@@ -12,6 +12,11 @@ export {
 export {
   APPOINTMENT_SESSION_TYPES,
   APPOINTMENT_STATUSES,
+  appointmentBookedEventSchema,
+  appointmentCancelledEventSchema,
+  appointmentCompletedEventSchema,
+  appointmentConfirmedEventSchema,
+  appointmentDomainEventSchema,
   type AppointmentBookedEvent,
   type AppointmentCancelledEvent,
   type AppointmentCompletedEvent,

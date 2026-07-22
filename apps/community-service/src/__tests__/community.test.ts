@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
 import mongoose from 'mongoose';
 import app from '../app.js';
-import { CommunityGroup, Post } from '../models/index.js';
+import { CommunityGroup, Post, Report } from '../models/index.js';
+import { encryptUserId } from '../utils/encryption.js';
 
 const request = supertest(app);
 
@@ -37,8 +38,16 @@ const adminToken = jwt.sign(
   { expiresIn: '7d', issuer: 'mindora-auth', jwtid: 'test-jti-003' }
 );
 
+// SERVICE token — used for the /internal/community/* endpoints
+const serviceToken = jwt.sign(
+  { sub: 'admin-service', email: 'service@mindora.com', role: 'SERVICE' },
+  TEST_SECRET,
+  { expiresIn: '7d', issuer: 'mindora-auth', jwtid: 'test-jti-004' }
+);
+
 const authHeader = `Bearer ${patientToken}`;
 const adminHeader = `Bearer ${adminToken}`;
+const serviceHeader = `Bearer ${serviceToken}`;
 
 // Connect to a separate test database before tests run
 beforeAll(async () => {
@@ -49,6 +58,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await CommunityGroup.deleteMany({});
   await Post.deleteMany({});
+  await Report.deleteMany({});
 });
 
 // Disconnect after all tests finish
@@ -334,5 +344,135 @@ describe('POST /api/v1/community/groups/:id/posts', () => {
       });
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe('GET /internal/community/reports', () => {
+  it('lists PENDING reports by default, SERVICE role only', async () => {
+    await Report.create({
+      contentId: new mongoose.Types.ObjectId(),
+      contentType: 'POST',
+      reportedBy: 'test-user-123',
+      reason: 'spam',
+    });
+    await Report.create({
+      contentId: new mongoose.Types.ObjectId(),
+      contentType: 'POST',
+      reportedBy: 'test-user-123',
+      reason: 'already handled',
+      status: 'DISMISSED',
+    });
+
+    const response = await request
+      .get('/internal/community/reports')
+      .set('Authorization', serviceHeader);
+
+    expect(response.status).toBe(200);
+    expect(response.body.total).toBe(1);
+    expect(response.body.reports[0].status).toBe('PENDING');
+  });
+
+  it('rejects a non-SERVICE (ADMIN) token with 403', async () => {
+    const response = await request
+      .get('/internal/community/reports')
+      .set('Authorization', adminHeader);
+
+    expect(response.status).toBe(403);
+  });
+
+  it('rejects no token with 401', async () => {
+    const response = await request.get('/internal/community/reports');
+    expect(response.status).toBe(401);
+  });
+});
+
+describe('PUT /internal/community/reports/:id/resolve', () => {
+  it('updates status to REVIEWED and returns contentId/contentType', async () => {
+    const report = await Report.create({
+      contentId: new mongoose.Types.ObjectId(),
+      contentType: 'POST',
+      reportedBy: 'test-user-123',
+      reason: 'spam',
+    });
+
+    const response = await request
+      .put(`/internal/community/reports/${report._id}/resolve`)
+      .set('Authorization', serviceHeader)
+      .send({ status: 'REVIEWED' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('REVIEWED');
+    expect(response.body.contentType).toBe('POST');
+
+    const updated = await Report.findById(report._id);
+    expect(updated?.status).toBe('REVIEWED');
+  });
+
+  it('returns 400 for an invalid status value', async () => {
+    const report = await Report.create({
+      contentId: new mongoose.Types.ObjectId(),
+      contentType: 'POST',
+      reportedBy: 'test-user-123',
+      reason: 'spam',
+    });
+
+    const response = await request
+      .put(`/internal/community/reports/${report._id}/resolve`)
+      .set('Authorization', serviceHeader)
+      .send({ status: 'REMOVED' }); // not a valid community status
+
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 404 for a report that does not exist', async () => {
+    const fakeId = new mongoose.Types.ObjectId();
+    const response = await request
+      .put(`/internal/community/reports/${fakeId}/resolve`)
+      .set('Authorization', serviceHeader)
+      .send({ status: 'DISMISSED' });
+
+    expect(response.status).toBe(404);
+  });
+});
+
+describe('GET /internal/community/posts/:postId/author', () => {
+  it('decrypts and returns the userId for an anonymous post', async () => {
+    const group = await CommunityGroup.create({
+      name: 'Test Group',
+      description: 'A test group description that is long enough to pass',
+      category: 'ANXIETY',
+      isAnonymous: true,
+      memberCount: 0,
+    });
+    const post = await Post.create({
+      communityId: group._id,
+      encryptedAuthorId: encryptUserId('test-user-123'),
+      content: { type: 'doc', content: [] },
+      isAnonymous: true,
+    });
+
+    const response = await request
+      .get(`/internal/community/posts/${post._id}/author`)
+      .set('Authorization', serviceHeader);
+
+    expect(response.status).toBe(200);
+    expect(response.body.userId).toBe('test-user-123');
+  });
+
+  it('returns 404 for a post that does not exist', async () => {
+    const fakeId = new mongoose.Types.ObjectId();
+    const response = await request
+      .get(`/internal/community/posts/${fakeId}/author`)
+      .set('Authorization', serviceHeader);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('rejects a non-SERVICE token with 403', async () => {
+    const response = await request
+      .get('/internal/community/posts/507f1f77bcf86cd799439011/author')
+      .set('Authorization', authHeader);
+
+    expect(response.status).toBe(403);
   });
 });

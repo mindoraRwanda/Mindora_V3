@@ -1,6 +1,6 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
-import { prisma } from '@mindora/database';
+import { prisma } from './prisma.js';
 import { randomBytes } from 'node:crypto';
 import { config, isGoogleOAuthConfigured } from '../config.js';
 import { hashPassword } from './password.js';

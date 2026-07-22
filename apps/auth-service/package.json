@@ -17,7 +17,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src/",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate:service-token": "tsx scripts/generate-service-token.ts",
+    "docs:generate": "tsx src/docs/generate.ts"
   },
   "dependencies": {
     "@mindora/auth-middleware": "1.0.0",
@@ -34,11 +36,17 @@
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "@prisma/client": "^6.19.3",
     "@types/express": "^5.0.0",
+    "@types/js-yaml": "^4.0.9",
     "@types/jsonwebtoken": "^9.0.9",
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
     "@types/supertest": "^6.0.3",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
+    "js-yaml": "^5.2.1",
+    "prisma": "^6.19.3",
     "supertest": "^7.1.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",

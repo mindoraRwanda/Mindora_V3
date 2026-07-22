@@ -1,4 +1,4 @@
-import type { MoodEntry } from '@mindora/database';
+import type { MoodEntry } from '../generated/prisma/index.js';
 
 export function calculateStreak(entries: Pick<MoodEntry, 'recordedAt'>[]): {
   streak: number;

@@ -9,6 +9,11 @@ export const registerSchema = z.object({
     .min(8, 'Password must be at least 8 characters')
     .max(128, 'Password must be at most 128 characters'),
   role: userRoleSchema,
+  userName: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100)
+    .trim(),
 });
 
 export const loginSchema = z.object({

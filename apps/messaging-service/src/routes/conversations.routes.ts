@@ -7,6 +7,7 @@ import {
 import { Conversation, Message } from '../models/index.js';
 import { decryptContent } from '../utils/encryption.js';
 import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
+import { resolveUserNames } from '../lib/resolve-username.js';
 
 const router = Router();
 
@@ -212,13 +213,24 @@ router.get(
         unreadCounts.map((u) => [u._id.toString(), u.count])
       );
 
-      const result = conversations.map((c) => ({
-        conversationId: c._id,
-        participantId: c.participants.find((p) => p !== userId) ?? null,
-        lastMessage: c.lastMessage?.content ?? null,
-        lastMessageAt: c.lastMessage?.sentAt ?? null,
-        unreadCount: unreadMap.get(c._id.toString()) ?? 0,
-      }));
+      const otherParticipantIds = conversations
+        .map((c) => c.participants.find((p) => p !== userId))
+        .filter((id): id is string => Boolean(id));
+      const nameMap = await resolveUserNames(otherParticipantIds);
+
+      const result = conversations.map((c) => {
+        const participantId = c.participants.find((p) => p !== userId) ?? null;
+        return {
+          conversationId: c._id,
+          participantId,
+          participantName: participantId
+            ? (nameMap.get(participantId) ?? null)
+            : null,
+          lastMessage: c.lastMessage?.content ?? null,
+          lastMessageAt: c.lastMessage?.sentAt ?? null,
+          unreadCount: unreadMap.get(c._id.toString()) ?? 0,
+        };
+      });
 
       res.json({ conversations: result, total, page, limit });
     } catch (error) {

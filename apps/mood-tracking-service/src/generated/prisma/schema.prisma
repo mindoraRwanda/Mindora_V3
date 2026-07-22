@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("MOOD_DATABASE_URL")
+}
+
+// mood_entries is a TimescaleDB hypertable partitioned by recorded_at
+// Run after migration: SELECT create_hypertable('mood_entries', 'recorded_at');
+model MoodEntry {
+  id                   String   @default(uuid()) @db.Uuid
+  userId               String   @map("user_id") @db.Uuid
+  moodScore            Int      @map("mood_score")
+  emotions             String[] @default([])
+  sleepHours           Float?   @map("sleep_hours")
+  stressLevel          Int?     @map("stress_level")
+  energyLevel          Int?     @map("energy_level")
+  journalNoteEncrypted String?  @map("journal_note_encrypted")
+  triggers             String[] @default([])
+  recordedAt           DateTime @default(now()) @map("recorded_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@id([id, recordedAt])
+  @@index([userId, recordedAt])
+  @@map("mood_entries")
+}

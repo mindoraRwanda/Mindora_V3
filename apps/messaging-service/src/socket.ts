@@ -6,6 +6,9 @@ import mongoose from 'mongoose';
 import { Conversation, Message } from './models/index.js';
 import { isMongoConnected } from './database.js';
 import { getRedisClient } from './utils/redis.js';
+import { publishMessageReceivedEvent } from './lib/publish-message-event.js';
+import { resolveUserName } from './lib/resolve-username.js';
+import { corsOriginCallback } from './lib/cors-origin.js';
 
 export let io: SocketIOServer;
 
@@ -15,7 +18,7 @@ export const initializeSocket = async (
 ): Promise<SocketIOServer> => {
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: '*', // tighten this in production
+      origin: corsOriginCallback,
       methods: ['GET', 'POST'],
     },
   });
@@ -212,8 +215,25 @@ export const initializeSocket = async (
           `\u2713 Socket ${socket.id} joined conversation ${conversationId}`
         );
 
-        // Confirm to the client that they joined
-        socket.emit('joined_conversation', { conversationId });
+        // Confirm to the client that they joined, including the other
+        // participant's real display name \u2014 this is what a chat header
+        // should show instead of a hardcoded/placeholder name. Resolved via
+        // User Service (through Kong), not stored locally, so it's always
+        // current even if the user changes their name later.
+        const currentUserId = socket.data.userId as string | undefined;
+        const otherParticipantId = conversation.participants.find(
+          (p) => p !== currentUserId
+        );
+        const otherParticipantName = otherParticipantId
+          ? await resolveUserName(otherParticipantId)
+          : null;
+
+        socket.emit('joined_conversation', {
+          conversationId,
+          participant: otherParticipantId
+            ? { userId: otherParticipantId, userName: otherParticipantName }
+            : null,
+        });
 
         // Send recent history so the client sees any messages missed while offline
         const recentMessages = await Message.find({ conversationId })
@@ -309,7 +329,9 @@ export const initializeSocket = async (
           });
           console.log(`[${socket.id}] Message created with ID: ${message._id}`);
 
-          // Update the lastMessage field on the conversation
+          // Update the lastMessage field and bump the unread counter for
+          // whoever hasn't read it yet (single counter for the conversation,
+          // not per-participant \u2014 matches the schema as specified).
           console.log(
             `[${socket.id}] Updating conversation ${conversationId} lastMessage...`
           );
@@ -319,6 +341,7 @@ export const initializeSocket = async (
               senderId,
               sentAt: message.createdAt,
             },
+            $inc: { unreadCount: 1 },
           });
 
           // Broadcast to everyone in the room including the sender
@@ -335,6 +358,24 @@ export const initializeSocket = async (
           console.log(
             `\u2713 Message saved and broadcast to conversation ${conversationId}`
           );
+
+          // Fire-and-forget: a RabbitMQ outage must never block real-time
+          // delivery, which has already happened via the emit above.
+          const recipientId = conversation.participants.find(
+            (p) => p !== senderId
+          );
+          publishMessageReceivedEvent({
+            messageId: message._id.toString(),
+            conversationId,
+            senderId,
+            recipientId: recipientId ?? null,
+            content: message.content,
+          }).catch((err) => {
+            console.error(
+              `[${socket.id}] Failed to publish message.received event:`,
+              err
+            );
+          });
         } catch (error) {
           const errorMsg =
             error instanceof Error ? error.message : String(error);
@@ -357,22 +398,39 @@ export const initializeSocket = async (
       }
     );
     // Event 3: mark_read
-    // Client emits when they view a received message. Server sets readAt and notifies the sender.
+    // Client emits when they view a received message. Server sets readAt,
+    // decrements the conversation's unread counter (floored at 0 — mark_read
+    // firing more than once for the same message must not go negative), and
+    // notifies the room.
     socket.on(
       'mark_read',
       async (data: { conversationId: string; messageId: string }) => {
         const { conversationId, messageId } = data;
+        const userId = socket.data.userId as string | undefined;
         if (!mongoose.Types.ObjectId.isValid(messageId)) return;
         try {
+          const readAt = new Date();
           const updated = await Message.findByIdAndUpdate(
             messageId,
-            { $set: { readAt: new Date() } },
+            { $set: { readAt } },
             { new: false }
           );
           if (!updated) return;
-          socket
-            .to(conversationId)
-            .emit('message_read', { conversationId, messageId });
+
+          // Already-read messages must not decrement unreadCount a second time.
+          if (!updated.readAt) {
+            await Conversation.updateOne(
+              { _id: conversationId, unreadCount: { $gt: 0 } },
+              { $inc: { unreadCount: -1 } }
+            );
+          }
+
+          socket.to(conversationId).emit('message_read', {
+            conversationId,
+            messageId,
+            readAt: readAt.toISOString(),
+            readBy: userId ?? null,
+          });
         } catch (err) {
           console.error('mark_read error:', err);
         }
@@ -420,15 +478,63 @@ export const initializeSocket = async (
       }
     );
 
+    // Presence value shape: JSON { online: boolean, lastSeen: ISO string }.
+    // lastSeen is written on every register/heartbeat while online, and again
+    // (with online:false) on disconnect/logout — GET /presence/:userId reads
+    // it back to answer "when were they last seen" even after they go offline.
+    async function writePresence(
+      userId: string,
+      online: boolean,
+      ttlSeconds: number
+    ): Promise<{ online: boolean; lastSeen: string }> {
+      const value = { online, lastSeen: new Date().toISOString() };
+      await getRedisClient().set(
+        `presence:${userId}`,
+        JSON.stringify(value),
+        'EX',
+        ttlSeconds
+      );
+      return value;
+    }
+
+    // Presence is otherwise pull-only (GET /presence/:userId) — a frontend
+    // that doesn't poll would just show whatever it last saw, forever. This
+    // pushes changes to everyone who has the user's conversations open, so
+    // "is the other person online" stays correct without polling.
+    async function broadcastPresenceChange(
+      userId: string,
+      online: boolean,
+      lastSeen: string
+    ): Promise<void> {
+      try {
+        const conversations = await Conversation.find({
+          participants: userId,
+        }).select('_id');
+        for (const conversation of conversations) {
+          io.to(conversation._id.toString()).emit('presence_changed', {
+            userId,
+            online,
+            lastSeen,
+          });
+        }
+      } catch (err) {
+        console.error('broadcastPresenceChange error:', err);
+      }
+    }
+
     // Event 6: register_presence
-    // Client emits immediately after connect with their userId. Server sets a 60 s Redis key.
+    // Client emits immediately after connect with their userId. There is no
+    // socket-level JWT handshake yet, so the server only learns which user
+    // this connection belongs to once the client tells it — this is the
+    // earliest practical point to start tracking presence.
     socket.on('register_presence', async (data: { userId: string }) => {
       const { userId } = data;
       if (!userId) return;
       socket.data.userId = userId;
       try {
-        await getRedisClient().set(`presence:${userId}`, '1', 'EX', 90);
+        const { lastSeen } = await writePresence(userId, true, 60);
         console.log(`✓ Presence registered for ${userId}`);
+        await broadcastPresenceChange(userId, true, lastSeen);
       } catch (err) {
         console.error('register_presence error:', err);
       }
@@ -436,33 +542,44 @@ export const initializeSocket = async (
 
     // Event 7: heartbeat
     // Client emits every 30 s to refresh the 60 s presence TTL before it expires.
+    // Not rebroadcast — the user was already known online, nothing changed.
     socket.on('heartbeat', async () => {
       const userId = socket.data.userId as string | undefined;
       if (!userId) return;
       try {
-        await getRedisClient().expire(`presence:${userId}`, 90);
+        await writePresence(userId, true, 60);
       } catch (err) {
         console.error('heartbeat error:', err);
       }
     });
 
     // Event 8: logout_presence
-    // Client emits this in beforeunload so presence clears immediately on tab close.
+    // Client emits this in beforeunload for an immediate offline signal
+    // instead of waiting on the disconnect handler / TTL expiry.
     socket.on('logout_presence', async () => {
       const userId = socket.data.userId as string | undefined;
       if (!userId) return;
       try {
-        await getRedisClient().del(`presence:${userId}`);
-        console.log(`✓ Presence removed for ${userId} (tab closed)`);
+        const { lastSeen } = await writePresence(userId, false, 300);
+        console.log(`✓ Presence set offline for ${userId} (tab closed)`);
+        await broadcastPresenceChange(userId, false, lastSeen);
       } catch (err) {
         console.error('logout_presence error:', err);
       }
     });
 
-    socket.on('disconnect', (reason) => {
-      // Presence expires via its 90 s TTL — brief network drops won't falsely show offline.
-      // Only a deliberate tab close (logout_presence) or TTL expiry removes the key.
+    socket.on('disconnect', async (reason) => {
       console.log(`Client disconnected: ${socket.id} — reason: ${reason}`);
+      const userId = socket.data.userId as string | undefined;
+      if (!userId) return;
+      try {
+        // Mark offline with a 5-minute TTL so lastSeen stays queryable briefly
+        // after disconnect, then the key expires naturally (lastSeen: null).
+        const { lastSeen } = await writePresence(userId, false, 300);
+        await broadcastPresenceChange(userId, false, lastSeen);
+      } catch (err) {
+        console.error('disconnect presence-update error:', err);
+      }
     });
   });
 

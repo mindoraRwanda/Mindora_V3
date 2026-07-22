@@ -3,7 +3,6 @@
   "references": [
     { "path": "./packages/shared-types" },
     { "path": "./packages/validation" },
-    { "path": "./packages/database" },
     { "path": "./packages/queue" },
     { "path": "./packages/auth-middleware" },
     { "path": "./packages/events" }

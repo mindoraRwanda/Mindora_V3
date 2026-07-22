@@ -50,6 +50,7 @@ vi.mock('ioredis', () => {
 const mockMoodCreate = vi.fn();
 const mockMoodFindMany = vi.fn();
 const mockMoodCount = vi.fn();
+const mockMoodAggregate = vi.fn();
 const mockQueryRaw = vi.fn();
 const mockPublishMoodEvent = vi.fn();
 const mockIsBlacklisted = vi.fn();
@@ -59,16 +60,16 @@ const mockGetInsightsCache = vi.fn();
 const mockSetInsightsCache = vi.fn();
 const mockDeleteInsightsCache = vi.fn();
 
-vi.mock('@mindora/database', () => ({
+vi.mock('../lib/prisma.js', () => ({
   prisma: {
     moodEntry: {
       create: (...args: unknown[]) => mockMoodCreate(...args),
       findMany: (...args: unknown[]) => mockMoodFindMany(...args),
       count: (...args: unknown[]) => mockMoodCount(...args),
+      aggregate: (...args: unknown[]) => mockMoodAggregate(...args),
     },
     $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
   },
-  Prisma: {},
 }));
 
 vi.mock('../middleware/authenticate.js', () => ({
@@ -131,6 +132,22 @@ const patientId = '11111111-1111-4111-8111-111111111111';
 function patientToken() {
   return jwt.sign(
     { sub: patientId, email: 'patient@example.com', role: 'PATIENT' },
+    process.env.JWT_SECRET!,
+    {
+      expiresIn: '15m',
+      issuer: process.env.JWT_ISSUER,
+      jwtid: randomUUID(),
+    }
+  );
+}
+
+function serviceToken() {
+  return jwt.sign(
+    {
+      sub: 'admin-service',
+      email: 'service@mindora.internal',
+      role: 'SERVICE',
+    },
     process.env.JWT_SECRET!,
     {
       expiresIn: '15m',
@@ -358,5 +375,64 @@ describe('mood.concern event', () => {
     expect(mockPublishMoodEvent).toHaveBeenCalled();
     const event = mockPublishMoodEvent.mock.calls[0]?.[0];
     expect(event.eventType).toBe('mood.concern');
+  });
+});
+
+describe('GET /internal/mood/analytics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  it('returns totalMoodEntries and avgMoodScorePlatform', async () => {
+    mockMoodCount.mockResolvedValue(120);
+    mockMoodAggregate.mockResolvedValue({ _avg: { moodScore: 5.8 } });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/mood/analytics')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      totalMoodEntries: 120,
+      avgMoodScorePlatform: 5.8,
+    });
+    expect(mockMoodAggregate).toHaveBeenCalledWith({
+      _avg: { moodScore: true },
+    });
+  });
+
+  it('returns null (not an error) for avgMoodScorePlatform when there are no entries', async () => {
+    mockMoodCount.mockResolvedValue(0);
+    mockMoodAggregate.mockResolvedValue({ _avg: { moodScore: null } });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/mood/analytics')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      totalMoodEntries: 0,
+      avgMoodScorePlatform: null,
+    });
+  });
+
+  it('rejects a non-SERVICE (PATIENT) token with 403', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/mood/analytics')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockMoodAggregate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a request with no token with 401', async () => {
+    const app = createApp();
+    const response = await request(app).get('/internal/mood/analytics');
+
+    expect(response.status).toBe(401);
   });
 });

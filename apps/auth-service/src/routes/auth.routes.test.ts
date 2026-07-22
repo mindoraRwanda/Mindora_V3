@@ -30,18 +30,21 @@ const mockRefreshCreate = vi.fn();
 const mockRefreshUpdate = vi.fn();
 const mockRefreshUpdateMany = vi.fn();
 const mockUserUpdate = vi.fn();
+const mockUserCount = vi.fn();
 const mockIsBlacklisted = vi.fn();
 const mockBlacklistToken = vi.fn();
 const mockStoreReset = vi.fn();
 const mockGetResetUser = vi.fn();
 const mockDeleteReset = vi.fn();
+const mockPublish = vi.fn();
 
-vi.mock('@mindora/database', () => ({
+vi.mock('../lib/prisma.js', () => ({
   prisma: {
     user: {
       findUnique: (...args: unknown[]) => mockFindUnique(...args),
       create: (...args: unknown[]) => mockUserCreate(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
+      count: (...args: unknown[]) => mockUserCount(...args),
     },
     refreshToken: {
       findFirst: (...args: unknown[]) => mockFindFirst(...args),
@@ -61,6 +64,12 @@ vi.mock('@mindora/auth-middleware', async (importOriginal) => {
     blacklistToken: (...args: unknown[]) => mockBlacklistToken(...args),
   };
 });
+
+// /register publishes a user.registered event so User Service can provision
+// a profile — mocked here so tests never attempt a real RabbitMQ connection.
+vi.mock('@mindora/queue', () => ({
+  publish: (...args: unknown[]) => mockPublish(...args),
+}));
 
 vi.mock('../lib/redis.js', () => ({
   connectRedis: vi.fn(),
@@ -90,6 +99,7 @@ describe('POST /register', () => {
       email: 'patient@example.com',
       password: 'securePass1',
       role: 'PATIENT',
+      userName: 'Test Patient',
     });
 
     expect(response.status).toBe(201);
@@ -104,10 +114,23 @@ describe('POST /register', () => {
       email: 'patient@example.com',
       password: 'securePass1',
       role: 'PATIENT',
+      userName: 'Test Patient',
     });
 
     expect(response.status).toBe(409);
     expect(response.body.message).toBe('Email already exists');
+  });
+
+  it('rejects missing userName with 400', async () => {
+    const app = createApp();
+    const response = await request(app).post('/register').send({
+      email: 'patient@example.com',
+      password: 'securePass1',
+      role: 'PATIENT',
+    });
+
+    expect(response.status).toBe(400);
+    expect(mockUserCreate).not.toHaveBeenCalled();
   });
 });
 
@@ -125,6 +148,7 @@ describe('POST /login', () => {
       email: 'patient@example.com',
       passwordHash,
       role: 'PATIENT',
+      isActive: true,
     });
 
     const app = createApp();
@@ -155,6 +179,26 @@ describe('POST /login', () => {
 
     expect(response.status).toBe(401);
     expect(response.body.message).toBe('Invalid credentials');
+  });
+
+  it('rejects login for a suspended account with 403', async () => {
+    const passwordHash = await hashPassword('securePass1');
+    mockFindUnique.mockResolvedValue({
+      id: 'user-123',
+      email: 'patient@example.com',
+      passwordHash,
+      role: 'PATIENT',
+      isActive: false,
+    });
+
+    const app = createApp();
+    const response = await request(app).post('/login').send({
+      email: 'patient@example.com',
+      password: 'securePass1',
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.message).toBe('Account suspended');
   });
 });
 
@@ -198,6 +242,7 @@ describe('POST /refresh', () => {
         id: 'user-123',
         email: 'patient@example.com',
         role: 'PATIENT',
+        isActive: true,
       },
     });
     mockRefreshCreate.mockResolvedValue({ id: 'rt-new' });
@@ -227,6 +272,28 @@ describe('POST /refresh', () => {
     const response = await request(app).post('/refresh');
 
     expect(response.status).toBe(401);
+  });
+
+  it('rejects refresh for a suspended account with 403', async () => {
+    mockFindFirst.mockResolvedValue({
+      id: 'rt-old',
+      userId: 'user-123',
+      user: {
+        id: 'user-123',
+        email: 'patient@example.com',
+        role: 'PATIENT',
+        isActive: false,
+      },
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .post('/refresh')
+      .set('Cookie', 'refreshToken=some-refresh-token');
+
+    expect(response.status).toBe(403);
+    expect(response.body.message).toBe('Account suspended');
+    expect(mockRefreshCreate).not.toHaveBeenCalled();
   });
 });
 
@@ -269,6 +336,71 @@ describe('GET /me', () => {
     const response = await request(app)
       .get('/me')
       .set('Authorization', `Bearer ${expiredToken}`);
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe('GET /internal/auth/analytics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  function serviceToken(): string {
+    return signAccessToken({
+      userId: 'user-service',
+      email: 'service@mindora.internal',
+      role: 'SERVICE',
+    });
+  }
+
+  it('returns totalUsers and activeUsersLast30Days', async () => {
+    mockUserCount.mockResolvedValueOnce(50).mockResolvedValueOnce(12);
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/auth/analytics')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      totalUsers: 50,
+      activeUsersLast30Days: 12,
+    });
+    expect(mockUserCount).toHaveBeenCalledTimes(2);
+    // Second call is the "active" filter — createdAt OR refreshTokens.some within 30 days
+    expect(mockUserCount.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({ createdAt: expect.any(Object) }),
+            expect.objectContaining({ refreshTokens: expect.any(Object) }),
+          ]),
+        }),
+      })
+    );
+  });
+
+  it('rejects a non-SERVICE (ADMIN) token with 403', async () => {
+    const adminToken = signAccessToken({
+      userId: 'admin-1',
+      email: 'admin@example.com',
+      role: 'ADMIN',
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/auth/analytics')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(403);
+    expect(mockUserCount).not.toHaveBeenCalled();
+  });
+
+  it('rejects a request with no token with 401', async () => {
+    const app = createApp();
+    const response = await request(app).get('/internal/auth/analytics');
 
     expect(response.status).toBe(401);
   });

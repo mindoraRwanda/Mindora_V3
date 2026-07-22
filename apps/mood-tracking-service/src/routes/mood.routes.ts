@@ -4,7 +4,8 @@ import {
   createMoodStreakEvent,
   MOOD_STREAK_MILESTONES,
 } from '@mindora/events';
-import { prisma, Prisma } from '@mindora/database';
+import { prisma } from '../lib/prisma.js';
+import { Prisma } from '../generated/prisma/index.js';
 import { logMoodSchema, moodHistoryQuerySchema } from '@mindora/validation';
 import { Router } from 'express';
 import { averageScore, shouldPublishMoodConcern } from '../lib/concern.js';
@@ -96,13 +97,18 @@ moodRouter.post(
     });
     const recentScores = recentEntries.map((item) => item.moodScore);
     if (shouldPublishMoodConcern(recentScores)) {
-      await publishMoodEvent(
-        createMoodConcernEvent({
-          userId,
-          avgMoodScore: averageScore(recentScores),
-          recentScores,
-        })
-      );
+      // RabbitMQ being down must never fail a mood log that's already saved.
+      try {
+        await publishMoodEvent(
+          createMoodConcernEvent({
+            userId,
+            avgMoodScore: averageScore(recentScores),
+            recentScores,
+          })
+        );
+      } catch (err) {
+        console.error('[mood.concern] Failed to publish event:', err);
+      }
     }
 
     const allRecordedDays = await prisma.moodEntry.findMany({
@@ -117,14 +123,18 @@ moodRouter.post(
         streak as (typeof MOOD_STREAK_MILESTONES)[number]
       )
     ) {
-      await publishMoodEvent(
-        createMoodStreakEvent({
-          userId,
-          streak,
-          milestone: streak as 7 | 14 | 30,
-          lastCheckedIn: `${lastCheckedIn}T00:00:00.000Z`,
-        })
-      );
+      try {
+        await publishMoodEvent(
+          createMoodStreakEvent({
+            userId,
+            streak,
+            milestone: streak as 7 | 14 | 30,
+            lastCheckedIn: `${lastCheckedIn}T00:00:00.000Z`,
+          })
+        );
+      } catch (err) {
+        console.error('[mood.streak] Failed to publish event:', err);
+      }
     }
 
     res.status(201).json(serializeMoodEntry(entry, { includeJournal: true }));
@@ -311,6 +321,31 @@ moodRouter.get(
     res.status(200).json({
       streak,
       lastCheckedIn: lastCheckedIn ? `${lastCheckedIn}T00:00:00.000Z` : null,
+    });
+  }
+);
+
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as Auth/User
+// Service's /internal/* routes. Backs Admin Service's platform analytics.
+moodRouter.get(
+  '/internal/mood/analytics',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const [totalMoodEntries, avgResult] = await Promise.all([
+      prisma.moodEntry.count(),
+      prisma.moodEntry.aggregate({ _avg: { moodScore: true } }),
+    ]);
+
+    res.status(200).json({
+      totalMoodEntries,
+      avgMoodScorePlatform: avgResult._avg.moodScore ?? null,
     });
   }
 );

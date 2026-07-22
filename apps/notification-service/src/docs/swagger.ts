@@ -127,6 +127,13 @@ const options: swaggerJsdoc.Options = {
       { url: 'http://localhost:8000', description: 'Via Kong Gateway' },
     ],
     components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
       schemas: {
         HealthResponse: {
           type: 'object',
@@ -135,10 +142,45 @@ const options: swaggerJsdoc.Options = {
             service: { type: 'string', example: 'notification-service' },
           },
         },
+        NotificationLog: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            userId: { type: 'string', format: 'uuid' },
+            eventType: { type: 'string', example: 'appointment.booked' },
+            channel: {
+              type: 'string',
+              enum: ['push', 'email', 'sms'],
+              description:
+                'SMS is currently disabled (SMS_ENABLED=false) pending V4 — sms-channel logs will show status "skipped" until then.',
+            },
+            status: {
+              type: 'string',
+              enum: ['delivered', 'failed', 'skipped'],
+            },
+            failureReason: { type: 'string', nullable: true },
+            createdAt: {
+              type: 'string',
+              format: 'date-time',
+              description: 'UTC.',
+            },
+            createdAtKigali: {
+              type: 'string',
+              description:
+                'Same instant as createdAt, converted to Africa/Kigali (UTC+3) with the offset baked into the string.',
+            },
+            deliveredAt: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+            },
+            deliveredAtKigali: { type: 'string', nullable: true },
+          },
+        },
       },
     },
   },
-  apis: ['./src/index.ts'],
+  apis: ['./src/index.ts', './src/routes/*.ts'],
 };
 
 export const swaggerSpec = swaggerJsdoc(options);

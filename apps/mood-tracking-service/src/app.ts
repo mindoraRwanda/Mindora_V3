@@ -9,6 +9,9 @@ const openApiPath = resolve(moduleDir, '../../../docs/mood-service.yaml');
 
 export function createApp() {
   const app = express();
+  // Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
+  // real client IP from X-Forwarded-For instead of Kong's own container IP.
+  app.set('trust proxy', 1);
   app.use(express.json());
 
   try {

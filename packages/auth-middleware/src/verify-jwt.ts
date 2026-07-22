@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { isTokenBlacklisted } from './redis.js';
+import { isTokenBlacklisted, isUserSuspended } from './redis.js';
 import type {
   AuthMiddlewareOptions,
   AuthenticatedRequest,
@@ -72,6 +72,14 @@ export function createVerifyJwt(options: AuthMiddlewareOptions) {
 
       if (payload.jti && (await isTokenBlacklisted(redisUrl, payload.jti))) {
         res.status(401).json({ message: 'Unauthorized' });
+        return;
+      }
+
+      // Checked on every request, not just at login/refresh — a still-valid
+      // access token must stop working the moment an admin suspends the
+      // account, not just once it naturally expires.
+      if (await isUserSuspended(redisUrl, payload.userId)) {
+        res.status(403).json({ message: 'Account suspended' });
         return;
       }
 

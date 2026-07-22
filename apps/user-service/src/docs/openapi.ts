@@ -1,0 +1,467 @@
+export const openApiSpec = {
+  openapi: '3.0.0',
+  info: {
+    title: 'Mindora User Service API',
+    version: '1.0.0',
+    description:
+      'Manages patient and therapist profiles — display name, bio, timezone, language, ' +
+      'FCM push token, and per-channel notification preferences. User Service has no ' +
+      '`users` table of its own; identity (email, role) lives in Auth Service and is ' +
+      'denormalized onto profile rows or fetched on demand via an internal, non-public lookup.',
+  },
+  servers: [
+    { url: 'http://localhost:3002', description: 'Local development (direct)' },
+    {
+      url: 'http://localhost:8000/api/v1/users',
+      description: 'Via Kong gateway',
+    },
+  ],
+  tags: [
+    { name: 'Health' },
+    { name: 'Profile' },
+    { name: 'Preferences' },
+    { name: 'Therapists' },
+  ],
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      },
+    },
+    schemas: {
+      ErrorMessage: {
+        type: 'object',
+        required: ['message'],
+        properties: { message: { type: 'string' } },
+      },
+      ValidationError: {
+        type: 'object',
+        required: ['message', 'errors'],
+        properties: {
+          message: { type: 'string', example: 'Validation failed' },
+          errors: { type: 'object', additionalProperties: true },
+        },
+      },
+      HealthResponse: {
+        type: 'object',
+        required: ['status', 'service'],
+        properties: {
+          status: { type: 'string', example: 'ok' },
+          service: { type: 'string', example: 'user-service' },
+        },
+      },
+      NotificationPreferences: {
+        type: 'object',
+        required: ['push', 'email', 'sms'],
+        properties: {
+          push: { type: 'boolean' },
+          email: { type: 'boolean' },
+          sms: { type: 'boolean' },
+        },
+        description: 'Opt-out model — all three channels default to true.',
+      },
+      PatientProfile: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          userId: { type: 'string', format: 'uuid' },
+          userName: { type: 'string', nullable: true },
+          bio: { type: 'string', nullable: true },
+          timezone: { type: 'string', example: 'UTC' },
+          languagePreference: { type: 'string', example: 'en' },
+          fcmToken: { type: 'string', nullable: true },
+          notificationPreferences: {
+            $ref: '#/components/schemas/NotificationPreferences',
+          },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      TherapistProfile: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          userId: { type: 'string', format: 'uuid' },
+          userName: { type: 'string', nullable: true },
+          bio: { type: 'string', nullable: true },
+          timezone: { type: 'string', example: 'UTC' },
+          languagePreference: { type: 'string', example: 'en' },
+          specialisation: { type: 'string', nullable: true },
+          languages: { type: 'array', items: { type: 'string' } },
+          isAcceptingPatients: { type: 'boolean' },
+          fcmToken: { type: 'string', nullable: true },
+          notificationPreferences: {
+            $ref: '#/components/schemas/NotificationPreferences',
+          },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      MeResponse: {
+        type: 'object',
+        required: ['role'],
+        properties: {
+          role: { type: 'string', enum: ['PATIENT', 'THERAPIST', 'ADMIN'] },
+          profile: {
+            oneOf: [
+              { $ref: '#/components/schemas/PatientProfile' },
+              { $ref: '#/components/schemas/TherapistProfile' },
+            ],
+            description: 'Omitted for ADMIN, which has no extended profile.',
+          },
+          message: { type: 'string', description: 'Present only for ADMIN.' },
+        },
+      },
+      UpdateProfileRequest: {
+        type: 'object',
+        properties: {
+          userName: { type: 'string', minLength: 1, maxLength: 64 },
+          bio: { type: 'string', maxLength: 2000 },
+          timezone: { type: 'string', minLength: 1, maxLength: 64 },
+          languagePreference: { type: 'string', minLength: 2, maxLength: 10 },
+        },
+      },
+      UpdateFcmTokenRequest: {
+        type: 'object',
+        required: ['fcmToken'],
+        properties: { fcmToken: { type: 'string', minLength: 1 } },
+      },
+      PreferencesResponse: {
+        type: 'object',
+        required: [
+          'fcmToken',
+          'email',
+          'phoneNumber',
+          'userName',
+          'notificationPreferences',
+        ],
+        properties: {
+          fcmToken: { type: 'string', nullable: true },
+          email: { type: 'string', format: 'email', nullable: true },
+          phoneNumber: {
+            type: 'string',
+            nullable: true,
+            description: 'Always null — not currently collected.',
+          },
+          userName: { type: 'string', nullable: true },
+          notificationPreferences: {
+            $ref: '#/components/schemas/NotificationPreferences',
+          },
+        },
+      },
+      TherapistListResponse: {
+        type: 'object',
+        required: ['therapists', 'total', 'page', 'limit'],
+        properties: {
+          therapists: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/TherapistProfile' },
+          },
+          total: { type: 'integer' },
+          page: { type: 'integer' },
+          limit: { type: 'integer' },
+        },
+      },
+    },
+    responses: {
+      Unauthorized: {
+        description: 'Missing or invalid JWT',
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/ErrorMessage' },
+            example: { message: 'Unauthorized' },
+          },
+        },
+      },
+      NotFound: {
+        description: 'Profile or user not found',
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/ErrorMessage' },
+          },
+        },
+      },
+    },
+  },
+  paths: {
+    '/health': {
+      get: {
+        tags: ['Health'],
+        summary: 'Service health check',
+        security: [],
+        responses: {
+          '200': {
+            description: 'Service is healthy',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/HealthResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/users/health': {
+      get: {
+        tags: ['Health'],
+        summary: 'Service health check (Kong gateway path)',
+        description:
+          'Same response as GET /health. Kong forwards this path unchanged (strip_path: false).',
+        security: [],
+        responses: {
+          '200': {
+            description: 'Service is healthy',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/HealthResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/me': {
+      get: {
+        tags: ['Profile'],
+        summary: "Get the caller's own profile",
+        description:
+          'Returns the patient or therapist profile for the authenticated user, based on ' +
+          'the role embedded in their JWT. ADMIN has no extended profile and instead gets ' +
+          'a plain message.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Own profile (or ADMIN placeholder)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/MeResponse' },
+              },
+            },
+          },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+          '404': {
+            description: 'No profile row exists yet for this user',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorMessage' },
+              },
+            },
+          },
+          '429': { description: 'Rate limit exceeded' },
+        },
+      },
+      put: {
+        tags: ['Profile'],
+        summary: "Update the caller's own profile",
+        description:
+          'Patient/therapist only — updates display name, bio, timezone, and language. ' +
+          'All fields optional; only ones present in the body are changed.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateProfileRequest' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Updated profile',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/MeResponse' },
+              },
+            },
+          },
+          '400': {
+            description:
+              'Validation error, or role does not support profile updates (e.g. ADMIN)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ValidationError' },
+              },
+            },
+          },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+          '429': { description: 'Rate limit exceeded' },
+        },
+      },
+    },
+    '/me/fcm-token': {
+      put: {
+        tags: ['Preferences'],
+        summary: 'Register or update the FCM push token',
+        description: 'Patient/therapist only.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateFcmTokenRequest' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Token updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { message: { type: 'string' } },
+                },
+                example: { message: 'FCM token updated' },
+              },
+            },
+          },
+          '400': {
+            description:
+              'Validation error, or role does not support FCM registration (e.g. ADMIN)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ValidationError' },
+              },
+            },
+          },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+          '429': { description: 'Rate limit exceeded' },
+        },
+      },
+    },
+    '/me/notification-preferences': {
+      put: {
+        tags: ['Preferences'],
+        summary: "Update the caller's own notification preferences",
+        description:
+          'Partial update, merged onto the currently stored value (or defaults) — sending ' +
+          '`{"push": false}` only disables push and leaves email/sms untouched. Patient/therapist only.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  push: { type: 'boolean' },
+                  email: { type: 'boolean' },
+                  sms: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Updated preferences',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    notificationPreferences: {
+                      $ref: '#/components/schemas/NotificationPreferences',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description:
+              'Validation error, or role does not support notification preferences (e.g. ADMIN)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ValidationError' },
+              },
+            },
+          },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+          '429': { description: 'Rate limit exceeded' },
+        },
+      },
+    },
+    '/{userId}/preferences': {
+      get: {
+        tags: ['Preferences'],
+        summary: "Get a user's contact info and notification preferences",
+        description:
+          'Callable by the user themselves, or by a service holding a SERVICE-role JWT ' +
+          '(e.g. Notification Service, resolving where to deliver a push/email/SMS). Falls ' +
+          'back to Auth Service internally for `email` on profiles that predate the ' +
+          'role/email backfill, and for users with no profile row at all (e.g. ADMIN).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'userId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Contact info and preferences',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PreferencesResponse' },
+              },
+            },
+          },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+          '403': {
+            description:
+              'Caller is neither the requested user nor a SERVICE-role caller',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorMessage' },
+              },
+            },
+          },
+          '404': { $ref: '#/components/responses/NotFound' },
+          '429': { description: 'Rate limit exceeded' },
+        },
+      },
+    },
+    '/therapists': {
+      get: {
+        tags: ['Therapists'],
+        summary: 'List therapists accepting new patients',
+        description:
+          'Paginated, filterable by specialisation (case-insensitive substring match) and ' +
+          'language. Only returns therapists with `isAcceptingPatients: true`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+          },
+          { name: 'specialisation', in: 'query', schema: { type: 'string' } },
+          { name: 'language', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Paginated therapist list',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/TherapistListResponse' },
+              },
+            },
+          },
+          '400': { description: 'Invalid query parameters' },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+          '429': { description: 'Rate limit exceeded' },
+        },
+      },
+    },
+  },
+};
