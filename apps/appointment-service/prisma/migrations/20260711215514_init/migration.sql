@@ -29,9 +29,3 @@ CREATE INDEX "appointments_patient_id_idx" ON "appointments"("patient_id");
 
 -- CreateIndex
 CREATE INDEX "appointments_therapist_id_status_slot_start_idx" ON "appointments"("therapist_id", "status", "slot_start");
-
--- AddForeignKey
-ALTER TABLE "appointments" ADD CONSTRAINT "appointments_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "appointments" ADD CONSTRAINT "appointments_therapist_id_fkey" FOREIGN KEY ("therapist_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

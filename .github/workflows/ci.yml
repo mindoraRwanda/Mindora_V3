@@ -306,9 +306,15 @@ jobs:
           retention-days: 3
 
   # ─── 6. Dependency vulnerability audit ───────────────────────────────────
-  # --omit=dev focuses the audit on what ships to production.
+  # --production focuses the audit on what ships to production.
   # Dev-tool CVEs (test runners, linters) are excluded so they don't block
   # application PRs — they are handled separately by Dependabot.
+  #
+  # Uses better-npm-audit instead of plain `npm audit` so specific advisories
+  # that are confirmed unreachable (not just "annoying") can be documented
+  # and ignored via .nsprc, instead of either blocking every PR forever or
+  # silently lowering --audit-level for everything. See .nsprc for the one
+  # currently-ignored advisory and why.
   security:
     name: Dependency audit
     runs-on: ubuntu-latest
@@ -325,7 +331,7 @@ jobs:
         run: npm ci
 
       - name: Audit production dependencies for high-severity CVEs
-        run: npm audit --audit-level=high --omit=dev
+        run: npx better-npm-audit audit --level high --production
 
   # ─── 7. CI gate ───────────────────────────────────────────────────────────
   # Single check name to target in GitHub branch protection rules.
