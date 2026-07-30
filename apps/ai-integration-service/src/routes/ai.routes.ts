@@ -7,6 +7,8 @@ import { connect } from '@mindora/queue';
 import { EXCHANGES } from '@mindora/events';
 import { runPreFilter } from '../preFilter.js';
 import { prisma } from '../database.js';
+import { chatWithBot } from '../chatbotClient.js';
+import { encrypt } from '../lib/crypto.js';
 
 const router = Router();
 
@@ -93,11 +95,42 @@ router.post(
     // See: AFSP Safe Messaging Guidelines, Columbia Suicide Severity Rating Scale (C-SSRS).
     const inputFlagged = crisisLevel >= 1;
 
-    // inputFlagged will be written to the ai_interactions DB record when the AI provider is wired in
-    void inputFlagged;
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
 
-    // AI provider call not yet implemented
-    res.status(501).json({ message: 'Not implemented yet', crisisLevel });
+    const start = Date.now();
+    let botMessage;
+    try {
+      botMessage = await chatWithBot(userId, message);
+    } catch (err) {
+      console.error('[chat] Therapy chatbot call failed:', err);
+      res
+        .status(502)
+        .json({ message: 'The AI companion is temporarily unavailable' });
+      return;
+    }
+    const responseMs = Date.now() - start;
+
+    await prisma.aiInteraction.create({
+      data: {
+        user_id: userId,
+        session_id: resolvedSessionId ?? botMessage.id,
+        user_message: encrypt(message),
+        ai_response: encrypt(botMessage.content),
+        input_flagged: inputFlagged,
+        output_flagged: false,
+        crisis_level: crisisLevel,
+        response_ms: responseMs,
+      },
+    });
+
+    res.status(200).json({
+      response: botMessage.content,
+      crisisLevel,
+      sessionId: resolvedSessionId,
+    });
   }
 );
 
