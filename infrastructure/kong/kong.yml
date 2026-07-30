@@ -16,7 +16,17 @@ plugins:
       origins:
         - '*'
       methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
-      headers: [Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, Authorization, X-Auth-Token]
+      headers:
+        [
+          Accept,
+          Accept-Version,
+          Content-Length,
+          Content-MD5,
+          Content-Type,
+          Date,
+          Authorization,
+          X-Auth-Token,
+        ]
       exposed_headers: [X-Auth-Token]
       credentials: true
       max_age: 3600

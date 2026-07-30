@@ -6,17 +6,17 @@ Each backend service manages its own dedicated database. The shared
 `@mindora/database` package has been removed (2026-07-12) — every
 PostgreSQL-backed service now owns its own Prisma schema and migrations
 independently, with no cross-service Prisma relations. All PostgreSQL
-databases run on the same `mindora-postgres` container (host port 5433).
+databases run on the same `mindora-postgres` container (host port 5434).
 Admin Service has no database of its own — it has no persistent storage.
 
 | Service                | Database                              | Port    |
 | ---------------------- | ------------------------------------- | ------- |
-| Auth Service           | mindora_auth                          | 5433    |
-| User Service           | mindora_user                          | 5433    |
-| Appointment Service    | mindora_appointment                   | 5433    |
-| Mood Tracking Service  | mindora_mood (TimescaleDB hypertable) | 5433    |
-| AI Integration Service | mindora_ai                            | 5433    |
-| Notification Service   | mindora_notifications                 | 5433    |
+| Auth Service           | mindora_auth                          | 5434    |
+| User Service           | mindora_user                          | 5434    |
+| Appointment Service    | mindora_appointment                   | 5434    |
+| Mood Tracking Service  | mindora_mood (TimescaleDB hypertable) | 5434    |
+| AI Integration Service | mindora_ai                            | 5434    |
+| Notification Service   | mindora_notifications                 | 5434    |
 | Community Service      | mindora_community                     | MongoDB |
 | Messaging Service      | mindora_messaging                     | MongoDB |
 | Admin Service          | — (not database-backed)               | —       |

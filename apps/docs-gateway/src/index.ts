@@ -10,15 +10,60 @@ const PORT = Number(process.env.DOCS_GATEWAY_PORT) || 3010;
 // document was mounted independently, at different points in this repo's
 // history, at three different paths.
 const SERVICES = [
-  { key: 'auth', name: 'Auth Service', port: 3001, specPath: '/docs/openapi.json' },
-  { key: 'user', name: 'User Service', port: 3002, specPath: '/docs/openapi.json' },
-  { key: 'appointments', name: 'Appointment Service', port: 3003, specPath: '/openapi.json' },
-  { key: 'mood', name: 'Mood Tracking Service', port: 3004, specPath: '/openapi.json' },
-  { key: 'community', name: 'Community Service', port: 3005, specPath: '/docs.json' },
-  { key: 'messaging', name: 'Messaging Service', port: 3006, specPath: '/docs.json' },
-  { key: 'ai', name: 'AI Integration Service', port: 3007, specPath: '/docs/openapi.json' },
-  { key: 'notifications', name: 'Notification Service', port: 3008, specPath: '/docs.json' },
-  { key: 'admin', name: 'Admin Service', port: 3009, specPath: '/docs/openapi.json' },
+  {
+    key: 'auth',
+    name: 'Auth Service',
+    port: 3001,
+    specPath: '/docs/openapi.json',
+  },
+  {
+    key: 'user',
+    name: 'User Service',
+    port: 3002,
+    specPath: '/docs/openapi.json',
+  },
+  {
+    key: 'appointments',
+    name: 'Appointment Service',
+    port: 3003,
+    specPath: '/openapi.json',
+  },
+  {
+    key: 'mood',
+    name: 'Mood Tracking Service',
+    port: 3004,
+    specPath: '/openapi.json',
+  },
+  {
+    key: 'community',
+    name: 'Community Service',
+    port: 3005,
+    specPath: '/docs.json',
+  },
+  {
+    key: 'messaging',
+    name: 'Messaging Service',
+    port: 3006,
+    specPath: '/docs.json',
+  },
+  {
+    key: 'ai',
+    name: 'AI Integration Service',
+    port: 3007,
+    specPath: '/docs/openapi.json',
+  },
+  {
+    key: 'notifications',
+    name: 'Notification Service',
+    port: 3008,
+    specPath: '/docs.json',
+  },
+  {
+    key: 'admin',
+    name: 'Admin Service',
+    port: 3009,
+    specPath: '/docs/openapi.json',
+  },
 ];
 
 const app = express();
@@ -34,7 +79,9 @@ app.get('/health', (_req, res) => {
 for (const service of SERVICES) {
   app.get(`/specs/${service.key}.json`, async (_req, res) => {
     try {
-      const upstream = await fetch(`http://127.0.0.1:${service.port}${service.specPath}`);
+      const upstream = await fetch(
+        `http://127.0.0.1:${service.port}${service.specPath}`
+      );
       if (!upstream.ok) {
         throw new Error(`upstream responded with ${upstream.status}`);
       }
@@ -54,7 +101,10 @@ app.use(
   swaggerUi.setup(undefined, {
     customSiteTitle: 'Mindora API Docs',
     swaggerOptions: {
-      urls: SERVICES.map((service) => ({ url: `/specs/${service.key}.json`, name: service.name })),
+      urls: SERVICES.map((service) => ({
+        url: `/specs/${service.key}.json`,
+        name: service.name,
+      })),
     },
   })
 );
