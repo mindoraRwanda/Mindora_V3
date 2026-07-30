@@ -10,7 +10,17 @@ COPY packages ./packages
 COPY docs ./docs
 
 RUN npm install
-RUN npm run build -w @mindora/mood-tracking-service
+# The Prisma client committed under src/generated is a dev machine's own
+# build (native query engine binary for that machine's OS), not portable —
+# regenerate it here so the engine binary matches this Alpine/musl image.
+# The env value just needs to be a non-empty string; generate never connects.
+RUN MOOD_DATABASE_URL=postgresql://mindora:mindora@localhost:5432/mindora_mood \
+  npx prisma generate --schema=apps/mood-tracking-service/prisma/schema.prisma
+
+RUN npx turbo run build --filter=@mindora/mood-tracking-service
+# tsc only emits compiled .ts sources — copy the (now Alpine-native) Prisma
+# client into dist alongside it.
+RUN cp -r apps/mood-tracking-service/src/generated apps/mood-tracking-service/dist/generated
 
 FROM node:24-alpine AS runtime
 WORKDIR /app

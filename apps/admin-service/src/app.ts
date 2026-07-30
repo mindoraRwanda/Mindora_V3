@@ -17,14 +17,17 @@ export function createApp() {
 
   app.use(express.json());
 
+  // Must come before the /docs mount below — swaggerUi.setup()'s fallback
+  // renders the HTML shell for any sub-path under the mount that isn't a
+  // static asset, so registering this after it would make it unreachable.
+  app.get('/docs/openapi.json', (_req, res) => {
+    res.json(openApiSpec);
+  });
   app.use(
     '/docs',
     swaggerUi.serve,
     swaggerUi.setup(openApiSpec, { customSiteTitle: 'Admin Service API Docs' })
   );
-  app.get('/docs/openapi.json', (_req, res) => {
-    res.json(openApiSpec);
-  });
 
   const healthResponse = () => ({ status: 'ok', service: SERVICE_NAME });
 
