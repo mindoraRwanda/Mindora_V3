@@ -1,0 +1,77 @@
+# Mindora "bundle" image — Node.js 24 (see .nvmrc)
+# Runs all 9 hand-written services + the docs-gateway aggregator as one
+# container via pm2-runtime (see ecosystem.config.cjs). Postgres/Redis/
+# MongoDB/RabbitMQ/Kong are NOT included — deploy those as separate Railway
+# services and wire their URLs into this container's environment variables.
+# Build from repo root: docker build -f Dockerfile.bundle .
+
+FROM node:24-alpine AS build
+WORKDIR /app
+
+COPY package.json package-lock.json turbo.json tsconfig.json tsconfig.base.json ecosystem.config.cjs ./
+COPY apps ./apps
+COPY packages ./packages
+COPY docs ./docs
+
+RUN npm install
+
+# The Prisma clients committed under each service's src/generated are a dev
+# machine's own build (native query engine binary for that machine's OS),
+# not portable — regenerate them here so the engine binaries match this
+# Alpine/musl image. Each URL just needs to be a non-empty string; generate
+# never connects.
+RUN AUTH_DATABASE_URL=postgresql://mindora:mindora@localhost:5432/mindora_auth \
+  npx prisma generate --schema=apps/auth-service/prisma/schema.prisma
+RUN USER_DATABASE_URL=postgresql://mindora:mindora@localhost:5432/mindora_user \
+  npx prisma generate --schema=apps/user-service/prisma/schema.prisma
+RUN APPOINTMENT_DATABASE_URL=postgresql://mindora:mindora@localhost:5432/mindora_appointment \
+  npx prisma generate --schema=apps/appointment-service/prisma/schema.prisma
+RUN MOOD_DATABASE_URL=postgresql://mindora:mindora@localhost:5432/mindora_mood \
+  npx prisma generate --schema=apps/mood-tracking-service/prisma/schema.prisma
+RUN ADMIN_DATABASE_URL=postgresql://mindora:mindora@localhost:5432/mindora_admin \
+  npx prisma generate --schema=apps/admin-service/prisma/schema.prisma
+RUN AI_DATABASE_URL=postgresql://mindora:mindora@localhost:5432/mindora_ai \
+  npx prisma generate --schema=apps/ai-integration-service/prisma/schema.prisma
+RUN NOTIFICATION_DATABASE_URL=postgresql://mindora:mindora@localhost:5432/mindora_notifications \
+  npx prisma generate --schema=apps/notification-service/prisma/schema.prisma
+
+RUN npx turbo run build
+
+# tsc only emits compiled .ts sources — copy each (now Alpine-native) Prisma
+# client into its own service's dist alongside it.
+RUN for svc in auth-service user-service appointment-service mood-tracking-service admin-service ai-integration-service notification-service; do \
+  cp -r apps/$svc/src/generated apps/$svc/dist/generated; \
+  done
+
+FROM node:24-alpine AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/ecosystem.config.cjs ./ecosystem.config.cjs
+COPY --from=build /app/docs ./docs
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/apps/auth-service/dist ./apps/auth-service/dist
+COPY --from=build /app/apps/auth-service/package.json ./apps/auth-service/package.json
+COPY --from=build /app/apps/user-service/dist ./apps/user-service/dist
+COPY --from=build /app/apps/user-service/package.json ./apps/user-service/package.json
+COPY --from=build /app/apps/appointment-service/dist ./apps/appointment-service/dist
+COPY --from=build /app/apps/appointment-service/package.json ./apps/appointment-service/package.json
+COPY --from=build /app/apps/mood-tracking-service/dist ./apps/mood-tracking-service/dist
+COPY --from=build /app/apps/mood-tracking-service/package.json ./apps/mood-tracking-service/package.json
+COPY --from=build /app/apps/community-service/dist ./apps/community-service/dist
+COPY --from=build /app/apps/community-service/package.json ./apps/community-service/package.json
+COPY --from=build /app/apps/messaging-service/dist ./apps/messaging-service/dist
+COPY --from=build /app/apps/messaging-service/package.json ./apps/messaging-service/package.json
+COPY --from=build /app/apps/ai-integration-service/dist ./apps/ai-integration-service/dist
+COPY --from=build /app/apps/ai-integration-service/package.json ./apps/ai-integration-service/package.json
+COPY --from=build /app/apps/notification-service/dist ./apps/notification-service/dist
+COPY --from=build /app/apps/notification-service/package.json ./apps/notification-service/package.json
+COPY --from=build /app/apps/admin-service/dist ./apps/admin-service/dist
+COPY --from=build /app/apps/admin-service/package.json ./apps/admin-service/package.json
+COPY --from=build /app/apps/docs-gateway/dist ./apps/docs-gateway/dist
+COPY --from=build /app/apps/docs-gateway/package.json ./apps/docs-gateway/package.json
+
+EXPOSE 3001 3002 3003 3004 3005 3006 3007 3008 3009 3010
+CMD ["npx", "pm2-runtime", "ecosystem.config.cjs"]
