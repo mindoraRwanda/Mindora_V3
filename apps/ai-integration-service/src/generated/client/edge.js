@@ -137,7 +137,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "C:\\Users\\san\\Desktop\\Mindora_V3\\apps\\ai-integration-service\\src\\generated\\client",
+      "value": "/home/kevin/others/Mindora_V3/apps/ai-integration-service/src/generated/client",
       "fromEnvVar": null
     },
     "config": {
@@ -146,12 +146,12 @@ const config = {
     "binaryTargets": [
       {
         "fromEnvVar": null,
-        "value": "windows",
+        "value": "debian-openssl-3.0.x",
         "native": true
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "C:\\Users\\san\\Desktop\\Mindora_V3\\apps\\ai-integration-service\\prisma\\schema.prisma",
+    "sourceFilePath": "/home/kevin/others/Mindora_V3/apps/ai-integration-service/prisma/schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {

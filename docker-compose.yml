@@ -7,6 +7,13 @@
 # convenience and would be serious security risks in production.
 # ============================================================
 
+# Shared defaults for every app service below. Values follow the same
+# ${VAR:-default} substitution pattern already used by the kong service's
+# JWT_SECRET, sourced from a root .env file that `docker compose` auto-loads.
+x-app-env: &app-env
+  JWT_SECRET: ${JWT_SECRET:-mindora-dev-jwt-secret-change-in-production}
+  JWT_ISSUER: ${JWT_ISSUER:-mindora-auth}
+
 services:
   postgres:
     image: timescale/timescaledb:latest-pg16
@@ -29,10 +36,15 @@ services:
       # with strong credentials managed via AWS Secrets Manager must be used instead.
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      # 5433 on the host — avoids collision with any local Windows PostgreSQL install on 5432
-      - '5433:5432'
+      # 5434 on the host — avoids collision with a local Windows PostgreSQL
+      # install on 5432, and (on this machine) a native Linux postgresql
+      # systemd service already bound to 5433. Internal service-to-service
+      # traffic always uses postgres:5432 (the container's own port), so
+      # this only affects host-side psql/GUI access.
+      - '5434:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U mindora -d mindora']
       interval: 5s
@@ -107,6 +119,259 @@ services:
     depends_on:
       - postgres
       - redis
+
+  # ── App services ──────────────────────────────────────────────────────
+  # Each publishes its port to the host, so Kong's host.docker.internal
+  # routing (infrastructure/kong/kong.yml) reaches these the same way it
+  # reaches a host-run `npm run dev` instance — no Kong config changes
+  # needed, and the two stay interchangeable per-service.
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: apps/auth-service/Dockerfile
+    container_name: mindora-auth-service
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      PORT: 3001
+      AUTH_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_auth
+      REDIS_URL: redis://redis:6379
+      APP_BASE_URL: http://localhost:3001
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:3001/oauth/google/callback}
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3001/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  user-service:
+    build:
+      context: .
+      dockerfile: apps/user-service/Dockerfile
+    container_name: mindora-user-service
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      PORT: 3002
+      USER_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_user
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '3002:3002'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3002/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  appointment-service:
+    build:
+      context: .
+      dockerfile: apps/appointment-service/Dockerfile
+    container_name: mindora-appointment-service
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      PORT: 3003
+      APPOINTMENT_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_appointment
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
+    ports:
+      - '3003:3003'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3003/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mood-tracking-service:
+    build:
+      context: .
+      dockerfile: apps/mood-tracking-service/Dockerfile
+    container_name: mindora-mood-tracking-service
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      PORT: 3004
+      MOOD_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_mood
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
+      MOOD_JOURNAL_ENCRYPTION_KEY: ${MOOD_JOURNAL_ENCRYPTION_KEY:-mindora-dev-mood-journal-key-32bytes!!}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
+    ports:
+      - '3004:3004'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3004/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  community-service:
+    build:
+      context: .
+      dockerfile: apps/community-service/Dockerfile
+    container_name: mindora-community-service
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      PORT: 3005
+      MONGO_URI: mongodb://mongodb:27017/mindora_community
+      KONG_URL: http://kong:8000
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
+      COMMUNITY_ENCRYPTION_KEY: ${COMMUNITY_ENCRYPTION_KEY:-mindora-dev-community-key-32bytes!!}
+    ports:
+      - '3005:3005'
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3005/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  messaging-service:
+    build:
+      context: .
+      dockerfile: apps/messaging-service/Dockerfile
+    container_name: mindora-messaging-service
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      PORT: 3006
+      MONGO_URI: mongodb://mongodb:27017/mindora_messaging
+      REDIS_URL: redis://redis:6379
+      KONG_URL: http://kong:8000
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      MESSAGE_ENCRYPTION_KEY: ${MESSAGE_ENCRYPTION_KEY:-mindora-dev-message-key-32bytes!!}
+    ports:
+      - '3006:3006'
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3006/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  ai-integration-service:
+    build:
+      context: .
+      dockerfile: apps/ai-integration-service/Dockerfile
+    container_name: mindora-ai-integration-service
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      AI_SERVICE_PORT: 3007
+      AI_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_ai
+    ports:
+      - '3007:3007'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # No healthcheck: /health sits behind the auth middleware in this service
+    # (app.ts registers it after app.use(authenticate)), so an unauthenticated
+    # request always returns 401 and would falsely report unhealthy.
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: apps/notification-service/Dockerfile
+    container_name: mindora-notification-service
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      PORT: 3008
+      NOTIFICATION_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_notifications
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
+      USER_SERVICE_URL: http://user-service:3002
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
+      RESEND_EMAIL_API_KEY: ${RESEND_EMAIL_API_KEY:-}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      AT_API_KEY: ${AT_API_KEY:-}
+      AT_USERNAME: ${AT_USERNAME:-}
+      SMS_ENABLED: ${SMS_ENABLED:-false}
+    ports:
+      - '3008:3008'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3008/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  admin-service:
+    build:
+      context: .
+      dockerfile: apps/admin-service/Dockerfile
+    container_name: mindora-admin-service
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      ADMIN_SERVICE_PORT: 3009
+      ADMIN_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_admin
+      RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
+      KONG_URL: http://kong:8000
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
+    ports:
+      - '3009:3009'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3009/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 volumes:
   postgres_data:

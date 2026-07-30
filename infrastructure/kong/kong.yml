@@ -3,6 +3,25 @@ _format_version: '3.0'
 # Microservices run on the host during local dev (npm run dev).
 # Kong in Docker reaches them via host.docker.internal.
 
+# Global CORS so the web build of the mobile app (served from a dev origin like
+# http://localhost:8081/19006/etc, different from Kong's :8000) can call the API
+# at all — browsers block cross-origin requests without this (mobile apps aren't
+# affected, CORS is a browser-only mechanism). credentials: true is needed so the
+# httpOnly refreshToken cookie set by auth-service's /login can ride along on
+# fetch(..., { credentials: 'include' }); Kong reflects the actual request Origin
+# instead of a literal "*" whenever credentials is true, so this stays spec-valid.
+plugins:
+  - name: cors
+    config:
+      origins:
+        - '*'
+      methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+      headers: [Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, Authorization, X-Auth-Token]
+      exposed_headers: [X-Auth-Token]
+      credentials: true
+      max_age: 3600
+      preflight_continue: false
+
 services:
   - name: auth-service
     url: http://host.docker.internal:3001
@@ -41,7 +60,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/register]
     strip_path: false
-    methods: [POST]
+    methods: [POST, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -51,7 +70,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/login]
     strip_path: false
-    methods: [POST]
+    methods: [POST, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -61,7 +80,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/refresh]
     strip_path: false
-    methods: [POST]
+    methods: [POST, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -71,7 +90,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/forgot-password]
     strip_path: false
-    methods: [POST]
+    methods: [POST, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -81,7 +100,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/reset-password]
     strip_path: false
-    methods: [POST]
+    methods: [POST, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -91,7 +110,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/oauth/google]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -101,7 +120,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/oauth/google/callback]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -153,7 +172,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth]
     strip_path: true
-    methods: [GET, POST, PUT, PATCH, DELETE]
+    methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
     plugins:
       - name: jwt
         config:
