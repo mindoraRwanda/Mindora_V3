@@ -7,15 +7,33 @@
 // don't collide with whatever single PORT Railway injects into the container.
 // Postgres/Redis/MongoDB/RabbitMQ/Kong are NOT part of this image — deploy
 // those as separate Railway services and point the DATABASE_URL / REDIS_URL /
-// MONGO_URI / RABBITMQ_URL variables below at them via the container's env.
+// RABBITMQ_URL variables below at them via the container's env.
+//
+// community-service and messaging-service both read process.env.MONGO_URI
+// (see apps/community-service/src/database.ts and
+// apps/messaging-service/src/database.ts) but need different database names
+// on the same Mongo instance — a plain container-level MONGO_URI would only
+// satisfy one of them. Set MONGO_BASE_URL (e.g.
+// mongodb://<mongo-service>.railway.internal:27017) once on the container
+// and derive each service's full MONGO_URI here instead.
+const MONGO_BASE_URL = process.env.MONGO_BASE_URL || '';
+
 module.exports = {
   apps: [
     { name: 'auth-service', script: 'apps/auth-service/dist/index.js', env: { PORT: 3001 } },
     { name: 'user-service', script: 'apps/user-service/dist/index.js', env: { PORT: 3002 } },
     { name: 'appointment-service', script: 'apps/appointment-service/dist/index.js', env: { PORT: 3003 } },
     { name: 'mood-tracking-service', script: 'apps/mood-tracking-service/dist/index.js', env: { PORT: 3004 } },
-    { name: 'community-service', script: 'apps/community-service/dist/index.js', env: { PORT: 3005 } },
-    { name: 'messaging-service', script: 'apps/messaging-service/dist/index.js', env: { PORT: 3006 } },
+    {
+      name: 'community-service',
+      script: 'apps/community-service/dist/index.js',
+      env: { PORT: 3005, ...(MONGO_BASE_URL && { MONGO_URI: `${MONGO_BASE_URL}/mindora_community` }) },
+    },
+    {
+      name: 'messaging-service',
+      script: 'apps/messaging-service/dist/index.js',
+      env: { PORT: 3006, ...(MONGO_BASE_URL && { MONGO_URI: `${MONGO_BASE_URL}/mindora_messaging` }) },
+    },
     { name: 'ai-integration-service', script: 'apps/ai-integration-service/dist/index.js', env: { AI_SERVICE_PORT: 3007 } },
     { name: 'notification-service', script: 'apps/notification-service/dist/index.js', env: { PORT: 3008 } },
     { name: 'admin-service', script: 'apps/admin-service/dist/index.js', env: { ADMIN_SERVICE_PORT: 3009 } },
