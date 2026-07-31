@@ -5,10 +5,11 @@ export const openApiSpec = {
     version: '1.0.0',
     description:
       'AI chat companion for patients, with a keyword-based crisis pre-filter that runs ' +
-      'on every message before it reaches (or bypasses) the AI provider. **The AI provider ' +
-      'call itself is not implemented yet** — POST /chat, GET /history, and DELETE /history ' +
-      'all return 501 pending AI team integration; only the pre-filter and crisis-escalation ' +
-      'path are live today.\n\n' +
+      'on every message before it reaches (or bypasses) the AI provider. The AI provider ' +
+      'is an external Therapy Chatbot API (own signup/login + conversation model) — ' +
+      'ai-integration-service provisions one chatbot account per patient lazily, on that ' +
+      "patient's first message (see `src/chatbotClient.ts`). GET /history and DELETE " +
+      '/history are not implemented yet.\n\n' +
       '⚠️ The crisis keyword list has not been reviewed by a mental health professional — ' +
       'see `src/preFilter.ts` for the clinical-review note before relying on it in production.',
   },
@@ -50,6 +51,28 @@ export const openApiSpec = {
           },
           crisisLevel: { type: 'integer', enum: [5] },
           sessionId: { type: 'string', nullable: true, enum: [null] },
+        },
+      },
+      ChatResponse: {
+        type: 'object',
+        required: ['response', 'crisisLevel', 'sessionId'],
+        properties: {
+          response: {
+            type: 'string',
+            description: "The AI provider's reply.",
+          },
+          crisisLevel: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 4,
+            description:
+              'Pre-filter level for this message (5 is handled separately — see CrisisChatResponse).',
+          },
+          sessionId: {
+            type: 'string',
+            nullable: true,
+            description: 'Echoes the sessionId from the request, if provided.',
+          },
         },
       },
       NotImplementedResponse: {
@@ -174,9 +197,9 @@ export const openApiSpec = {
           'a fixed crisis-helpline message, a `mindora.ai` RabbitMQ event is published ' +
           'fire-and-forget (a broker outage must never block the safety message from reaching ' +
           'the user), and `sessionId` is always returned as `null`.\n\n' +
-          'For levels 0–4, the request currently returns **501** — the AI provider call itself ' +
-          'is not implemented yet. Levels 3–4 escalation policy (therapist alerts, safety-check ' +
-          'prompts) has not been clinically defined yet either.',
+          'For levels 0–4, the message is forwarded to the external Therapy Chatbot API and its ' +
+          'reply returned as `response`. Levels 3–4 escalation policy (therapist alerts, ' +
+          'safety-check prompts) has not been clinically defined yet.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -189,10 +212,16 @@ export const openApiSpec = {
         responses: {
           '200': {
             description:
-              'Level 5 crisis response — AI bypassed, helpline information returned',
+              'Level 0–4: AI provider reply. Level 5: AI bypassed, helpline information ' +
+              'returned instead.',
             content: {
               'application/json': {
-                schema: { $ref: '#/components/schemas/CrisisChatResponse' },
+                schema: {
+                  oneOf: [
+                    { $ref: '#/components/schemas/ChatResponse' },
+                    { $ref: '#/components/schemas/CrisisChatResponse' },
+                  ],
+                },
               },
             },
           },
@@ -206,12 +235,12 @@ export const openApiSpec = {
           },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
-          '501': {
+          '502': {
             description:
-              'Pre-filter level 0–4 — AI provider integration not implemented yet',
+              'The external Therapy Chatbot API was unreachable or errored',
             content: {
               'application/json': {
-                schema: { $ref: '#/components/schemas/NotImplementedResponse' },
+                schema: { $ref: '#/components/schemas/ErrorMessage' },
               },
             },
           },

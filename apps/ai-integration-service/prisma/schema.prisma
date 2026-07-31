@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
   output   = "../src/generated/client"
 }
 
@@ -27,4 +28,24 @@ model AiInteraction {
   created_at     DateTime @default(now()) @db.Timestamptz
 
   @@map("ai_interactions")
+}
+
+// Links a Mindora patient to their account on the external Therapy Chatbot
+// API (a separate service with its own signup/login and conversation
+// history — see src/chatbotClient.ts). One row per patient; the chatbot
+// account's credentials are provisioned lazily on that patient's first chat.
+model ChatbotAccount {
+  id               String    @id @default(uuid())
+  mindora_user_id  String    @unique
+  chatbot_user_id  String
+  chatbot_email    String
+  // AES-256-GCM encryption is applied at the application layer before writing this field
+  chatbot_password String
+  access_token     String?
+  token_expires_at DateTime? @db.Timestamptz
+  conversation_id  String?
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  updated_at       DateTime  @updatedAt @db.Timestamptz
+
+  @@map("chatbot_accounts")
 }
