@@ -109,11 +109,15 @@ app.use(
   swaggerUi.setup(undefined, {
     customSiteTitle: 'Mindora API Docs',
     explorer: true,
+    // @types/swagger-ui-express declares swaggerUrls as string[], but the
+    // library itself (verified directly against its source) accepts
+    // { url, name } objects to label each dropdown entry — the type
+    // declaration just hasn't caught up with the real feature.
     swaggerUrls: SERVICES.map((service) => ({
       url: `/specs/${service.key}.json`,
       name: service.name,
     })),
-  })
+  } as unknown as swaggerUi.SwaggerUiOptions)
 );
 
 app.listen(PORT, () => {
