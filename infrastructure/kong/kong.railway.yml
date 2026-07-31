@@ -5,8 +5,11 @@ _format_version: '3.0'
 # service's Railway private DNS instead of host.docker.internal. Kong's
 # declarative config can't read env vars, so this file must be baked into
 # the Kong image via infrastructure/kong/Dockerfile (COPY), not templated
-# at runtime. If you rename the bundle service away from "mindora-v3" on
-# Railway, update every `url:` below to match.
+# at runtime. The bundle service is named "Mindora_V3" on Railway, whose
+# private DNS resolves as mindora_v3.railway.internal — confirm this against
+# the RAILWAY_PRIVATE_DOMAIN variable on that service's own Variables tab
+# (Railway auto-injects it) if you rename the service or DNS still fails to
+# resolve, and update every `url:` below to match.
 
 # Global CORS so the web build of the mobile app (served from a different
 # origin than Kong's public domain) can call the API at all — browsers
@@ -40,23 +43,23 @@ plugins:
 
 services:
   - name: auth-service
-    url: http://mindora-v3.railway.internal:3001
+    url: http://mindora_v3.railway.internal:3001
   - name: user-service
-    url: http://mindora-v3.railway.internal:3002
+    url: http://mindora_v3.railway.internal:3002
   - name: appointment-service
-    url: http://mindora-v3.railway.internal:3003
+    url: http://mindora_v3.railway.internal:3003
   - name: mood-tracking-service
-    url: http://mindora-v3.railway.internal:3004
+    url: http://mindora_v3.railway.internal:3004
   - name: community-service
-    url: http://mindora-v3.railway.internal:3005
+    url: http://mindora_v3.railway.internal:3005
   - name: messaging-service
-    url: http://mindora-v3.railway.internal:3006
+    url: http://mindora_v3.railway.internal:3006
   - name: ai-integration-service
-    url: http://mindora-v3.railway.internal:3007
+    url: http://mindora_v3.railway.internal:3007
   - name: notification-service
-    url: http://mindora-v3.railway.internal:3008
+    url: http://mindora_v3.railway.internal:3008
   - name: admin-service
-    url: http://mindora-v3.railway.internal:3009
+    url: http://mindora_v3.railway.internal:3009
 
 routes:
   # Public health checks (no JWT) — full path forwarded to each service
