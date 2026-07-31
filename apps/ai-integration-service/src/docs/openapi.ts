@@ -65,7 +65,8 @@ export const openApiSpec = {
             type: 'integer',
             minimum: 0,
             maximum: 4,
-            description: 'Pre-filter level for this message (5 is handled separately — see CrisisChatResponse).',
+            description:
+              'Pre-filter level for this message (5 is handled separately — see CrisisChatResponse).',
           },
           sessionId: {
             type: 'string',
@@ -235,7 +236,8 @@ export const openApiSpec = {
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
           '502': {
-            description: 'The external Therapy Chatbot API was unreachable or errored',
+            description:
+              'The external Therapy Chatbot API was unreachable or errored',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorMessage' },

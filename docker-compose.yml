@@ -350,12 +350,15 @@ services:
       <<: *app-env
       AI_SERVICE_PORT: 3007
       AI_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_ai
+      REDIS_URL: redis://redis:6379
       THERAPY_CHATBOT_BASE_URL: ${THERAPY_CHATBOT_BASE_URL:-https://mindoraversiontwo-production.up.railway.app}
       AI_INTERACTION_ENCRYPTION_KEY: ${AI_INTERACTION_ENCRYPTION_KEY:-mindora-dev-ai-interaction-key-32bytes!!}
     ports:
       - '3007:3007'
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     # No healthcheck: /health sits behind the auth middleware in this service
     # (app.ts registers it after app.use(authenticate)), so an unauthenticated
