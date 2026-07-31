@@ -32,6 +32,7 @@ import {
   type AuthenticatedRequest,
 } from '../middleware/authenticate.js';
 import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
+import { asyncHandler } from '../middleware/async-handler.js';
 
 export const appointmentRouter = Router();
 
@@ -68,7 +69,7 @@ appointmentRouter.get(
   '/availability/:therapistId',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const therapistId = routeParam(req.params.therapistId);
 
     const parsed = availabilityQuerySchema.safeParse(req.query);
@@ -114,14 +115,14 @@ appointmentRouter.get(
         slotEnd: slot.slotEnd.toISOString(),
       })),
     });
-  }
+  })
 );
 
 appointmentRouter.post(
   '/',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -160,14 +161,14 @@ appointmentRouter.post(
       }
       throw error;
     }
-  }
+  })
 );
 
 appointmentRouter.get(
   '/mine',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -211,14 +212,14 @@ appointmentRouter.get(
       page,
       limit,
     });
-  }
+  })
 );
 
 appointmentRouter.get(
   '/schedule',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -268,14 +269,14 @@ appointmentRouter.get(
       page,
       limit,
     });
-  }
+  })
 );
 
 appointmentRouter.put(
   '/:id/confirm',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -326,14 +327,14 @@ appointmentRouter.put(
     );
 
     res.status(200).json(serializeAppointment(updated));
-  }
+  })
 );
 
 appointmentRouter.put(
   '/:id/cancel',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -400,14 +401,14 @@ appointmentRouter.put(
     );
 
     res.status(200).json(serializeAppointment(updated));
-  }
+  })
 );
 
 appointmentRouter.put(
   '/:id/complete',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -456,14 +457,14 @@ appointmentRouter.put(
     );
 
     res.status(200).json(serializeAppointment(updated));
-  }
+  })
 );
 
 appointmentRouter.post(
   '/:id/rate',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -510,7 +511,7 @@ appointmentRouter.post(
     });
 
     res.status(200).json(serializeAppointment(updated));
-  }
+  })
 );
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as Auth/User
@@ -519,7 +520,7 @@ appointmentRouter.get(
   '/internal/appointments/analytics',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (authReq.user?.role !== 'SERVICE') {
       res.status(403).json({ message: 'Forbidden' });
@@ -532,5 +533,5 @@ appointmentRouter.get(
     ]);
 
     res.status(200).json({ totalAppointments, completedAppointments });
-  }
+  })
 );

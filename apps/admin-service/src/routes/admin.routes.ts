@@ -10,6 +10,7 @@ import {
 } from '@mindora/validation';
 import type { Prisma } from '../generated/prisma/index.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
+import { asyncHandler } from '../middleware/async-handler.js';
 import { prisma } from '../lib/prisma.js';
 
 export const adminRouter = Router();
@@ -33,7 +34,7 @@ type AuthUserRecord = {
 // already confirmed ADMIN), but the downstream call to User Service uses the
 // INTERNAL_SERVICE_TOKEN, not that JWT — every inter-service hop in this
 // codebase authenticates as SERVICE, never relays a user's own token.
-adminRouter.get('/users', async (req, res) => {
+adminRouter.get('/users', asyncHandler(async (req, res) => {
   const parsed = listUsersQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({
@@ -65,9 +66,9 @@ adminRouter.get('/users', async (req, res) => {
   }
 
   res.status(200).json(response.data);
-});
+}));
 
-adminRouter.put('/users/:id/suspend', async (req, res) => {
+adminRouter.put('/users/:id/suspend', asyncHandler(async (req, res) => {
   const authReq = req as unknown as AuthenticatedRequest;
   const parsed = suspendUserSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -119,13 +120,13 @@ adminRouter.put('/users/:id/suspend', async (req, res) => {
     userId,
     auditLogId: auditLog.id,
   });
-});
+}));
 
 // Mirrors PUT /users/:id/suspend above — same role gate (requireAdmin,
 // applied to the whole router), same body shape (reused suspendUserSchema:
 // { reason: string }), same "audit log only after the downstream call
 // succeeds" rule.
-adminRouter.put('/users/:id/reactivate', async (req, res) => {
+adminRouter.put('/users/:id/reactivate', asyncHandler(async (req, res) => {
   const authReq = req as unknown as AuthenticatedRequest;
   const parsed = suspendUserSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -175,7 +176,7 @@ adminRouter.put('/users/:id/reactivate', async (req, res) => {
     userId,
     auditLogId: auditLog.id,
   });
-});
+}));
 
 // Moderation
 
@@ -184,7 +185,7 @@ adminRouter.put('/users/:id/reactivate', async (req, res) => {
 // it — this proxies live to community-service's own report list instead of
 // mirroring reports into a new local table. Keeps admin-service's schema
 // unchanged; the event is currently unused (flagged, not acted on further).
-adminRouter.get('/moderation/queue', async (req, res) => {
+adminRouter.get('/moderation/queue', asyncHandler(async (req, res) => {
   const page = (req.query.page as string) ?? '1';
   const limit = (req.query.limit as string) ?? '20';
 
@@ -209,13 +210,13 @@ adminRouter.get('/moderation/queue', async (req, res) => {
   }
 
   res.status(200).json(response.data);
-});
+}));
 
 // decision REMOVED maps to community's REVIEWED status (community has no
 // REMOVED value — admin-service's own moderation_decisions row below is the
 // record of what was actually decided; community's status just needs to
 // reflect "no longer pending").
-adminRouter.put('/moderation/:id/resolve', async (req, res) => {
+adminRouter.put('/moderation/:id/resolve', asyncHandler(async (req, res) => {
   const authReq = req as unknown as AuthenticatedRequest;
   const parsed = resolveModerationSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -283,11 +284,11 @@ adminRouter.put('/moderation/:id/resolve', async (req, res) => {
     decision,
     moderationDecisionId: decisionRecord.id,
   });
-});
+}));
 
 // Reveals the real identity behind an anonymous post — sensitive enough to
 // audit like AI_USAGE_VIEWED: logged only after a successful lookup.
-adminRouter.post('/moderation/decrypt/:postId', async (req, res) => {
+adminRouter.post('/moderation/decrypt/:postId', asyncHandler(async (req, res) => {
   const authReq = req as unknown as AuthenticatedRequest;
   const postId = req.params.postId as string;
 
@@ -321,12 +322,12 @@ adminRouter.post('/moderation/decrypt/:postId', async (req, res) => {
   });
 
   res.status(200).json({ postId, userId: response.data.userId });
-});
+}));
 
 // Analytics — every downstream call is independent and null-safe: one
 // service being down degrades that slice of the response, never the whole
 // request. All fired in parallel so nothing waits on anything else.
-adminRouter.get('/analytics', async (req, res) => {
+adminRouter.get('/analytics', asyncHandler(async (req, res) => {
   const serviceHeaders = {
     Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
   };
@@ -382,11 +383,11 @@ adminRouter.get('/analytics', async (req, res) => {
       ? (aiStats.data?.totalCrisisEvents ?? null)
       : null,
   });
-});
+}));
 
 // Audit log — read only, no update or delete routes (hard requirement,
 // see the "Do not" list this service was scaffolded under).
-adminRouter.get('/audit-log', async (req, res) => {
+adminRouter.get('/audit-log', asyncHandler(async (req, res) => {
   const parsed = listAuditLogQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({
@@ -424,11 +425,11 @@ adminRouter.get('/audit-log', async (req, res) => {
   ]);
 
   res.status(200).json({ auditLogs, total, page, limit });
-});
+}));
 
 // System alerts — created by the ai.crisis / mood.concern RabbitMQ
 // consumers in consumers.ts, never by an admin route directly.
-adminRouter.get('/alerts', async (req, res) => {
+adminRouter.get('/alerts', asyncHandler(async (req, res) => {
   const parsed = listAlertsQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({
@@ -453,11 +454,11 @@ adminRouter.get('/alerts', async (req, res) => {
   ]);
 
   res.status(200).json({ alerts, total, page, limit });
-});
+}));
 
-adminRouter.put('/alerts/:id/resolve', async (req, res) => {
+adminRouter.put('/alerts/:id/resolve', asyncHandler(async (req, res) => {
   const authReq = req as unknown as AuthenticatedRequest;
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   const alert = await prisma.system_alerts.findUnique({ where: { id } });
   if (!alert) {
@@ -480,14 +481,14 @@ adminRouter.put('/alerts/:id/resolve', async (req, res) => {
   });
 
   res.status(200).json({ message: 'Alert resolved', id });
-});
+}));
 
 // AI usage proxy — forwards the caller's own JWT, not the internal service
 // token: /api/v1/ai/usage requires requireRole('ADMIN') on ai-integration-
 // service, which a SERVICE-role token would fail. Audit log is written only
 // after a successful fetch (consistent with every other write in this file
 // — "viewed" should mean they actually saw the data, not merely attempted to).
-adminRouter.get('/ai/usage', async (req, res) => {
+adminRouter.get('/ai/usage', asyncHandler(async (req, res) => {
   const authReq = req as unknown as AuthenticatedRequest;
 
   const response = await httpClient.get<Record<string, unknown>>(
@@ -512,4 +513,4 @@ adminRouter.get('/ai/usage', async (req, res) => {
   });
 
   res.status(200).json(response.data);
-});
+}));

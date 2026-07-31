@@ -2053,6 +2053,7 @@ export namespace Prisma {
     languagePreference: string | null
     specialisation: string | null
     isAcceptingPatients: boolean | null
+    photoUrl: string | null
     fcmToken: string | null
     role: string | null
     email: string | null
@@ -2069,6 +2070,7 @@ export namespace Prisma {
     languagePreference: string | null
     specialisation: string | null
     isAcceptingPatients: boolean | null
+    photoUrl: string | null
     fcmToken: string | null
     role: string | null
     email: string | null
@@ -2086,6 +2088,7 @@ export namespace Prisma {
     specialisation: number
     languages: number
     isAcceptingPatients: number
+    photoUrl: number
     fcmToken: number
     notificationPreferences: number
     role: number
@@ -2105,6 +2108,7 @@ export namespace Prisma {
     languagePreference?: true
     specialisation?: true
     isAcceptingPatients?: true
+    photoUrl?: true
     fcmToken?: true
     role?: true
     email?: true
@@ -2121,6 +2125,7 @@ export namespace Prisma {
     languagePreference?: true
     specialisation?: true
     isAcceptingPatients?: true
+    photoUrl?: true
     fcmToken?: true
     role?: true
     email?: true
@@ -2138,6 +2143,7 @@ export namespace Prisma {
     specialisation?: true
     languages?: true
     isAcceptingPatients?: true
+    photoUrl?: true
     fcmToken?: true
     notificationPreferences?: true
     role?: true
@@ -2229,6 +2235,7 @@ export namespace Prisma {
     specialisation: string | null
     languages: string[]
     isAcceptingPatients: boolean
+    photoUrl: string | null
     fcmToken: string | null
     notificationPreferences: JsonValue
     role: string | null
@@ -2264,6 +2271,7 @@ export namespace Prisma {
     specialisation?: boolean
     languages?: boolean
     isAcceptingPatients?: boolean
+    photoUrl?: boolean
     fcmToken?: boolean
     notificationPreferences?: boolean
     role?: boolean
@@ -2282,6 +2290,7 @@ export namespace Prisma {
     specialisation?: boolean
     languages?: boolean
     isAcceptingPatients?: boolean
+    photoUrl?: boolean
     fcmToken?: boolean
     notificationPreferences?: boolean
     role?: boolean
@@ -2300,6 +2309,7 @@ export namespace Prisma {
     specialisation?: boolean
     languages?: boolean
     isAcceptingPatients?: boolean
+    photoUrl?: boolean
     fcmToken?: boolean
     notificationPreferences?: boolean
     role?: boolean
@@ -2318,6 +2328,7 @@ export namespace Prisma {
     specialisation?: boolean
     languages?: boolean
     isAcceptingPatients?: boolean
+    photoUrl?: boolean
     fcmToken?: boolean
     notificationPreferences?: boolean
     role?: boolean
@@ -2326,7 +2337,7 @@ export namespace Prisma {
     updatedAt?: boolean
   }
 
-  export type TherapistProfileOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "userName" | "bio" | "timezone" | "languagePreference" | "specialisation" | "languages" | "isAcceptingPatients" | "fcmToken" | "notificationPreferences" | "role" | "email" | "createdAt" | "updatedAt", ExtArgs["result"]["therapistProfile"]>
+  export type TherapistProfileOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "userName" | "bio" | "timezone" | "languagePreference" | "specialisation" | "languages" | "isAcceptingPatients" | "photoUrl" | "fcmToken" | "notificationPreferences" | "role" | "email" | "createdAt" | "updatedAt", ExtArgs["result"]["therapistProfile"]>
 
   export type $TherapistProfilePayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     name: "TherapistProfile"
@@ -2341,6 +2352,7 @@ export namespace Prisma {
       specialisation: string | null
       languages: string[]
       isAcceptingPatients: boolean
+      photoUrl: string | null
       fcmToken: string | null
       notificationPreferences: Prisma.JsonValue
       role: string | null
@@ -2779,6 +2791,7 @@ export namespace Prisma {
     readonly specialisation: FieldRef<"TherapistProfile", 'String'>
     readonly languages: FieldRef<"TherapistProfile", 'String[]'>
     readonly isAcceptingPatients: FieldRef<"TherapistProfile", 'Boolean'>
+    readonly photoUrl: FieldRef<"TherapistProfile", 'String'>
     readonly fcmToken: FieldRef<"TherapistProfile", 'String'>
     readonly notificationPreferences: FieldRef<"TherapistProfile", 'Json'>
     readonly role: FieldRef<"TherapistProfile", 'String'>
@@ -3193,6 +3206,7 @@ export namespace Prisma {
     specialisation: 'specialisation',
     languages: 'languages',
     isAcceptingPatients: 'isAcceptingPatients',
+    photoUrl: 'photoUrl',
     fcmToken: 'fcmToken',
     notificationPreferences: 'notificationPreferences',
     role: 'role',
@@ -3415,6 +3429,7 @@ export namespace Prisma {
     specialisation?: StringNullableFilter<"TherapistProfile"> | string | null
     languages?: StringNullableListFilter<"TherapistProfile">
     isAcceptingPatients?: BoolFilter<"TherapistProfile"> | boolean
+    photoUrl?: StringNullableFilter<"TherapistProfile"> | string | null
     fcmToken?: StringNullableFilter<"TherapistProfile"> | string | null
     notificationPreferences?: JsonFilter<"TherapistProfile">
     role?: StringNullableFilter<"TherapistProfile"> | string | null
@@ -3433,6 +3448,7 @@ export namespace Prisma {
     specialisation?: SortOrderInput | SortOrder
     languages?: SortOrder
     isAcceptingPatients?: SortOrder
+    photoUrl?: SortOrderInput | SortOrder
     fcmToken?: SortOrderInput | SortOrder
     notificationPreferences?: SortOrder
     role?: SortOrderInput | SortOrder
@@ -3454,6 +3470,7 @@ export namespace Prisma {
     specialisation?: StringNullableFilter<"TherapistProfile"> | string | null
     languages?: StringNullableListFilter<"TherapistProfile">
     isAcceptingPatients?: BoolFilter<"TherapistProfile"> | boolean
+    photoUrl?: StringNullableFilter<"TherapistProfile"> | string | null
     fcmToken?: StringNullableFilter<"TherapistProfile"> | string | null
     notificationPreferences?: JsonFilter<"TherapistProfile">
     role?: StringNullableFilter<"TherapistProfile"> | string | null
@@ -3472,6 +3489,7 @@ export namespace Prisma {
     specialisation?: SortOrderInput | SortOrder
     languages?: SortOrder
     isAcceptingPatients?: SortOrder
+    photoUrl?: SortOrderInput | SortOrder
     fcmToken?: SortOrderInput | SortOrder
     notificationPreferences?: SortOrder
     role?: SortOrderInput | SortOrder
@@ -3496,6 +3514,7 @@ export namespace Prisma {
     specialisation?: StringNullableWithAggregatesFilter<"TherapistProfile"> | string | null
     languages?: StringNullableListFilter<"TherapistProfile">
     isAcceptingPatients?: BoolWithAggregatesFilter<"TherapistProfile"> | boolean
+    photoUrl?: StringNullableWithAggregatesFilter<"TherapistProfile"> | string | null
     fcmToken?: StringNullableWithAggregatesFilter<"TherapistProfile"> | string | null
     notificationPreferences?: JsonWithAggregatesFilter<"TherapistProfile">
     role?: StringNullableWithAggregatesFilter<"TherapistProfile"> | string | null
@@ -3619,6 +3638,7 @@ export namespace Prisma {
     specialisation?: string | null
     languages?: TherapistProfileCreatelanguagesInput | string[]
     isAcceptingPatients?: boolean
+    photoUrl?: string | null
     fcmToken?: string | null
     notificationPreferences?: JsonNullValueInput | InputJsonValue
     role?: string | null
@@ -3637,6 +3657,7 @@ export namespace Prisma {
     specialisation?: string | null
     languages?: TherapistProfileCreatelanguagesInput | string[]
     isAcceptingPatients?: boolean
+    photoUrl?: string | null
     fcmToken?: string | null
     notificationPreferences?: JsonNullValueInput | InputJsonValue
     role?: string | null
@@ -3655,6 +3676,7 @@ export namespace Prisma {
     specialisation?: NullableStringFieldUpdateOperationsInput | string | null
     languages?: TherapistProfileUpdatelanguagesInput | string[]
     isAcceptingPatients?: BoolFieldUpdateOperationsInput | boolean
+    photoUrl?: NullableStringFieldUpdateOperationsInput | string | null
     fcmToken?: NullableStringFieldUpdateOperationsInput | string | null
     notificationPreferences?: JsonNullValueInput | InputJsonValue
     role?: NullableStringFieldUpdateOperationsInput | string | null
@@ -3673,6 +3695,7 @@ export namespace Prisma {
     specialisation?: NullableStringFieldUpdateOperationsInput | string | null
     languages?: TherapistProfileUpdatelanguagesInput | string[]
     isAcceptingPatients?: BoolFieldUpdateOperationsInput | boolean
+    photoUrl?: NullableStringFieldUpdateOperationsInput | string | null
     fcmToken?: NullableStringFieldUpdateOperationsInput | string | null
     notificationPreferences?: JsonNullValueInput | InputJsonValue
     role?: NullableStringFieldUpdateOperationsInput | string | null
@@ -3691,6 +3714,7 @@ export namespace Prisma {
     specialisation?: string | null
     languages?: TherapistProfileCreatelanguagesInput | string[]
     isAcceptingPatients?: boolean
+    photoUrl?: string | null
     fcmToken?: string | null
     notificationPreferences?: JsonNullValueInput | InputJsonValue
     role?: string | null
@@ -3709,6 +3733,7 @@ export namespace Prisma {
     specialisation?: NullableStringFieldUpdateOperationsInput | string | null
     languages?: TherapistProfileUpdatelanguagesInput | string[]
     isAcceptingPatients?: BoolFieldUpdateOperationsInput | boolean
+    photoUrl?: NullableStringFieldUpdateOperationsInput | string | null
     fcmToken?: NullableStringFieldUpdateOperationsInput | string | null
     notificationPreferences?: JsonNullValueInput | InputJsonValue
     role?: NullableStringFieldUpdateOperationsInput | string | null
@@ -3727,6 +3752,7 @@ export namespace Prisma {
     specialisation?: NullableStringFieldUpdateOperationsInput | string | null
     languages?: TherapistProfileUpdatelanguagesInput | string[]
     isAcceptingPatients?: BoolFieldUpdateOperationsInput | boolean
+    photoUrl?: NullableStringFieldUpdateOperationsInput | string | null
     fcmToken?: NullableStringFieldUpdateOperationsInput | string | null
     notificationPreferences?: JsonNullValueInput | InputJsonValue
     role?: NullableStringFieldUpdateOperationsInput | string | null
@@ -3973,6 +3999,7 @@ export namespace Prisma {
     specialisation?: SortOrder
     languages?: SortOrder
     isAcceptingPatients?: SortOrder
+    photoUrl?: SortOrder
     fcmToken?: SortOrder
     notificationPreferences?: SortOrder
     role?: SortOrder
@@ -3990,6 +4017,7 @@ export namespace Prisma {
     languagePreference?: SortOrder
     specialisation?: SortOrder
     isAcceptingPatients?: SortOrder
+    photoUrl?: SortOrder
     fcmToken?: SortOrder
     role?: SortOrder
     email?: SortOrder
@@ -4006,6 +4034,7 @@ export namespace Prisma {
     languagePreference?: SortOrder
     specialisation?: SortOrder
     isAcceptingPatients?: SortOrder
+    photoUrl?: SortOrder
     fcmToken?: SortOrder
     role?: SortOrder
     email?: SortOrder

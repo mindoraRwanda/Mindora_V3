@@ -27,6 +27,7 @@ import {
   type AuthenticatedRequest,
 } from '../middleware/authenticate.js';
 import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
+import { asyncHandler } from '../middleware/async-handler.js';
 
 export const moodRouter = Router();
 
@@ -38,7 +39,7 @@ moodRouter.post(
   '/log',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -138,14 +139,14 @@ moodRouter.post(
     }
 
     res.status(201).json(serializeMoodEntry(entry, { includeJournal: true }));
-  }
+  })
 );
 
 moodRouter.get(
   '/history',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -198,14 +199,14 @@ moodRouter.get(
       page,
       limit,
     });
-  }
+  })
 );
 
 moodRouter.get(
   '/insights',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -227,14 +228,14 @@ moodRouter.get(
     const insights = await computeWeeklyInsights(userId);
     await setInsightsCache(userId, JSON.stringify(insights));
     res.status(200).json({ ...insights, cached: false });
-  }
+  })
 );
 
 moodRouter.get(
   '/report/:userId',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -292,14 +293,14 @@ moodRouter.get(
       lastCheckedIn,
       trend: insights.trend,
     });
-  }
+  })
 );
 
 moodRouter.get(
   '/streak',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user) {
       res.status(401).json({ message: 'Unauthorized' });
@@ -322,7 +323,7 @@ moodRouter.get(
       streak,
       lastCheckedIn: lastCheckedIn ? `${lastCheckedIn}T00:00:00.000Z` : null,
     });
-  }
+  })
 );
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as Auth/User
@@ -331,7 +332,7 @@ moodRouter.get(
   '/internal/mood/analytics',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (authReq.user?.role !== 'SERVICE') {
       res.status(403).json({ message: 'Forbidden' });
@@ -347,5 +348,5 @@ moodRouter.get(
       totalMoodEntries,
       avgMoodScorePlatform: avgResult._avg.moodScore ?? null,
     });
-  }
+  })
 );

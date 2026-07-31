@@ -29,7 +29,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/health]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
   # Public auth endpoints — no JWT plugin (you can't present a token you
   # don't have yet to register/login/refresh/reset). Each route matches its
   # full exact path (needed so Kong can tell it apart from the JWT-protected
@@ -41,7 +41,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/register]
     strip_path: false
-    methods: [POST]
+    methods: [POST, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -51,7 +51,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/login]
     strip_path: false
-    methods: [POST]
+    methods: [POST, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -61,7 +61,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/refresh]
     strip_path: false
-    methods: [POST]
+    methods: [POST, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -71,7 +71,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/forgot-password]
     strip_path: false
-    methods: [POST]
+    methods: [POST, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -81,7 +81,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/reset-password]
     strip_path: false
-    methods: [POST]
+    methods: [POST, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -91,7 +91,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/oauth/google]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -101,7 +101,7 @@ routes:
     service: auth-service
     paths: [/api/v1/auth/oauth/google/callback]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
     plugins:
       - name: request-transformer
         config:
@@ -111,49 +111,57 @@ routes:
     service: user-service
     paths: [/api/v1/users/health]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
+  # Therapist profile photos — public like health, no JWT plugin. An <img>
+  # tag can't send an Authorization header, so this can't sit behind the
+  # jwt-protected user-api route below.
+  - name: user-photos
+    service: user-service
+    paths: [/api/v1/users/photos]
+    strip_path: false
+    methods: [GET, OPTIONS]
   - name: appointment-health
     service: appointment-service
     paths: [/api/v1/appointments/health]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
   - name: mood-health
     service: mood-tracking-service
     paths: [/api/v1/mood/health]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
   - name: community-health
     service: community-service
     paths: [/api/v1/community/health]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
   - name: messaging-health
     service: messaging-service
     paths: [/api/v1/messaging/health]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
   - name: ai-health
     service: ai-integration-service
     paths: [/api/v1/ai/health]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
   - name: notification-health
     service: notification-service
     paths: [/api/v1/notifications/health]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
   - name: admin-health
     service: admin-service
     paths: [/api/v1/admin/health]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
 
   # Protected API routes (JWT + rate limit)
   - name: auth-api
     service: auth-service
     paths: [/api/v1/auth]
     strip_path: true
-    methods: [GET, POST, PUT, PATCH, DELETE]
+    methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
     plugins:
       - name: jwt
         config:
@@ -182,7 +190,7 @@ routes:
     service: user-service
     paths: [/internal/users]
     strip_path: false
-    methods: [GET, PUT]
+    methods: [GET, PUT, OPTIONS]
     plugins:
       - name: jwt
       - name: rate-limiting
@@ -198,7 +206,7 @@ routes:
     service: auth-service
     paths: [/internal/auth]
     strip_path: false
-    methods: [GET, PATCH]
+    methods: [GET, PATCH, OPTIONS]
     plugins:
       - name: jwt
       - name: rate-limiting
@@ -224,7 +232,7 @@ routes:
     service: appointment-service
     paths: [/internal/appointments]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
     plugins:
       - name: jwt
       - name: rate-limiting
@@ -250,7 +258,7 @@ routes:
     service: mood-tracking-service
     paths: [/internal/mood]
     strip_path: false
-    methods: [GET]
+    methods: [GET, OPTIONS]
     plugins:
       - name: jwt
       - name: rate-limiting
@@ -283,7 +291,7 @@ routes:
     service: community-service
     paths: [/internal/community]
     strip_path: false
-    methods: [GET, PUT]
+    methods: [GET, PUT, OPTIONS]
     plugins:
       - name: jwt
       - name: rate-limiting
@@ -339,6 +347,34 @@ routes:
         config:
           minute: 100
           policy: local
+
+# Global — applies to every route above. The frontend now lives in a
+# separate repo/origin (e.g. http://localhost:3000) instead of being served
+# same-origin from this monorepo, so browser requests through the gateway
+# need real CORS headers. credentials: true is required because apiFetch()
+# uses credentials: 'include' (the HttpOnly refresh-token cookie) — that
+# means origins must be an explicit allowlist, never '*' (the CORS spec
+# forbids a wildcard origin when credentials are allowed). Add any other
+# frontend origins (deployed URL, alternate dev ports) to this list as
+# they come up.
+plugins:
+  - name: cors
+    config:
+      origins:
+        - http://localhost:3000
+      methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Accept
+        - Authorization
+        - Content-Type
+      credentials: true
+      max_age: 3600
 
 consumers:
   - username: mindora-platform

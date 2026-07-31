@@ -7,6 +7,7 @@ import { connect } from '@mindora/queue';
 import { EXCHANGES } from '@mindora/events';
 import { runPreFilter } from '../preFilter.js';
 import { prisma } from '../database.js';
+import { asyncHandler } from '../middleware/async-handler.js';
 
 const router = Router();
 
@@ -40,7 +41,7 @@ async function publishCrisisEvent(
 router.post(
   '/chat',
   requireRole('PATIENT'),
-  async (req: AuthenticatedRequest, res) => {
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { message, sessionId } = req.body as {
       message?: unknown;
       sessionId?: unknown;
@@ -98,7 +99,7 @@ router.post(
 
     // AI provider call not yet implemented
     res.status(501).json({ message: 'Not implemented yet', crisisLevel });
-  }
+  })
 );
 
 // GET /api/v1/ai/history — retrieve session interaction history (PATIENT only)
@@ -112,7 +113,7 @@ router.delete('/history', requireRole('PATIENT'), (_req, res) => {
 });
 
 // GET /api/v1/ai/usage — aggregate token usage report (ADMIN only)
-router.get('/usage', requireRole('ADMIN'), async (_req, res) => {
+router.get('/usage', requireRole('ADMIN'), asyncHandler(async (_req, res) => {
   type DailyRow = { date: Date; count: bigint | number };
 
   const thirtyDaysAgo = new Date();
@@ -171,6 +172,6 @@ router.get('/usage', requireRole('ADMIN'), async (_req, res) => {
       count: Number(row.count),
     })),
   });
-});
+}));
 
 export default router;

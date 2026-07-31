@@ -7,6 +7,7 @@ import {
 import { Conversation, Message } from '../models/index.js';
 import { decryptContent } from '../utils/encryption.js';
 import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
+import { asyncHandler } from '../middleware/async-handler.js';
 import { resolveUserNames } from '../lib/resolve-username.js';
 
 const router = Router();
@@ -73,7 +74,7 @@ router.post(
   '/',
   authenticatedRouteLimiter,
   authenticate,
-  async (req: AuthenticatedRequest, res: Response) => {
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const userId = req.user?.userId;
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
@@ -119,7 +120,7 @@ router.post(
       console.error('Create conversation error:', error);
       res.status(500).json({ error: 'Failed to create conversation' });
     }
-  }
+  })
 );
 
 /**
@@ -169,7 +170,7 @@ router.get(
   '/',
   authenticatedRouteLimiter,
   authenticate,
-  async (req: AuthenticatedRequest, res: Response) => {
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const userId = req.user?.userId;
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
@@ -237,7 +238,7 @@ router.get(
       console.error('List conversations error:', error);
       res.status(500).json({ error: 'Failed to fetch conversations' });
     }
-  }
+  })
 );
 
 /**
@@ -323,7 +324,7 @@ router.get(
   '/:id',
   authenticatedRouteLimiter,
   authenticate,
-  async (req: AuthenticatedRequest, res: Response) => {
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const userId = req.user?.userId;
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
@@ -385,7 +386,7 @@ router.get(
       console.error('Fetch chat history error:', error);
       res.status(500).json({ error: 'Failed to fetch chat history' });
     }
-  }
+  })
 );
 
 export default router;

@@ -146,6 +146,7 @@ exports.Prisma.TherapistProfileScalarFieldEnum = {
   specialisation: 'specialisation',
   languages: 'languages',
   isAcceptingPatients: 'isAcceptingPatients',
+  photoUrl: 'photoUrl',
   fcmToken: 'fcmToken',
   notificationPreferences: 'notificationPreferences',
   role: 'role',

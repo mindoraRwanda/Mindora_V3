@@ -1,4 +1,8 @@
-import express from 'express';
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from 'express';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import conversationsRouter from './routes/conversations.routes.js';
@@ -11,6 +15,7 @@ import {
   healthRouteLimiter,
 } from './middleware/rate-limit.js';
 import { corsOriginCallback } from './lib/cors-origin.js';
+import { asyncHandler } from './middleware/async-handler.js';
 
 const SERVICE_NAME = 'messaging-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/messaging/health';
@@ -112,7 +117,7 @@ app.get(
   '/api/v1/messaging/presence/:userId',
   authenticatedRouteLimiter,
   authenticate,
-  async (req: AuthenticatedRequest, res) => {
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { userId } = req.params;
     try {
       const raw = await getRedisClient().get(`presence:${userId}`);
@@ -129,7 +134,15 @@ app.get(
     } catch {
       res.status(500).json({ error: 'Failed to check presence' });
     }
-  }
+  })
 );
+
+// Catches errors forwarded via next(err) — including rejected promises
+// from asyncHandler-wrapped routes — so a transient failure (e.g. a
+// dropped DB connection) returns a 500 instead of crashing the process.
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
 
 export default app;

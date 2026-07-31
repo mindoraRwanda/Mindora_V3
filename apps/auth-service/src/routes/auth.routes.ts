@@ -25,6 +25,7 @@ import {
   authenticatedRouteLimiter,
   publicAuthRouteLimiter,
 } from '../middleware/rate-limit.js';
+import { asyncHandler } from '../middleware/async-handler.js';
 import { configureGoogleOAuth } from '../lib/google-oauth.js';
 import { getRequestCookie } from '../lib/cookies.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
@@ -61,7 +62,7 @@ authRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
-authRouter.post('/register', publicAuthRouteLimiter, async (req, res) => {
+authRouter.post('/register', publicAuthRouteLimiter, asyncHandler(async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({
@@ -102,9 +103,9 @@ authRouter.post('/register', publicAuthRouteLimiter, async (req, res) => {
   }
 
   res.status(201).json({ userId: user.id });
-});
+}));
 
-authRouter.post('/login', publicAuthRouteLimiter, async (req, res) => {
+authRouter.post('/login', publicAuthRouteLimiter, asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({
@@ -129,13 +130,13 @@ authRouter.post('/login', publicAuthRouteLimiter, async (req, res) => {
 
   const { accessToken } = await issueAuthSession(res, user);
   res.status(200).json({ accessToken });
-});
+}));
 
 authRouter.post(
   '/logout',
   authenticatedRouteLimiter,
   authenticate,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const header = req.headers.authorization;
     const token = header?.startsWith('Bearer ') ? header.slice(7) : '';
 
@@ -168,10 +169,10 @@ authRouter.post(
 
     clearRefreshCookie(res);
     res.status(200).json({ message: 'Logged out' });
-  }
+  })
 );
 
-authRouter.post('/refresh', publicAuthRouteLimiter, async (req, res) => {
+authRouter.post('/refresh', publicAuthRouteLimiter, asyncHandler(async (req, res) => {
   const refreshToken = getRequestCookie(req, config.cookieName);
   if (!refreshToken) {
     res.status(401).json({ message: 'Unauthorized' });
@@ -231,12 +232,12 @@ authRouter.post('/refresh', publicAuthRouteLimiter, async (req, res) => {
   });
 
   res.status(200).json({ accessToken });
-});
+}));
 
 authRouter.post(
   '/forgot-password',
   publicAuthRouteLimiter,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const parsed = forgotPasswordSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
@@ -260,10 +261,10 @@ authRouter.post(
     res.status(200).json({
       message: 'If that email exists, a reset link has been sent.',
     });
-  }
+  })
 );
 
-authRouter.post('/reset-password', publicAuthRouteLimiter, async (req, res) => {
+authRouter.post('/reset-password', publicAuthRouteLimiter, asyncHandler(async (req, res) => {
   const parsed = resetPasswordSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({
@@ -295,7 +296,7 @@ authRouter.post('/reset-password', publicAuthRouteLimiter, async (req, res) => {
   });
 
   res.status(200).json({ message: 'Password updated successfully' });
-});
+}));
 
 authRouter.get(
   '/me',
@@ -328,7 +329,7 @@ authRouter.get(
   '/internal/auth/users/:id',
   authenticatedRouteLimiter,
   authenticate,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (authReq.user?.role !== 'SERVICE') {
       res.status(403).json({ message: 'Forbidden' });
@@ -351,7 +352,7 @@ authRouter.get(
       // Malformed id (not a UUID) or lookup failure — treat as not found
       res.status(404).json({ message: 'User not found' });
     }
-  }
+  })
 );
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as
@@ -361,7 +362,7 @@ authRouter.get(
   '/internal/auth/users',
   authenticatedRouteLimiter,
   authenticate,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (authReq.user?.role !== 'SERVICE') {
       res.status(403).json({ message: 'Forbidden' });
@@ -402,7 +403,7 @@ authRouter.get(
     ]);
 
     res.status(200).json({ users, total, page, limit });
-  }
+  })
 );
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
@@ -411,7 +412,7 @@ authRouter.patch(
   '/internal/auth/users/:id',
   authenticatedRouteLimiter,
   authenticate,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (authReq.user?.role !== 'SERVICE') {
       res.status(403).json({ message: 'Forbidden' });
@@ -459,7 +460,7 @@ authRouter.patch(
       // Prisma throws on update-not-found (P2025) as well as malformed ids
       res.status(404).json({ message: 'User not found' });
     }
-  }
+  })
 );
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
@@ -468,7 +469,7 @@ authRouter.get(
   '/internal/auth/analytics',
   authenticatedRouteLimiter,
   authenticate,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (authReq.user?.role !== 'SERVICE') {
       res.status(403).json({ message: 'Forbidden' });
@@ -493,7 +494,7 @@ authRouter.get(
     ]);
 
     res.status(200).json({ totalUsers, activeUsersLast30Days });
-  }
+  })
 );
 
 authRouter.get('/oauth/google', publicAuthRouteLimiter, (req, res, next) => {
@@ -519,19 +520,25 @@ authRouter.get(
       return;
     }
 
-    passport.authenticate('google', { session: false }, async (err, user) => {
-      if (err || !user) {
-        res.status(401).json({ message: 'OAuth authentication failed' });
-        return;
-      }
+    passport.authenticate('google', { session: false }, (err, user) => {
+      // Not routed through asyncHandler — this is passport's own callback
+      // shape (err, user), not an Express (req, res) handler — so a rejected
+      // promise here needs its own explicit catch to reach next(), same
+      // reasoning as asyncHandler elsewhere in this file.
+      (async () => {
+        if (err || !user) {
+          res.status(401).json({ message: 'OAuth authentication failed' });
+          return;
+        }
 
-      const { accessToken } = await issueAuthSession(res, user);
-      res.status(200).json({
-        accessToken,
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-      });
+        const { accessToken } = await issueAuthSession(res, user);
+        res.status(200).json({
+          accessToken,
+          userId: user.id,
+          email: user.email,
+          role: user.role,
+        });
+      })().catch(next);
     })(req, res, next);
   }
 );

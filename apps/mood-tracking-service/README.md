@@ -38,8 +38,13 @@ Patient mood logging with TimescaleDB analytics, Redis caching, and RabbitMQ con
 
 ```bash
 docker compose up -d postgres redis rabbitmq
-npm run db:migrate
-npm run db:seed
+
+# NOT `npm run db:migrate` — that targets the orphaned @mindora/database
+# package, not this service's own DB (MOOD_DATABASE_URL)
+cd apps/mood-tracking-service && npx prisma migrate dev
+cd ../..
+
+npm run seed -w @mindora/auth-service   # no root shortcut for this one yet
 npm run db:seed:mood
 npm run dev -w @mindora/mood-tracking-service
 ```
@@ -49,7 +54,7 @@ npm run dev -w @mindora/mood-tracking-service
 | Variable                      | Purpose                           |
 | ----------------------------- | --------------------------------- |
 | `MOOD_JOURNAL_ENCRYPTION_KEY` | AES-256-GCM key for journal notes |
-| `DATABASE_URL`                | PostgreSQL + TimescaleDB          |
+| `MOOD_DATABASE_URL`           | PostgreSQL + TimescaleDB — this was previously (and incorrectly) documented as `DATABASE_URL`; that's the orphaned `@mindora/database` package's variable, not this service's |
 | `REDIS_URL`                   | Rate limit + insights cache       |
 | `RABBITMQ_URL`                | Event publishing                  |
 

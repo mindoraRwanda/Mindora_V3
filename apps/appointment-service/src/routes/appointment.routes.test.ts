@@ -186,10 +186,8 @@ describe('POST /', () => {
     const created = sampleAppointment();
     mockTransaction.mockImplementation(async (callback) => {
       const tx = {
-        $queryRaw: vi
-          .fn()
-          .mockResolvedValueOnce(undefined)
-          .mockResolvedValueOnce([]),
+        $executeRaw: vi.fn().mockResolvedValue(undefined),
+        $queryRaw: vi.fn().mockResolvedValue([]),
         appointment: {
           create: vi.fn().mockResolvedValue(created),
         },
@@ -217,10 +215,8 @@ describe('POST /', () => {
   it('returns 409 when slot is already booked', async () => {
     mockTransaction.mockImplementation(async (callback) => {
       const tx = {
-        $queryRaw: vi
-          .fn()
-          .mockResolvedValueOnce(undefined)
-          .mockResolvedValueOnce([{ id: 'existing' }]),
+        $executeRaw: vi.fn().mockResolvedValue(undefined),
+        $queryRaw: vi.fn().mockResolvedValue([{ id: 'existing' }]),
         appointment: {
           create: vi.fn(),
         },
