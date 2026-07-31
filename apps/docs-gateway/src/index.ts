@@ -98,14 +98,21 @@ for (const service of SERVICES) {
 app.use(
   '/',
   swaggerUi.serve,
+  // swaggerUrls (not swaggerOptions.urls) is what swagger-ui-express checks
+  // to decide isExplorer — get this wrong and it silently injects CSS that
+  // hides the .topbar .download-url-wrapper, which is the exact element the
+  // service-switcher dropdown lives in. The dropdown data still reaches
+  // SwaggerUIBundle either way (swagger-ui-express copies every
+  // swaggerOptions key onto it, urls included), so the symptom isn't a
+  // missing spec — it's the control to reach any spec but the first one
+  // being invisible.
   swaggerUi.setup(undefined, {
     customSiteTitle: 'Mindora API Docs',
-    swaggerOptions: {
-      urls: SERVICES.map((service) => ({
-        url: `/specs/${service.key}.json`,
-        name: service.name,
-      })),
-    },
+    explorer: true,
+    swaggerUrls: SERVICES.map((service) => ({
+      url: `/specs/${service.key}.json`,
+      name: service.name,
+    })),
   })
 );
 
