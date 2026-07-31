@@ -1,3 +1,3 @@
 FROM kong:3.6
 
-COPY kong.railway.yml /kong/kong.yml
+COPY infrastructure/kong/kong.railway.yml /kong/kong.yml
