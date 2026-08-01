@@ -13,7 +13,11 @@ export const openApiSpec = {
     { url: 'http://localhost:3009', description: 'Local development (direct)' },
     {
       url: 'http://localhost:8000/api/v1/admin',
-      description: 'Via Kong gateway',
+      description: 'Via Kong gateway (local)',
+    },
+    {
+      url: 'https://api.mindora.rw/api/v1/admin',
+      description: 'Via Kong gateway (production)',
     },
   ],
   tags: [

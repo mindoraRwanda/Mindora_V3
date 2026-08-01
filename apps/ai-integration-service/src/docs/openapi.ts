@@ -15,7 +15,14 @@ export const openApiSpec = {
   },
   servers: [
     { url: 'http://localhost:3007', description: 'Local development (direct)' },
-    { url: 'http://localhost:8000/api/v1/ai', description: 'Via Kong gateway' },
+    {
+      url: 'http://localhost:8000/api/v1/ai',
+      description: 'Via Kong gateway (local)',
+    },
+    {
+      url: 'https://api.mindora.rw/api/v1/ai',
+      description: 'Via Kong gateway (production)',
+    },
   ],
   tags: [{ name: 'Chat' }, { name: 'History' }, { name: 'Usage' }],
   components: {
