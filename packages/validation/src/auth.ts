@@ -2,8 +2,19 @@ import { z } from 'zod';
 
 export const userRoleSchema = z.enum(['PATIENT', 'THERAPIST', 'ADMIN']);
 
+// Emails are matched case-insensitively (RFC 5321 makes the local part
+// technically case-sensitive, but virtually no real mail provider treats it
+// that way, and users routinely mix casing between signup and login). The
+// unique lookup in auth.routes.ts relies on this normalized form matching
+// what's stored at registration time.
+const normalizedEmail = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .email('Invalid email address');
+
 export const registerSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: normalizedEmail,
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
@@ -17,12 +28,12 @@ export const registerSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: normalizedEmail,
   password: z.string().min(1, 'Password is required'),
 });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: normalizedEmail,
 });
 
 export const resetPasswordSchema = z.object({

@@ -114,6 +114,29 @@ describe('POST /register', () => {
     expect(response.body.message).toBe('Email already exists');
   });
 
+  it('normalizes email casing before checking for duplicates and storing', async () => {
+    mockFindUnique.mockResolvedValue(null);
+    mockUserCreate.mockResolvedValue({ id: 'user-123' });
+
+    const app = createApp();
+    const response = await request(app).post('/register').send({
+      email: 'Patient@Example.com',
+      password: 'securePass1',
+      role: 'PATIENT',
+      userName: 'Test Patient',
+    });
+
+    expect(response.status).toBe(201);
+    expect(mockFindUnique).toHaveBeenCalledWith({
+      where: { email: 'patient@example.com' },
+    });
+    expect(mockUserCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ email: 'patient@example.com' }),
+      })
+    );
+  });
+
   it('rejects missing userName with 400', async () => {
     const app = createApp();
     const response = await request(app).post('/register').send({
@@ -172,6 +195,30 @@ describe('POST /login', () => {
 
     expect(response.status).toBe(401);
     expect(response.body.message).toBe('Invalid credentials');
+  });
+
+  it('logs in successfully when email casing differs from what was stored', async () => {
+    const passwordHash = await hashPassword('securePass1');
+    mockFindUnique.mockResolvedValue({
+      id: 'user-123',
+      email: 'patient@example.com',
+      passwordHash,
+      role: 'PATIENT',
+      isActive: true,
+    });
+
+    const app = createApp();
+    const response = await request(app).post('/login').send({
+      email: 'Patient@Example.com',
+      password: 'securePass1',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.accessToken).toBeTypeOf('string');
+    // The lookup must use the normalized (lowercased) email, not the raw input
+    expect(mockFindUnique).toHaveBeenCalledWith({
+      where: { email: 'patient@example.com' },
+    });
   });
 
   it('rejects login for a suspended account with 403', async () => {
