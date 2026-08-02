@@ -7,7 +7,11 @@ export const userRoleSchema = z.enum(['PATIENT', 'THERAPIST', 'ADMIN']);
 // that way, and users routinely mix casing between signup and login). The
 // unique lookup in auth.routes.ts relies on this normalized form matching
 // what's stored at registration time.
-const normalizedEmail = z.string().trim().toLowerCase().email('Invalid email address');
+const normalizedEmail = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .email('Invalid email address');
 
 export const registerSchema = z.object({
   email: normalizedEmail,

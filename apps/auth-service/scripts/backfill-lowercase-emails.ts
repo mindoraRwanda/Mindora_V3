@@ -31,23 +31,34 @@ for (const user of users) {
   byLowercase.set(key, group);
 }
 
-const collisions = [...byLowercase.entries()].filter(([, group]) => group.length > 1);
+const collisions = [...byLowercase.entries()].filter(
+  ([, group]) => group.length > 1
+);
 if (collisions.length > 0) {
   console.error(
     `Aborting: ${collisions.length} email(s) collide once lowercased. Resolve these manually first (merge or rename), then re-run:`
   );
   for (const [normalized, group] of collisions) {
-    console.error(`  ${normalized}: ${group.map((u) => `${u.id} (${u.email})`).join(', ')}`);
+    console.error(
+      `  ${normalized}: ${group.map((u) => `${u.id} (${u.email})`).join(', ')}`
+    );
   }
   process.exit(1);
 }
 
-const needsUpdate = users.filter((u) => u.email !== u.email.trim().toLowerCase());
-console.log(`${needsUpdate.length} of ${users.length} user(s) need normalization.`);
+const needsUpdate = users.filter(
+  (u) => u.email !== u.email.trim().toLowerCase()
+);
+console.log(
+  `${needsUpdate.length} of ${users.length} user(s) need normalization.`
+);
 
 for (const user of needsUpdate) {
   const normalized = user.email.trim().toLowerCase();
-  await prisma.user.update({ where: { id: user.id }, data: { email: normalized } });
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { email: normalized },
+  });
   console.log(`  ${user.id}: ${user.email} -> ${normalized}`);
 }
 
