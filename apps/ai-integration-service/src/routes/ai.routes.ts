@@ -9,6 +9,7 @@ import { runPreFilter } from '../preFilter.js';
 import { prisma } from '../database.js';
 import { chatWithBot } from '../chatbotClient.js';
 import { encrypt } from '../lib/crypto.js';
+import { asyncHandler } from '../middleware/async-handler.js';
 
 const router = Router();
 
@@ -131,7 +132,7 @@ router.post(
       crisisLevel,
       sessionId: resolvedSessionId,
     });
-  }
+  })
 );
 
 // GET /api/v1/ai/history — retrieve session interaction history (PATIENT only)
