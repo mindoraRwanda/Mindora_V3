@@ -22,7 +22,11 @@ const options: swaggerJsdoc.Options = {
       },
       {
         url: 'http://localhost:8000',
-        description: 'Via Kong Gateway',
+        description: 'Via Kong Gateway (local)',
+      },
+      {
+        url: 'https://api.mindora.rw',
+        description: 'Via Kong Gateway (production)',
       },
     ],
     components: {

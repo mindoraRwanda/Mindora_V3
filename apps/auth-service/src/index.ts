@@ -28,10 +28,7 @@ async function start() {
   });
 }
 
-// Only run start if this is the main module
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  start().catch((error) => {
-    console.error('Failed to start auth-service:', error);
-    process.exit(1);
-  });
-}
+start().catch((error) => {
+  console.error('Failed to start auth-service:', error);
+  process.exit(1);
+});

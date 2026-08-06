@@ -22,7 +22,9 @@ servers:
   - url: http://localhost:3003
     description: Local development (direct)
   - url: http://localhost:8000/api/v1/appointments
-    description: Kong gateway (strip_path)
+    description: Kong gateway (local, strip_path)
+  - url: https://api.mindora.rw/api/v1/appointments
+    description: Kong gateway (production, strip_path)
 
 tags:
   - name: Health

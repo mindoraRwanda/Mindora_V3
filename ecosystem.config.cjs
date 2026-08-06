@@ -27,12 +27,19 @@ module.exports = {
     {
       name: 'community-service',
       script: 'apps/community-service/dist/index.js',
-      env: { PORT: 3005, ...(MONGO_BASE_URL && { MONGO_URI: `${MONGO_BASE_URL}/mindora_community` }) },
+      // authSource=admin: safe to always append. MongoDB's driver defaults
+      // authSource to whatever database is in the connection path — if
+      // MONGO_BASE_URL carries credentials for a root user (created in
+      // 'admin', as Railway's Mongo template does), omitting this makes
+      // every per-service database an authentication failure even with the
+      // right password. Harmless no-op when MONGO_BASE_URL has no
+      // credentials at all (nothing to authenticate against).
+      env: { PORT: 3005, ...(MONGO_BASE_URL && { MONGO_URI: `${MONGO_BASE_URL}/mindora_community?authSource=admin` }) },
     },
     {
       name: 'messaging-service',
       script: 'apps/messaging-service/dist/index.js',
-      env: { PORT: 3006, ...(MONGO_BASE_URL && { MONGO_URI: `${MONGO_BASE_URL}/mindora_messaging` }) },
+      env: { PORT: 3006, ...(MONGO_BASE_URL && { MONGO_URI: `${MONGO_BASE_URL}/mindora_messaging?authSource=admin` }) },
     },
     { name: 'ai-integration-service', script: 'apps/ai-integration-service/dist/index.js', env: { AI_SERVICE_PORT: 3007 } },
     { name: 'notification-service', script: 'apps/notification-service/dist/index.js', env: { PORT: 3008 } },
