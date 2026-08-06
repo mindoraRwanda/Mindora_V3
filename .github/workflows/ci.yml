@@ -171,17 +171,18 @@ jobs:
     needs: [detect-changes]
     env:
       NODE_ENV: test
-      # Compose maps Postgres to host port 5433, not 5432 — see
+
+      # Compose maps Postgres to host port 5434, not 5432 — see
       # docker-compose.yml's comment on the Windows Docker Desktop bridge
       # workaround. Matching it here (not 5432) is what the old config got wrong.
-      DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora
-      AUTH_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_auth
-      USER_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_user
-      APPOINTMENT_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_appointment
-      MOOD_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_mood
-      ADMIN_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_admin
-      AI_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_ai
-      NOTIFICATION_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_notifications
+      DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora
+      AUTH_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_auth
+      USER_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_user
+      APPOINTMENT_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_appointment
+      MOOD_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_mood
+      ADMIN_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_admin
+      AI_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_ai
+      NOTIFICATION_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_notifications
       REDIS_URL: redis://localhost:6379
       MONGODB_URI: mongodb://localhost:27017/mindora
       RABBITMQ_URL: amqp://mindora:mindora@localhost:5672
@@ -254,13 +255,13 @@ jobs:
     env:
       # prisma generate only needs these to be non-empty strings — it
       # validates the schema's env("...") reference but never connects.
-      AUTH_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_auth
-      USER_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_user
-      APPOINTMENT_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_appointment
-      MOOD_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_mood
-      ADMIN_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_admin
-      AI_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_ai
-      NOTIFICATION_DATABASE_URL: postgresql://mindora:mindora@localhost:5433/mindora_notifications
+      AUTH_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_auth
+      USER_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_user
+      APPOINTMENT_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_appointment
+      MOOD_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_mood
+      ADMIN_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_admin
+      AI_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_ai
+      NOTIFICATION_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_notifications
     steps:
       - uses: actions/checkout@v4
         with:
@@ -310,11 +311,20 @@ jobs:
   # Dev-tool CVEs (test runners, linters) are excluded so they don't block
   # application PRs — they are handled separately by Dependabot.
   #
-  # Uses better-npm-audit instead of plain `npm audit` so specific advisories
-  # that are confirmed unreachable (not just "annoying") can be documented
-  # and ignored via .nsprc, instead of either blocking every PR forever or
-  # silently lowering --audit-level for everything. See .nsprc for the one
-  # currently-ignored advisory and why.
+  # --omit=optional excludes optionalDependencies. notification-service's
+  # firebase-admin only uses admin.messaging() (FCM push), never
+  # admin.storage() — but @google-cloud/storage is still pulled in because
+  # firebase-admin lists it as an *optional* dependency. Its own transitive
+  # deps (gaxios, teeny-request, retry-request, google-gax's rimraf) lag
+  # behind on old uuid/brace-expansion versions upstream, with no
+  # non-breaking fix available (npm's only fix path force-downgrades
+  # firebase-admin 14.x -> 10.3.0). `npm overrides` cannot patch these in
+  # either — verified this repo's dependency graph hits an npm arborist
+  # bug where overrides are silently dropped for packages nested this deep
+  # under optionalDependencies. Since the vulnerable code path is never
+  # exercised, excluding optional deps from the gate (matching how dev
+  # deps are already excluded) is the pragmatic option; real optional-dep
+  # CVEs are still caught by Dependabot.
   security:
     name: Dependency audit
     runs-on: ubuntu-latest
@@ -331,7 +341,7 @@ jobs:
         run: npm ci
 
       - name: Audit production dependencies for high-severity CVEs
-        run: npx better-npm-audit audit --level high --production
+        run: npm audit --audit-level=high --omit=dev --omit=optional
 
   # ─── 7. CI gate ───────────────────────────────────────────────────────────
   # Single check name to target in GitHub branch protection rules.

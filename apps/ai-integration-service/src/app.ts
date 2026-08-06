@@ -20,7 +20,14 @@ app.use(express.json());
 
 // Public, unauthenticated — the sole exception to this service's "no public
 // routes" policy below. Must be mounted before app.use(authenticate) or it
-// inherits the same JWT requirement as every other endpoint here.
+// inherits the same JWT requirement as every other endpoint here. The JSON
+// route must also come before the /docs mount — swaggerUi.setup()'s
+// fallback renders the HTML shell for any sub-path under the mount that
+// isn't a static asset, so registering this after it would make it
+// unreachable.
+app.get('/docs/openapi.json', (_req, res) => {
+  res.json(openApiSpec);
+});
 app.use(
   '/docs',
   swaggerUi.serve,
@@ -28,9 +35,6 @@ app.use(
     customSiteTitle: 'AI Integration Service API Docs',
   })
 );
-app.get('/docs/openapi.json', (_req, res) => {
-  res.json(openApiSpec);
-});
 
 // JWT authentication is required on every endpoint — no public routes in this service.
 app.use(authenticate as express.RequestHandler);

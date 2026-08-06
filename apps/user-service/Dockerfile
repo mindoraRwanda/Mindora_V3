@@ -9,7 +9,17 @@ COPY apps ./apps
 COPY packages ./packages
 
 RUN npm install
-RUN npm run build -w @mindora/user-service
+# The Prisma client committed under src/generated is a dev machine's own
+# build (native query engine binary for that machine's OS), not portable —
+# regenerate it here so the engine binary matches this Alpine/musl image.
+# The env value just needs to be a non-empty string; generate never connects.
+RUN USER_DATABASE_URL=postgresql://mindora:mindora@localhost:5432/mindora_user \
+  npx prisma generate --schema=apps/user-service/prisma/schema.prisma
+
+RUN npx turbo run build --filter=@mindora/user-service
+# tsc only emits compiled .ts sources — copy the (now Alpine-native) Prisma
+# client into dist alongside it.
+RUN cp -r apps/user-service/src/generated apps/user-service/dist/generated
 
 FROM node:24-alpine AS runtime
 WORKDIR /app

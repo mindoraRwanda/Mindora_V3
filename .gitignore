@@ -2,6 +2,7 @@ node_modules/
 dist/
 .turbo/
 coverage/
+apps/*/src/generated/
 *.log
 .env
 .env.local
@@ -12,8 +13,12 @@ Thumbs.db
 test.html
 front-end-test-files/
 test_script.js
-node_modules
 .claude
 node_modules/
 package-lock.json
+generate-test-token.ts
 .dockerignore
+patient-cookies.txt
+*.cookies.txt
+
+bin/
