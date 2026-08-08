@@ -75,10 +75,9 @@ export const moodSummaryQuerySchema = z
     endDate: z.coerce.date().optional(),
     granularity: z.enum(['day', 'week', 'month']).default('day'),
   })
-  .refine(
-    (q) => !q.startDate || !q.endDate || q.startDate <= q.endDate,
-    { message: 'startDate must be on or before endDate' }
-  );
+  .refine((q) => !q.startDate || !q.endDate || q.startDate <= q.endDate, {
+    message: 'startDate must be on or before endDate',
+  });
 
 // "Today" is only meaningful in a specific zone — a Kigali user (UTC+3)
 // checking in at 01:00 local is still on the previous UTC day, so defaulting

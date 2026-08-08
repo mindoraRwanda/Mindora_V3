@@ -12,12 +12,12 @@ un-buildable.
 
 - **`GET /today`** — answers "has the user already checked in today?" directly,
   returning `{ hasCheckedIn, localDate, timezone, entriesToday, remainingToday,
-  entry }`. Previously the client had to fetch `/history` and do date maths it
+entry }`. Previously the client had to fetch `/history` and do date maths it
   couldn't do correctly. Takes an optional `?timezone=` IANA name; new
   DST-correct day-boundary helper at `src/lib/local-day.ts`.
 - **`POST /log` accepts an optional `recordedAt`** so a user can backfill a
   missed day. Bounded: not in the future (5 min clock-skew tolerance), not more
-  than 365 days ago. The 10/day cap still counts writes made *today* regardless
+  than 365 days ago. The 10/day cap still counts writes made _today_ regardless
   of the day recorded for — it's a write-rate limit, so backfilling a batch
   still draws down the same allowance.
 - **`PUT /:id` and `DELETE /:id`** — entries were previously immutable. Scoped
@@ -37,7 +37,7 @@ database rather than assumed:**
 1. **`recordedAt` cannot be edited.** `mood_entries` is a TimescaleDB
    hypertable partitioned on `recorded_at`; an `UPDATE` that would move a row
    into another chunk is rejected outright (`new row for relation
-   "_hyper_1_2_chunk" violates check constraint`). Correcting a date means
+"_hyper_1_2_chunk" violates check constraint`). Correcting a date means
    delete + re-log. `updateMoodSchema` therefore has no `recordedAt` field.
 2. **`PUT`/`DELETE` use `updateMany`/`deleteMany`, not `update`/`delete`.** The
    composite primary key `[id, recordedAt]` (required by the hypertable

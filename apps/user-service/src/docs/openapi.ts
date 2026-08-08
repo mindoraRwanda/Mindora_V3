@@ -482,9 +482,9 @@ export const openApiSpec = {
         tags: ['Photos'],
         summary: 'Get a therapist profile photo',
         description:
-          'Public, unauthenticated — an `<img>` tag can\'t send a JWT, so ' +
+          "Public, unauthenticated — an `<img>` tag can't send a JWT, so " +
           'this deliberately sits outside the JWT-protected user-api Kong ' +
-          'route (see infrastructure/kong/kong.yml\'s user-photos route). ' +
+          "route (see infrastructure/kong/kong.yml's user-photos route). " +
           'Serves static files from public/therapist-photos/ via ' +
           'express.static; not a per-therapist lookup, just a plain file ' +
           'server, mirrored at /photos and /api/v1/users/photos on this ' +

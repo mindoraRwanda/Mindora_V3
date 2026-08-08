@@ -41,7 +41,7 @@ const SEED_THERAPISTS: SeedTherapist[] = [
     id: '8c65c883-bce3-48ab-84b2-f3ef50a44bee',
     userName: 'Dr. Jean-Baptiste Nkurunziza',
     email: 'jean.nkurunziza@therapist.mindora.local',
-    bio: "Fifteen years supporting survivors of trauma and PTSD. My approach blends somatic awareness with trauma-informed talk therapy — no rushing, no judgment.",
+    bio: 'Fifteen years supporting survivors of trauma and PTSD. My approach blends somatic awareness with trauma-informed talk therapy — no rushing, no judgment.',
     specialisation: 'Trauma & PTSD',
     languages: ['fr', 'rw', 'en'],
     languagePreference: 'fr',

@@ -18,18 +18,18 @@ Patient mood logging with TimescaleDB analytics, Redis caching, and RabbitMQ con
 - **Swagger UI:** `http://localhost:3004/docs`
 - **Frontend codegen:** `http://localhost:3004/openapi.json` or `/openapi.yaml` (CORS enabled)
 
-| Method | Path              | Auth            | Description                                        |
-| ------ | ----------------- | --------------- | -------------------------------------------------- |
-| GET    | `/health`         | No              | Health check                                       |
+| Method | Path              | Auth            | Description                                                                              |
+| ------ | ----------------- | --------------- | ---------------------------------------------------------------------------------------- |
+| GET    | `/health`         | No              | Health check                                                                             |
 | POST   | `/log`            | JWT (patient)   | Log mood — 10/day limit, encrypted journal; optional `recordedAt` backfills a missed day |
-| GET    | `/today`          | JWT (patient)   | Already checked in today? (`?timezone=` IANA name)  |
-| GET    | `/history`        | JWT (patient)   | Paginated history (`?startDate=`, `?endDate=`)     |
-| GET    | `/summary`        | JWT (patient)   | Bucketed aggregates for the dashboard chart (`?granularity=day\|week\|month`) |
-| GET    | `/insights`       | JWT (patient)   | Weekly `time_bucket` trends (Redis cached 1h)      |
-| GET    | `/report/:userId` | JWT (therapist) | Patient summary (no journal notes)                 |
-| GET    | `/streak`         | JWT (patient)   | Consecutive check-in streak                        |
-| PUT    | `/:id`            | JWT (patient)   | Edit own entry — content only, **not** `recordedAt` |
-| DELETE | `/:id`            | JWT (patient)   | Delete own entry                                   |
+| GET    | `/today`          | JWT (patient)   | Already checked in today? (`?timezone=` IANA name)                                       |
+| GET    | `/history`        | JWT (patient)   | Paginated history (`?startDate=`, `?endDate=`)                                           |
+| GET    | `/summary`        | JWT (patient)   | Bucketed aggregates for the dashboard chart (`?granularity=day\|week\|month`)            |
+| GET    | `/insights`       | JWT (patient)   | Weekly `time_bucket` trends (Redis cached 1h)                                            |
+| GET    | `/report/:userId` | JWT (therapist) | Patient summary (no journal notes)                                                       |
+| GET    | `/streak`         | JWT (patient)   | Consecutive check-in streak                                                              |
+| PUT    | `/:id`            | JWT (patient)   | Edit own entry — content only, **not** `recordedAt`                                      |
+| DELETE | `/:id`            | JWT (patient)   | Delete own entry                                                                         |
 
 ### Why `recordedAt` can't be edited
 
@@ -81,12 +81,12 @@ npm run dev -w @mindora/mood-tracking-service
 
 ## Environment
 
-| Variable                      | Purpose                           |
-| ----------------------------- | --------------------------------- |
-| `MOOD_JOURNAL_ENCRYPTION_KEY` | AES-256-GCM key for journal notes |
+| Variable                      | Purpose                                                                                                                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MOOD_JOURNAL_ENCRYPTION_KEY` | AES-256-GCM key for journal notes                                                                                                                                             |
 | `MOOD_DATABASE_URL`           | PostgreSQL + TimescaleDB — this was previously (and incorrectly) documented as `DATABASE_URL`; that's the orphaned `@mindora/database` package's variable, not this service's |
-| `REDIS_URL`                   | Rate limit + insights cache       |
-| `RABBITMQ_URL`                | Event publishing                  |
+| `REDIS_URL`                   | Rate limit + insights cache                                                                                                                                                   |
+| `RABBITMQ_URL`                | Event publishing                                                                                                                                                              |
 
 ## Tests
 

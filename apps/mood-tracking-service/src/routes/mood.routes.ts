@@ -389,12 +389,18 @@ moodRouter.get(
     // Latest-first: if a user logged more than once today, the check-in card
     // should reflect the most recent entry.
     const entry = await prisma.moodEntry.findFirst({
-      where: { userId: authReq.user.userId, recordedAt: { gte: start, lt: end } },
+      where: {
+        userId: authReq.user.userId,
+        recordedAt: { gte: start, lt: end },
+      },
       orderBy: { recordedAt: 'desc' },
     });
 
     const entriesToday = await prisma.moodEntry.count({
-      where: { userId: authReq.user.userId, recordedAt: { gte: start, lt: end } },
+      where: {
+        userId: authReq.user.userId,
+        recordedAt: { gte: start, lt: end },
+      },
     });
 
     res.status(200).json({

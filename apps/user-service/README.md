@@ -12,16 +12,16 @@ Profile management for Mindora patients and therapists.
 
 ## Endpoints
 
-| Method | Path                          | Auth | Description                                    |
-| ------ | ------------------------------ | ---- | ------------------------------------------------ |
-| GET    | `/health`                      | No   | Health check                                   |
-| GET    | `/me`                           | JWT  | Current user's profile (patient or therapist)  |
-| PUT    | `/me`                           | JWT  | Update profile fields (bio, timezone, language)|
-| PUT    | `/me/fcm-token`                 | JWT  | Register/update FCM push token                 |
-| PUT    | `/me/notification-preferences`  | JWT  | Partial update of push/email/sms prefs         |
-| GET    | `/{userId}/preferences`         | JWT  | Contact info + prefs (self, or SERVICE caller) |
-| GET    | `/therapists`                   | JWT  | Paginated therapist directory                  |
-| GET    | `/photos/*`                     | No   | Public — serves therapist profile photos       |
+| Method | Path                           | Auth | Description                                     |
+| ------ | ------------------------------ | ---- | ----------------------------------------------- |
+| GET    | `/health`                      | No   | Health check                                    |
+| GET    | `/me`                          | JWT  | Current user's profile (patient or therapist)   |
+| PUT    | `/me`                          | JWT  | Update profile fields (bio, timezone, language) |
+| PUT    | `/me/fcm-token`                | JWT  | Register/update FCM push token                  |
+| PUT    | `/me/notification-preferences` | JWT  | Partial update of push/email/sms prefs          |
+| GET    | `/{userId}/preferences`        | JWT  | Contact info + prefs (self, or SERVICE caller)  |
+| GET    | `/therapists`                  | JWT  | Paginated therapist directory                   |
+| GET    | `/photos/*`                    | No   | Public — serves therapist profile photos        |
 
 `TherapistProfile.photoUrl` (nullable) — seed-only for now, not yet settable
 through `PUT /me`. Served as a static file from `public/therapist-photos/`

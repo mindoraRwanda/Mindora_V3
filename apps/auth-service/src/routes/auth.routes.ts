@@ -62,75 +62,83 @@ authRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
   res.status(200).json(healthResponse());
 });
 
-authRouter.post('/register', publicAuthRouteLimiter, asyncHandler(async (req, res) => {
-  const parsed = registerSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({
-      message: 'Validation failed',
-      errors: parsed.error.flatten().fieldErrors,
+authRouter.post(
+  '/register',
+  publicAuthRouteLimiter,
+  asyncHandler(async (req, res) => {
+    const parsed = registerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { email, password, role, userName } = parsed.data;
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      res.status(409).json({ message: 'Email already exists' });
+      return;
+    }
+
+    const passwordHash = await hashPassword(password);
+    const user = await prisma.user.create({
+      data: { email, passwordHash, role },
+      select: { id: true },
     });
-    return;
-  }
 
-  const { email, password, role, userName } = parsed.data;
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    res.status(409).json({ message: 'Email already exists' });
-    return;
-  }
+    try {
+      await publish('mindora.auth', {
+        event: 'user.registered',
+        userId: user.id,
+        email,
+        role,
+        userName,
+        registeredAt: new Date().toISOString(),
+      });
+      console.log(`Published user.registered event for userId=${user.id}`);
+    } catch (queueError) {
+      // Don't fail the request if RabbitMQ is down — the user record is
+      // already saved. Profile creation is eventually consistent, not
+      // synchronous with registration; the backfill script covers the gap.
+      console.error('Failed to publish user.registered event:', queueError);
+    }
 
-  const passwordHash = await hashPassword(password);
-  const user = await prisma.user.create({
-    data: { email, passwordHash, role },
-    select: { id: true },
-  });
+    res.status(201).json({ userId: user.id });
+  })
+);
 
-  try {
-    await publish('mindora.auth', {
-      event: 'user.registered',
-      userId: user.id,
-      email,
-      role,
-      userName,
-      registeredAt: new Date().toISOString(),
-    });
-    console.log(`Published user.registered event for userId=${user.id}`);
-  } catch (queueError) {
-    // Don't fail the request if RabbitMQ is down — the user record is
-    // already saved. Profile creation is eventually consistent, not
-    // synchronous with registration; the backfill script covers the gap.
-    console.error('Failed to publish user.registered event:', queueError);
-  }
+authRouter.post(
+  '/login',
+  publicAuthRouteLimiter,
+  asyncHandler(async (req, res) => {
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
 
-  res.status(201).json({ userId: user.id });
-}));
+    const { email, password } = parsed.data;
+    const user = await prisma.user.findUnique({ where: { email } });
 
-authRouter.post('/login', publicAuthRouteLimiter, asyncHandler(async (req, res) => {
-  const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({
-      message: 'Validation failed',
-      errors: parsed.error.flatten().fieldErrors,
-    });
-    return;
-  }
+    if (!user || !(await verifyPassword(user.passwordHash, password))) {
+      res.status(401).json({ message: 'Invalid credentials' });
+      return;
+    }
 
-  const { email, password } = parsed.data;
-  const user = await prisma.user.findUnique({ where: { email } });
+    if (user.isActive === false) {
+      res.status(403).json({ message: 'Account suspended' });
+      return;
+    }
 
-  if (!user || !(await verifyPassword(user.passwordHash, password))) {
-    res.status(401).json({ message: 'Invalid credentials' });
-    return;
-  }
-
-  if (user.isActive === false) {
-    res.status(403).json({ message: 'Account suspended' });
-    return;
-  }
-
-  const { accessToken } = await issueAuthSession(res, user);
-  res.status(200).json({ accessToken });
-}));
+    const { accessToken } = await issueAuthSession(res, user);
+    res.status(200).json({ accessToken });
+  })
+);
 
 authRouter.post(
   '/logout',
@@ -172,67 +180,71 @@ authRouter.post(
   })
 );
 
-authRouter.post('/refresh', publicAuthRouteLimiter, asyncHandler(async (req, res) => {
-  const refreshToken = getRequestCookie(req, config.cookieName);
-  if (!refreshToken) {
-    res.status(401).json({ message: 'Unauthorized' });
-    return;
-  }
+authRouter.post(
+  '/refresh',
+  publicAuthRouteLimiter,
+  asyncHandler(async (req, res) => {
+    const refreshToken = getRequestCookie(req, config.cookieName);
+    if (!refreshToken) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
 
-  const tokenHash = hashToken(refreshToken);
-  const stored = await prisma.refreshToken.findFirst({
-    where: {
-      tokenHash,
-      revoked: false,
-      replacedByTokenId: null,
-      expiresAt: { gt: new Date() },
-    },
-    include: { user: true },
-  });
+    const tokenHash = hashToken(refreshToken);
+    const stored = await prisma.refreshToken.findFirst({
+      where: {
+        tokenHash,
+        revoked: false,
+        replacedByTokenId: null,
+        expiresAt: { gt: new Date() },
+      },
+      include: { user: true },
+    });
 
-  if (!stored) {
-    res.status(401).json({ message: 'Unauthorized' });
-    return;
-  }
+    if (!stored) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
 
-  if (stored.user.isActive === false) {
-    res.status(403).json({ message: 'Account suspended' });
-    return;
-  }
+    if (stored.user.isActive === false) {
+      res.status(403).json({ message: 'Account suspended' });
+      return;
+    }
 
-  const newRefreshToken = createRefreshToken();
-  const newRecord = await prisma.refreshToken.create({
-    data: {
-      userId: stored.userId,
-      tokenHash: hashToken(newRefreshToken),
-      expiresAt: getRefreshTokenExpiry(),
-    },
-  });
+    const newRefreshToken = createRefreshToken();
+    const newRecord = await prisma.refreshToken.create({
+      data: {
+        userId: stored.userId,
+        tokenHash: hashToken(newRefreshToken),
+        expiresAt: getRefreshTokenExpiry(),
+      },
+    });
 
-  await prisma.refreshToken.update({
-    where: { id: stored.id },
-    data: {
-      revoked: true,
-      replacedByTokenId: newRecord.id,
-    },
-  });
+    await prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: {
+        revoked: true,
+        replacedByTokenId: newRecord.id,
+      },
+    });
 
-  const accessToken = signAccessToken({
-    userId: stored.user.id,
-    email: stored.user.email,
-    role: stored.user.role,
-  });
+    const accessToken = signAccessToken({
+      userId: stored.user.id,
+      email: stored.user.email,
+      role: stored.user.role,
+    });
 
-  res.cookie(config.cookieName, newRefreshToken, {
-    httpOnly: true,
-    secure: config.isProduction,
-    sameSite: 'lax',
-    maxAge: config.refreshTokenDays * 24 * 60 * 60 * 1000,
-    path: '/',
-  });
+    res.cookie(config.cookieName, newRefreshToken, {
+      httpOnly: true,
+      secure: config.isProduction,
+      sameSite: 'lax',
+      maxAge: config.refreshTokenDays * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
 
-  res.status(200).json({ accessToken });
-}));
+    res.status(200).json({ accessToken });
+  })
+);
 
 authRouter.post(
   '/forgot-password',
@@ -264,39 +276,43 @@ authRouter.post(
   })
 );
 
-authRouter.post('/reset-password', publicAuthRouteLimiter, asyncHandler(async (req, res) => {
-  const parsed = resetPasswordSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({
-      message: 'Validation failed',
-      errors: parsed.error.flatten().fieldErrors,
+authRouter.post(
+  '/reset-password',
+  publicAuthRouteLimiter,
+  asyncHandler(async (req, res) => {
+    const parsed = resetPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { token, newPassword } = parsed.data;
+    const tokenHash = hashToken(token);
+    const userId = await getPasswordResetUserId(tokenHash);
+
+    if (!userId) {
+      res.status(400).json({ message: 'Invalid or expired reset token' });
+      return;
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
     });
-    return;
-  }
 
-  const { token, newPassword } = parsed.data;
-  const tokenHash = hashToken(token);
-  const userId = await getPasswordResetUserId(tokenHash);
+    await deletePasswordResetToken(tokenHash);
+    await prisma.refreshToken.updateMany({
+      where: { userId, revoked: false },
+      data: { revoked: true },
+    });
 
-  if (!userId) {
-    res.status(400).json({ message: 'Invalid or expired reset token' });
-    return;
-  }
-
-  const passwordHash = await hashPassword(newPassword);
-  await prisma.user.update({
-    where: { id: userId },
-    data: { passwordHash },
-  });
-
-  await deletePasswordResetToken(tokenHash);
-  await prisma.refreshToken.updateMany({
-    where: { userId, revoked: false },
-    data: { revoked: true },
-  });
-
-  res.status(200).json({ message: 'Password updated successfully' });
-}));
+    res.status(200).json({ message: 'Password updated successfully' });
+  })
+);
 
 authRouter.get(
   '/me',

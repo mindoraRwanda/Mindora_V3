@@ -197,16 +197,16 @@ Manages patient and therapist profiles stored in **PostgreSQL** via Prisma.
 
 **API docs:** `http://localhost:3002/docs`
 
-| Method | Path                            | Auth | Description                                                        |
-| ------ | -------------------------------- | ---- | ------------------------------------------------------------------- |
-| `GET`  | `/me`                            | JWT  | Return the authenticated user's profile (patient or therapist)      |
-| `PUT`  | `/me`                            | JWT  | Update own profile (bio, timezone, language)                        |
-| `PUT`  | `/me/fcm-token`                  | JWT  | Register/update the FCM push token                                  |
-| `PUT`  | `/me/notification-preferences`   | JWT  | Partial update of push/email/sms preferences                        |
-| `GET`  | `/{userId}/preferences`          | JWT  | Contact info + notification prefs (self, or SERVICE-role caller)    |
-| `GET`  | `/therapists`                    | JWT  | Paginated, filterable list of therapists accepting patients         |
-| `GET`  | `/photos/*`                      | —    | Public — serves therapist profile photos (static files)             |
-| `GET`  | `/health`                        | —    | Health check                                                         |
+| Method | Path                           | Auth | Description                                                      |
+| ------ | ------------------------------ | ---- | ---------------------------------------------------------------- |
+| `GET`  | `/me`                          | JWT  | Return the authenticated user's profile (patient or therapist)   |
+| `PUT`  | `/me`                          | JWT  | Update own profile (bio, timezone, language)                     |
+| `PUT`  | `/me/fcm-token`                | JWT  | Register/update the FCM push token                               |
+| `PUT`  | `/me/notification-preferences` | JWT  | Partial update of push/email/sms preferences                     |
+| `GET`  | `/{userId}/preferences`        | JWT  | Contact info + notification prefs (self, or SERVICE-role caller) |
+| `GET`  | `/therapists`                  | JWT  | Paginated, filterable list of therapists accepting patients      |
+| `GET`  | `/photos/*`                    | —    | Public — serves therapist profile photos (static files)          |
+| `GET`  | `/health`                      | —    | Health check                                                     |
 
 **Therapist query params:** `page`, `limit`, `specialisation` (partial match), `language` (exact match).
 
@@ -471,17 +471,17 @@ route handler to any service, wrap it.
 Every service exposes interactive Swagger UI at `/docs` — this table was
 previously missing 6 of the 9:
 
-| Service                | URL                           |
-| ----------------------- | ------------------------------ |
-| auth-service              | `http://localhost:3001/docs` |
-| user-service               | `http://localhost:3002/docs` |
-| appointment-service        | `http://localhost:3003/docs` |
-| mood-tracking-service      | `http://localhost:3004/docs` |
-| community-service          | `http://localhost:3005/docs` |
-| messaging-service          | `http://localhost:3006/docs` |
-| ai-integration-service     | `http://localhost:3007/docs` |
-| notification-service       | `http://localhost:3008/docs` |
-| admin-service               | `http://localhost:3009/docs` |
+| Service                | URL                          |
+| ---------------------- | ---------------------------- |
+| auth-service           | `http://localhost:3001/docs` |
+| user-service           | `http://localhost:3002/docs` |
+| appointment-service    | `http://localhost:3003/docs` |
+| mood-tracking-service  | `http://localhost:3004/docs` |
+| community-service      | `http://localhost:3005/docs` |
+| messaging-service      | `http://localhost:3006/docs` |
+| ai-integration-service | `http://localhost:3007/docs` |
+| notification-service   | `http://localhost:3008/docs` |
+| admin-service          | `http://localhost:3009/docs` |
 
 Raw OpenAPI JSON/YAML is available on each service too, though the path
 varies by how the spec is generated:
@@ -512,22 +512,22 @@ varies by how the spec is generated:
 
 ## Scripts
 
-| Command                     | Description                                                                       |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| `npm run dev`               | Start all services in watch mode (concurrency 10)                                 |
-| `npm run dev:auth`          | Start auth-service only                                                           |
-| `npm run dev:community`     | Start community-service + auth-service                                            |
-| `npm run dev:messaging`     | Start messaging-service + auth-service                                            |
-| `npm run build`             | Build all packages and apps                                                       |
-| `npm run lint`              | ESLint across all workspaces                                                      |
-| `npm run test`              | Vitest across all workspaces                                                      |
-| `npm run db:migrate`        | **Orphaned** — migrates the unused `@mindora/database` package, not any real service DB. Use `cd apps/<service> && npx prisma migrate dev` instead (see Known Issues). |
-| `npm run db:seed`           | **Orphaned** — same issue, seeds the unused `mindora` database                    |
-| `npm run db:seed:profiles`  | Seed user-service — 30 therapist profiles                                         |
-| `npm run db:seed:appointments` | Seed appointment-service — sample bookings                                     |
-| `npm run db:seed:mood`      | Seed mood-tracking-service                                                        |
-| `npm run db:seed:community` | Seed community-service MongoDB data                                               |
-| `npm run db:generate`       | Regenerate Prisma client for `@mindora/database` — **not** the per-service clients, run `npx prisma generate` inside each service for those |
+| Command                        | Description                                                                                                                                                            |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                  | Start all services in watch mode (concurrency 10)                                                                                                                      |
+| `npm run dev:auth`             | Start auth-service only                                                                                                                                                |
+| `npm run dev:community`        | Start community-service + auth-service                                                                                                                                 |
+| `npm run dev:messaging`        | Start messaging-service + auth-service                                                                                                                                 |
+| `npm run build`                | Build all packages and apps                                                                                                                                            |
+| `npm run lint`                 | ESLint across all workspaces                                                                                                                                           |
+| `npm run test`                 | Vitest across all workspaces                                                                                                                                           |
+| `npm run db:migrate`           | **Orphaned** — migrates the unused `@mindora/database` package, not any real service DB. Use `cd apps/<service> && npx prisma migrate dev` instead (see Known Issues). |
+| `npm run db:seed`              | **Orphaned** — same issue, seeds the unused `mindora` database                                                                                                         |
+| `npm run db:seed:profiles`     | Seed user-service — 30 therapist profiles                                                                                                                              |
+| `npm run db:seed:appointments` | Seed appointment-service — sample bookings                                                                                                                             |
+| `npm run db:seed:mood`         | Seed mood-tracking-service                                                                                                                                             |
+| `npm run db:seed:community`    | Seed community-service MongoDB data                                                                                                                                    |
+| `npm run db:generate`          | Regenerate Prisma client for `@mindora/database` — **not** the per-service clients, run `npx prisma generate` inside each service for those                            |
 
 ---
 
