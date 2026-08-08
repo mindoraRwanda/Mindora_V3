@@ -41,9 +41,15 @@ export {
 } from './appointment.js';
 export {
   logMoodSchema,
+  updateMoodSchema,
   moodHistoryQuerySchema,
+  moodSummaryQuerySchema,
+  moodTodayQuerySchema,
   type LogMoodDto,
+  type UpdateMoodDto,
   type MoodHistoryQueryDto,
+  type MoodSummaryQueryDto,
+  type MoodTodayQueryDto,
 } from './mood.js';
 export {
   listAlertsQuerySchema,

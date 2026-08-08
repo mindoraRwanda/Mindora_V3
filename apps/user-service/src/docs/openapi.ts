@@ -25,6 +25,7 @@ export const openApiSpec = {
     { name: 'Profile' },
     { name: 'Preferences' },
     { name: 'Therapists' },
+    { name: 'Photos' },
   ],
   components: {
     securitySchemes: {
@@ -95,6 +96,15 @@ export const openApiSpec = {
           specialisation: { type: 'string', nullable: true },
           languages: { type: 'array', items: { type: 'string' } },
           isAcceptingPatients: { type: 'boolean' },
+          photoUrl: {
+            type: 'string',
+            format: 'uri',
+            nullable: true,
+            description:
+              'Public URL served by GET /photos/{filename} — not currently ' +
+              'settable via PUT /me, only populated by the seed script.',
+            example: 'http://localhost:8000/api/v1/users/photos/m1.jpg',
+          },
           fcmToken: { type: 'string', nullable: true },
           notificationPreferences: {
             $ref: '#/components/schemas/NotificationPreferences',
@@ -464,6 +474,39 @@ export const openApiSpec = {
           '400': { description: 'Invalid query parameters' },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '429': { description: 'Rate limit exceeded' },
+        },
+      },
+    },
+    '/photos/{filename}': {
+      get: {
+        tags: ['Photos'],
+        summary: 'Get a therapist profile photo',
+        description:
+          "Public, unauthenticated — an `<img>` tag can't send a JWT, so " +
+          'this deliberately sits outside the JWT-protected user-api Kong ' +
+          "route (see infrastructure/kong/kong.yml's user-photos route). " +
+          'Serves static files from public/therapist-photos/ via ' +
+          'express.static; not a per-therapist lookup, just a plain file ' +
+          'server, mirrored at /photos and /api/v1/users/photos on this ' +
+          'service and only the latter through Kong.',
+        security: [],
+        parameters: [
+          {
+            name: 'filename',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            example: 'm1.jpg',
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'The image file',
+            content: {
+              'image/jpeg': { schema: { type: 'string', format: 'binary' } },
+            },
+          },
+          '404': { description: 'No file with that name' },
         },
       },
     },

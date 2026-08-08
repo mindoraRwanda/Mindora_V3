@@ -1,4 +1,8 @@
-import express from 'express';
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from 'express';
 import communityRoutes, { internalRouter } from './routes/community.routes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './docs/swagger.js';
@@ -38,6 +42,14 @@ app.use(internalRouter);
 
 app.get('/api/v1/community/health', publicRouteLimiter, (_req, res) => {
   res.status(200).json({ status: 'ok', service: 'community-service' });
+});
+
+// Catches errors forwarded via next(err) — including rejected promises
+// from asyncHandler-wrapped routes — so a transient failure (e.g. a
+// dropped DB connection) returns a 500 instead of crashing the process.
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 export default app;

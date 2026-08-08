@@ -48,6 +48,7 @@ model TherapistProfile {
   specialisation          String?
   languages               String[] @default([])
   isAcceptingPatients     Boolean  @default(true) @map("is_accepting_patients")
+  photoUrl                String?  @map("photo_url")
   fcmToken                String?  @map("fcm_token")
   notificationPreferences Json     @default("{\"push\": true, \"email\": true, \"sms\": true}") @map("notification_preferences")
   // Denormalized copies from Auth Service's users table (role, email),

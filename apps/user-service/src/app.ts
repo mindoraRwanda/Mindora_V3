@@ -3,9 +3,14 @@ import express, {
   type Request,
   type Response,
 } from 'express';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import swaggerUi from 'swagger-ui-express';
 import { userRouter } from './routes/user.routes.js';
 import { openApiSpec } from './docs/openapi.js';
+
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const therapistPhotosDir = resolve(moduleDir, '../public/therapist-photos');
 
 export function createApp() {
   const app = express();
@@ -26,6 +31,13 @@ export function createApp() {
     swaggerUi.serve,
     swaggerUi.setup(openApiSpec, { customSiteTitle: 'User Service API Docs' })
   );
+
+  // Therapist profile photos — public, unauthenticated (an <img> tag can't
+  // send an Authorization header), mirrored at both the bare path (direct
+  // dev access) and the full gateway path (matches Kong's strip_path: false
+  // user-photos route, same pattern as /health).
+  app.use('/photos', express.static(therapistPhotosDir));
+  app.use('/api/v1/users/photos', express.static(therapistPhotosDir));
 
   app.use(express.json());
   app.use(userRouter);
