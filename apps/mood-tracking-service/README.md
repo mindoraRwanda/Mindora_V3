@@ -18,14 +18,44 @@ Patient mood logging with TimescaleDB analytics, Redis caching, and RabbitMQ con
 - **Swagger UI:** `http://localhost:3004/docs`
 - **Frontend codegen:** `http://localhost:3004/openapi.json` or `/openapi.yaml` (CORS enabled)
 
-| Method | Path              | Auth            | Description                                    |
-| ------ | ----------------- | --------------- | ---------------------------------------------- |
-| GET    | `/health`         | No              | Health check                                   |
-| POST   | `/log`            | JWT (patient)   | Log mood — 10/day limit, encrypted journal     |
-| GET    | `/history`        | JWT (patient)   | Paginated history (`?startDate=`, `?endDate=`) |
-| GET    | `/insights`       | JWT (patient)   | Weekly `time_bucket` trends (Redis cached 1h)  |
-| GET    | `/report/:userId` | JWT (therapist) | Patient summary (no journal notes)             |
-| GET    | `/streak`         | JWT (patient)   | Consecutive check-in streak                    |
+| Method | Path              | Auth            | Description                                        |
+| ------ | ----------------- | --------------- | -------------------------------------------------- |
+| GET    | `/health`         | No              | Health check                                       |
+| POST   | `/log`            | JWT (patient)   | Log mood — 10/day limit, encrypted journal; optional `recordedAt` backfills a missed day |
+| GET    | `/today`          | JWT (patient)   | Already checked in today? (`?timezone=` IANA name)  |
+| GET    | `/history`        | JWT (patient)   | Paginated history (`?startDate=`, `?endDate=`)     |
+| GET    | `/summary`        | JWT (patient)   | Bucketed aggregates for the dashboard chart (`?granularity=day\|week\|month`) |
+| GET    | `/insights`       | JWT (patient)   | Weekly `time_bucket` trends (Redis cached 1h)      |
+| GET    | `/report/:userId` | JWT (therapist) | Patient summary (no journal notes)                 |
+| GET    | `/streak`         | JWT (patient)   | Consecutive check-in streak                        |
+| PUT    | `/:id`            | JWT (patient)   | Edit own entry — content only, **not** `recordedAt` |
+| DELETE | `/:id`            | JWT (patient)   | Delete own entry                                   |
+
+### Why `recordedAt` can't be edited
+
+`mood_entries` is a TimescaleDB hypertable partitioned on `recorded_at`, with a
+composite primary key `[id, recorded_at]`. Timescale rejects an `UPDATE` that
+would move a row into a different chunk:
+
+```
+ERROR: new row for relation "_hyper_1_2_chunk" violates check constraint "constraint_2"
+```
+
+So changing when an entry happened means deleting it and logging a new one with
+the corrected `recordedAt` (which `POST /log` accepts). The same composite key
+is also why `PUT`/`DELETE` use Prisma's `updateMany`/`deleteMany` with a
+`{ id, userId }` filter — `id` alone isn't a unique selector Prisma will accept,
+and filtering on `userId` in the same statement enforces ownership without a
+separate read-then-write.
+
+### `/today` and time zones
+
+"Today" is only answerable in the user's own zone — a Kigali user (UTC+3)
+checking in at 01:00 local is still on the previous UTC day, so the UTC default
+would be wrong for the first three hours of every day. Clients should send
+`Intl.DateTimeFormat().resolvedOptions().timeZone`. The day-boundary helper
+(`src/lib/local-day.ts`) is DST-correct — a spring-forward day resolves to a
+23-hour range.
 
 ## RabbitMQ events
 

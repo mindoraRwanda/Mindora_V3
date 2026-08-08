@@ -515,8 +515,18 @@ authRouter.get(
   '/oauth/google/callback',
   publicAuthRouteLimiter,
   (req, res, next) => {
+    // This endpoint is only ever hit by a real browser navigation (Google's
+    // own redirect back to us), never fetch/XHR — every exit path below must
+    // be a redirect, not a JSON response, or the user's browser is left
+    // stranded on this API origin instead of landing back on the frontend.
+    // The frontend's /oauth/success route does no token parsing; it just
+    // waits on its own mount-time POST /refresh to pick up the refreshToken
+    // cookie issueAuthSession sets below (same mechanism as normal login),
+    // then routes by role, or back to /login if no session was established
+    // — so redirecting there unconditionally on both success and failure is
+    // correct, not just a shortcut.
     if (!isGoogleOAuthConfigured()) {
-      res.status(503).json({ message: 'Google OAuth is not configured.' });
+      res.redirect(config.oauthSuccessRedirectUrl);
       return;
     }
 
@@ -527,17 +537,12 @@ authRouter.get(
       // reasoning as asyncHandler elsewhere in this file.
       (async () => {
         if (err || !user) {
-          res.status(401).json({ message: 'OAuth authentication failed' });
+          res.redirect(config.oauthSuccessRedirectUrl);
           return;
         }
 
-        const { accessToken } = await issueAuthSession(res, user);
-        res.status(200).json({
-          accessToken,
-          userId: user.id,
-          email: user.email,
-          role: user.role,
-        });
+        await issueAuthSession(res, user);
+        res.redirect(config.oauthSuccessRedirectUrl);
       })().catch(next);
     })(req, res, next);
   }

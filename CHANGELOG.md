@@ -3,6 +3,53 @@
 Notable backend changes, newest first. This is a working log for the team, not
 a public release changelog — entries describe what changed and why.
 
+## 2026-08-07
+
+### Added — Mood check-in: today-status, editing, backdating, dashboard summary
+
+`apps/mood-tracking-service`, filling gaps that made a proper check-in screen
+un-buildable.
+
+- **`GET /today`** — answers "has the user already checked in today?" directly,
+  returning `{ hasCheckedIn, localDate, timezone, entriesToday, remainingToday,
+  entry }`. Previously the client had to fetch `/history` and do date maths it
+  couldn't do correctly. Takes an optional `?timezone=` IANA name; new
+  DST-correct day-boundary helper at `src/lib/local-day.ts`.
+- **`POST /log` accepts an optional `recordedAt`** so a user can backfill a
+  missed day. Bounded: not in the future (5 min clock-skew tolerance), not more
+  than 365 days ago. The 10/day cap still counts writes made *today* regardless
+  of the day recorded for — it's a write-rate limit, so backfilling a batch
+  still draws down the same allowance.
+- **`PUT /:id` and `DELETE /:id`** — entries were previously immutable. Scoped
+  to the caller's own entries; a 404 deliberately doesn't distinguish "no such
+  entry" from "someone else's", so entry existence isn't leaked. `PUT` re-runs
+  the `mood.concern` safety check, since revising a score downward is the same
+  signal as logging it low initially.
+- **`GET /summary`** — bucketed aggregates over an arbitrary range and
+  granularity (`day`/`week`/`month`) for the dashboard chart. Distinct from
+  `/history` (raw paginated rows) and `/insights` (fixed 3-month weekly window,
+  Redis-cached). `avgMood` is entry-count-weighted, so it matches a plain
+  average over the underlying entries rather than an average of averages.
+
+**Two storage constraints worth knowing, both verified against the live
+database rather than assumed:**
+
+1. **`recordedAt` cannot be edited.** `mood_entries` is a TimescaleDB
+   hypertable partitioned on `recorded_at`; an `UPDATE` that would move a row
+   into another chunk is rejected outright (`new row for relation
+   "_hyper_1_2_chunk" violates check constraint`). Correcting a date means
+   delete + re-log. `updateMoodSchema` therefore has no `recordedAt` field.
+2. **`PUT`/`DELETE` use `updateMany`/`deleteMany`, not `update`/`delete`.** The
+   composite primary key `[id, recordedAt]` (required by the hypertable
+   partitioning) means `id` alone isn't a unique selector Prisma accepts. The
+   many-variants take an arbitrary filter, which also lets ownership be
+   enforced in the same statement instead of a racy read-then-write.
+
+Verified with `tsc --noEmit`, the existing 13-test suite, and a 24-check
+end-to-end run against the real hypertable covering create, backdate,
+future-date rejection, today-status, edit, null-clearing, ownership 404s,
+summary bucketing, and delete.
+
 ## 2026-07-29 — 2026-07-30
 
 ### Added — Therapist profile photos
