@@ -32,7 +32,7 @@ jobs:
     outputs:
       turbo-filter: ${{ steps.set-filter.outputs.filter }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -117,7 +117,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
@@ -137,7 +137,7 @@ jobs:
     timeout-minutes: 10
     needs: [detect-changes]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -194,7 +194,7 @@ jobs:
       REFRESH_SECRET: ${{ secrets.REFRESH_SECRET || 'ci-only-refresh-secret-not-for-production' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -263,7 +263,7 @@ jobs:
       AI_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_ai
       NOTIFICATION_DATABASE_URL: postgresql://mindora:mindora@localhost:5434/mindora_notifications
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -330,7 +330,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
