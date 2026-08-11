@@ -1,4 +1,8 @@
-import express from 'express';
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from 'express';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { appointmentRouter } from './routes/appointment.routes.js';
@@ -24,5 +28,14 @@ export function createApp() {
   }
 
   app.use(appointmentRouter);
+
+  // Catches errors forwarded via next(err) — including rejected promises
+  // from asyncHandler-wrapped routes — so a transient failure (e.g. a
+  // dropped DB connection) returns a 500 instead of crashing the process.
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('Unhandled error:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  });
+
   return app;
 }

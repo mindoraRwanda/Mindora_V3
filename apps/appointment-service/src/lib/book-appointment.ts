@@ -35,7 +35,7 @@ export async function bookAppointmentWithLock(
     // Postgres locks can't cross databases. A transaction-scoped advisory
     // lock keyed by therapistId gives the same mutex without needing a local
     // row to lock — it's released automatically at commit/rollback.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.therapistId}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.therapistId}))`;
 
     const conflicts = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT id

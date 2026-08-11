@@ -36,6 +36,7 @@ const mockBlacklistToken = vi.fn();
 const mockStoreReset = vi.fn();
 const mockGetResetUser = vi.fn();
 const mockDeleteReset = vi.fn();
+const mockPublish = vi.fn();
 
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
@@ -63,6 +64,12 @@ vi.mock('@mindora/auth-middleware', async (importOriginal) => {
     blacklistToken: (...args: unknown[]) => mockBlacklistToken(...args),
   };
 });
+
+// /register publishes a user.registered event so User Service can provision
+// a profile — mocked here so tests never attempt a real RabbitMQ connection.
+vi.mock('@mindora/queue', () => ({
+  publish: (...args: unknown[]) => mockPublish(...args),
+}));
 
 vi.mock('../lib/redis.js', () => ({
   connectRedis: vi.fn(),

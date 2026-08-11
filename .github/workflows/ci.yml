@@ -307,7 +307,7 @@ jobs:
           retention-days: 3
 
   # ─── 6. Dependency vulnerability audit ───────────────────────────────────
-  # --omit=dev focuses the audit on what ships to production.
+  # --production focuses the audit on what ships to production.
   # Dev-tool CVEs (test runners, linters) are excluded so they don't block
   # application PRs — they are handled separately by Dependabot.
   #

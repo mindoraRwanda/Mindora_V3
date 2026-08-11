@@ -14,6 +14,8 @@ test.html
 front-end-test-files/
 test_script.js
 .claude
+node_modules/
+package-lock.json
 generate-test-token.ts
 .dockerignore
 patient-cookies.txt

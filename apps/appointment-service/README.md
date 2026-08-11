@@ -42,11 +42,13 @@ Publish typed events from `@mindora/events` via `src/lib/publish-appointment-eve
 ## Development
 
 ```bash
-# Apply migration (once)
-npm run db:migrate
+# Apply migration (once) — NOT `npm run db:migrate`, that targets the
+# orphaned @mindora/database package, not this service's own DB
+cd apps/appointment-service && npx prisma migrate dev
 
-# Seed auth users, profiles, then appointments
-npm run db:seed
+# Seed auth users, profiles, then appointments — no root shortcut for the
+# auth-service seed yet, run it directly
+npm run seed -w @mindora/auth-service
 npm run db:seed:profiles
 npm run db:seed:appointments
 

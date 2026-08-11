@@ -1,0 +1,7 @@
+{
+  "GHSA-f88m-g3jw-g9cj": {
+    "active": true,
+    "notes": "sharp <0.35.0 inherited libvips CVEs (CVE-2026-33327/33328/35590/35591). sharp is an optionalDependency Next.js 16 installs itself for next/image's server-side optimizer — not a direct dependency of this monorepo, and not reachable: next/image is not used anywhere in apps/patient-app. Confirmed via `grep -rn \"next/image\" apps/patient-app/src` returning zero matches. Attempted to force sharp to the fixed 0.35.3 via three separate npm overrides strategies (plain override, override + matching direct dependency, override nested under next) — none dedupe the vulnerable nested copy under next/node_modules/sharp, which appears to be a real npm limitation with optional dependencies that ship platform-specific binary variants, not a config mistake. `npm audit fix --force`'s own suggested remediation is to downgrade next to 9.3.3, which would undo the Next 14->16 upgrade and is worse than the finding it claims to fix. See frontend.md's 'npm audit — unresolved findings' section for the full investigation. Revisit when next/image is actually used, or when a future Next.js patch bumps its declared sharp range past 0.35.0.",
+    "expiry": "2027-01-22"
+  }
+}

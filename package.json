@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --concurrency=10",
+    "dev": "turbo run dev --concurrency=15",
     "dev:messaging": "turbo run dev --filter=@mindora/messaging-service --filter=@mindora/auth-service",
     "dev:community": "turbo run dev --filter=@mindora/community-service --filter=@mindora/auth-service",
     "dev:auth": "turbo run dev --filter=@mindora/auth-service",
@@ -37,6 +37,7 @@
     "@types/node": "^25.9.3",
     "@types/opossum": "^8.1.9",
     "@types/supertest": "^7.2.0",
+    "better-npm-audit": "^3.11.0",
     "eslint": "^9.22.0",
     "eslint-config-prettier": "^10.1.1",
     "pm2": "^5.4.3",
@@ -72,5 +73,11 @@
     "mongoose": "^9.6.3",
     "resend": "^6.16.0",
     "socket.io": "^4.8.3"
+  },
+  "optionalDependencies": {
+    "@tailwindcss/oxide-win32-x64-msvc": "^4.3.3",
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.3.3",
+    "lightningcss-win32-x64-msvc": "1.32.0",
+    "lightningcss-linux-x64-gnu": "1.32.0"
   }
 }

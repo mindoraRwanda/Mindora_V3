@@ -9,6 +9,7 @@ import { runPreFilter } from '../preFilter.js';
 import { prisma } from '../database.js';
 import { chatWithBot } from '../chatbotClient.js';
 import { encrypt } from '../lib/crypto.js';
+import { asyncHandler } from '../middleware/async-handler.js';
 
 const router = Router();
 
@@ -42,7 +43,7 @@ async function publishCrisisEvent(
 router.post(
   '/chat',
   requireRole('PATIENT'),
-  async (req: AuthenticatedRequest, res) => {
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { message, sessionId } = req.body as {
       message?: unknown;
       sessionId?: unknown;
@@ -131,7 +132,7 @@ router.post(
       crisisLevel,
       sessionId: resolvedSessionId,
     });
-  }
+  })
 );
 
 // GET /api/v1/ai/history — retrieve session interaction history (PATIENT only)
@@ -145,40 +146,43 @@ router.delete('/history', requireRole('PATIENT'), (_req, res) => {
 });
 
 // GET /api/v1/ai/usage — aggregate token usage report (ADMIN only)
-router.get('/usage', requireRole('ADMIN'), async (_req, res) => {
-  type DailyRow = { date: Date; count: bigint | number };
+router.get(
+  '/usage',
+  requireRole('ADMIN'),
+  asyncHandler(async (_req, res) => {
+    type DailyRow = { date: Date; count: bigint | number };
 
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  // All five queries run in parallel — this is an analytics endpoint and latency matters.
-  const [
-    aggregate,
-    totalInteractions,
-    totalCrisisEvents,
-    topUsersRaw,
-    dailyRaw,
-  ] = await Promise.all([
-    // 1. Sum of tokens + average response time across all interactions
-    prisma.aiInteraction.aggregate({
-      _sum: { tokens_used: true },
-      _avg: { response_ms: true },
-    }),
-    // 2. Total row count
-    prisma.aiInteraction.count(),
-    // 3. Rows where the pre-filter triggered immediate escalation
-    prisma.aiInteraction.count({ where: { crisis_level: 5 } }),
-    // 4. Top 10 users by interaction volume, descending
-    prisma.aiInteraction.groupBy({
-      by: ['user_id'],
-      _count: { user_id: true },
-      orderBy: { _count: { user_id: 'desc' } },
-      take: 10,
-    }),
-    // 5. Daily interaction counts for the last 30 days.
-    // Prisma 6 groupBy cannot group by a derived date expression (DATE_TRUNC),
-    // so $queryRaw is used only here; all other queries use the type-safe Prisma API.
-    prisma.$queryRaw<DailyRow[]>`
+    // All five queries run in parallel — this is an analytics endpoint and latency matters.
+    const [
+      aggregate,
+      totalInteractions,
+      totalCrisisEvents,
+      topUsersRaw,
+      dailyRaw,
+    ] = await Promise.all([
+      // 1. Sum of tokens + average response time across all interactions
+      prisma.aiInteraction.aggregate({
+        _sum: { tokens_used: true },
+        _avg: { response_ms: true },
+      }),
+      // 2. Total row count
+      prisma.aiInteraction.count(),
+      // 3. Rows where the pre-filter triggered immediate escalation
+      prisma.aiInteraction.count({ where: { crisis_level: 5 } }),
+      // 4. Top 10 users by interaction volume, descending
+      prisma.aiInteraction.groupBy({
+        by: ['user_id'],
+        _count: { user_id: true },
+        orderBy: { _count: { user_id: 'desc' } },
+        take: 10,
+      }),
+      // 5. Daily interaction counts for the last 30 days.
+      // Prisma 6 groupBy cannot group by a derived date expression (DATE_TRUNC),
+      // so $queryRaw is used only here; all other queries use the type-safe Prisma API.
+      prisma.$queryRaw<DailyRow[]>`
         SELECT DATE_TRUNC('day', created_at)::date AS date,
                COUNT(*)::int                        AS count
         FROM   ai_interactions
@@ -186,24 +190,25 @@ router.get('/usage', requireRole('ADMIN'), async (_req, res) => {
         GROUP  BY 1
         ORDER  BY 1 ASC
       `,
-  ]);
+    ]);
 
-  res.status(200).json({
-    totalInteractions,
-    totalTokensUsed: aggregate._sum.tokens_used ?? 0,
-    totalCrisisEvents,
-    avgResponseMs: Math.round(aggregate._avg.response_ms ?? 0),
-    topUsers: topUsersRaw.map((row) => ({
-      userId: row.user_id,
-      interactionCount: row._count.user_id,
-    })),
-    // COUNT(*)::int comes back as a JS number from pg; Number() handles the rare
-    // BigInt case if the driver ever returns one.
-    dailyBreakdown: (dailyRaw as DailyRow[]).map((row) => ({
-      date: new Date(row.date).toISOString().split('T')[0],
-      count: Number(row.count),
-    })),
-  });
-});
+    res.status(200).json({
+      totalInteractions,
+      totalTokensUsed: aggregate._sum.tokens_used ?? 0,
+      totalCrisisEvents,
+      avgResponseMs: Math.round(aggregate._avg.response_ms ?? 0),
+      topUsers: topUsersRaw.map((row) => ({
+        userId: row.user_id,
+        interactionCount: row._count.user_id,
+      })),
+      // COUNT(*)::int comes back as a JS number from pg; Number() handles the rare
+      // BigInt case if the driver ever returns one.
+      dailyBreakdown: (dailyRaw as DailyRow[]).map((row) => ({
+        date: new Date(row.date).toISOString().split('T')[0],
+        count: Number(row.count),
+      })),
+    });
+  })
+);
 
 export default router;

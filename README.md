@@ -78,12 +78,34 @@ docker compose up -d
 
 ### 4. Database setup
 
-```bash
-# Run Prisma migrations (PostgreSQL — auth + user profiles)
-npm run db:migrate
+> **⚠️ `npm run db:migrate` / `npm run db:seed` are dead ends.** Both map to
+> the `@mindora/database` workspace (`packages/database`), which no service
+> has imported since the DB-per-service split — it migrates and seeds the
+> orphaned `mindora` database, not the `mindora_auth` / `mindora_user` / etc.
+> databases the running services actually read from. Following this section
+> literally gives you zero usable accounts in the real system. See
+> [Known Issues](#known-issues--workarounds) for the current state and
+> per-service migrate/seed commands below.
 
-# Seed development users
-npm run db:seed
+Each PostgreSQL-backed service owns its own Prisma schema and migrates
+independently:
+
+```bash
+# Per service, from the service directory
+cd apps/<service> && npx prisma migrate dev
+
+# Or seed via the root shortcuts that exist:
+npm run db:seed:profiles       # user-service — 30 therapist profiles
+npm run db:seed:appointments   # appointment-service — sample bookings
+npm run db:seed:mood           # mood-tracking-service
+npm run db:seed:community      # community-service (MongoDB)
+
+# No root shortcut for auth-service yet — run directly:
+npm run seed -w @mindora/auth-service   # seeds the 30 therapist AUTH accounts only,
+                                         # NOT the patient@test.mindora.local-style
+                                         # login accounts referenced elsewhere in
+                                         # this repo's docs — those don't currently
+                                         # exist anywhere. See Known Issues.
 ```
 
 ### 5. Run all services
@@ -173,14 +195,26 @@ password reset tokens.
 
 Manages patient and therapist profiles stored in **PostgreSQL** via Prisma.
 
-| Method | Path          | Auth | Description                                                            |
-| ------ | ------------- | ---- | ---------------------------------------------------------------------- |
-| `GET`  | `/me`         | JWT  | Return the authenticated user's profile (patient or therapist)         |
-| `PUT`  | `/me`         | JWT  | Update own profile (bio, timezone, language, notification preferences) |
-| `GET`  | `/therapists` | JWT  | Paginated, filterable list of therapists accepting patients            |
-| `GET`  | `/health`     | —    | Health check                                                           |
+**API docs:** `http://localhost:3002/docs`
+
+| Method | Path                           | Auth | Description                                                      |
+| ------ | ------------------------------ | ---- | ---------------------------------------------------------------- |
+| `GET`  | `/me`                          | JWT  | Return the authenticated user's profile (patient or therapist)   |
+| `PUT`  | `/me`                          | JWT  | Update own profile (bio, timezone, language)                     |
+| `PUT`  | `/me/fcm-token`                | JWT  | Register/update the FCM push token                               |
+| `PUT`  | `/me/notification-preferences` | JWT  | Partial update of push/email/sms preferences                     |
+| `GET`  | `/{userId}/preferences`        | JWT  | Contact info + notification prefs (self, or SERVICE-role caller) |
+| `GET`  | `/therapists`                  | JWT  | Paginated, filterable list of therapists accepting patients      |
+| `GET`  | `/photos/*`                    | —    | Public — serves therapist profile photos (static files)          |
+| `GET`  | `/health`                      | —    | Health check                                                     |
 
 **Therapist query params:** `page`, `limit`, `specialisation` (partial match), `language` (exact match).
+
+**`TherapistProfile.photoUrl`** (nullable string) — set by the seed script for
+the first 8 therapists shown by default; not yet settable via `PUT /me` (no
+upload endpoint exists yet, this is seed-only for now). Served from
+`apps/user-service/public/therapist-photos/` via the public `/photos` route
+above — deliberately outside JWT auth since an `<img>` tag can't send one.
 
 ---
 
@@ -332,23 +366,15 @@ Exports: `createVerifyJwt`, `authenticate`, `requireRole`, `verifyAccessToken`,
 
 ---
 
-### `@mindora/database`
+### `@mindora/database` — orphaned, not imported by any service
 
-Prisma client + generated types for PostgreSQL.
-
-```ts
-import { prisma, Prisma } from '@mindora/database';
-import type {
-  User,
-  PatientProfile,
-  TherapistProfile,
-  RefreshToken,
-  UserRole,
-} from '@mindora/database';
-```
-
-**Schema models:** `User` (with `googleId` for OAuth), `RefreshToken` (with `replacedByTokenId` for rotation),
-`PatientProfile`, `TherapistProfile`
+Leftover from before the DB-per-service split. `grep`-confirmed: no `apps/*/package.json`
+depends on it anymore. Each PostgreSQL-backed service now owns its own Prisma
+schema (`apps/<service>/prisma/schema.prisma`) with no cross-service relations.
+The package still exists on disk with its own schema/migrations pointing at a
+`mindora` database that no running service reads from — the root `db:generate`
+/ `db:migrate` / `db:seed` scripts still point here, which is why they're
+flagged above. Safe to ignore; candidate for deletion.
 
 ---
 
@@ -404,15 +430,66 @@ import {
 
 ---
 
+## Error handling — async-crash safety
+
+Express 4.x does **not** forward a rejected promise from an
+`async (req, res) => {}` route handler to `next()` automatically. Left
+unhandled, that's an `unhandledRejection` that crashes the whole Node
+process — not a 500 for the one bad request, every in-flight request on that
+service goes down with it. Every service in this monorepo now guards against
+this with the same two-piece pattern, duplicated per service (not a shared
+package — each service has its own copy):
+
+```ts
+// src/middleware/async-handler.ts
+export function asyncHandler(handler) {
+  return (req, res, next) => {
+    handler(req, res, next).catch(next);
+  };
+}
+```
+
+```ts
+// app.ts — wrap every async route, then register a catch-all last
+router.get('/foo', asyncHandler(async (req, res) => { ... }));
+
+app.use((err, _req, res, _next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+```
+
+A handler that isn't wrapped in `asyncHandler` — or a global error middleware
+that exists but that nothing ever calls `next(err)` into — is silently dead:
+it looks like crash protection but does nothing. When adding a new async
+route handler to any service, wrap it.
+
+---
+
 ## API documentation (Swagger UI)
 
-| Service              | URL                          |
-| -------------------- | ---------------------------- |
-| community-service    | `http://localhost:3005/docs` |
-| messaging-service    | `http://localhost:3006/docs` |
-| notification-service | `http://localhost:3008/docs` |
+Every service exposes interactive Swagger UI at `/docs` — this table was
+previously missing 6 of the 9:
 
-Raw OpenAPI JSON available at `/docs.json` on each service (e.g. `http://localhost:3006/docs.json`).
+| Service                | URL                          |
+| ---------------------- | ---------------------------- |
+| auth-service           | `http://localhost:3001/docs` |
+| user-service           | `http://localhost:3002/docs` |
+| appointment-service    | `http://localhost:3003/docs` |
+| mood-tracking-service  | `http://localhost:3004/docs` |
+| community-service      | `http://localhost:3005/docs` |
+| messaging-service      | `http://localhost:3006/docs` |
+| ai-integration-service | `http://localhost:3007/docs` |
+| notification-service   | `http://localhost:3008/docs` |
+| admin-service          | `http://localhost:3009/docs` |
+
+Raw OpenAPI JSON/YAML is available on each service too, though the path
+varies by how the spec is generated:
+
+- Most services: `/docs.json` (JSDoc `@swagger` comments → `swagger-jsdoc`)
+- `appointment-service`, `mood-tracking-service`: `/openapi.json` and
+  `/openapi.yaml`, generated from a static file at `docs/<service>.yaml`
+  (CORS-enabled, meant for frontend codegen)
 
 ---
 
@@ -435,19 +512,22 @@ Raw OpenAPI JSON available at `/docs.json` on each service (e.g. `http://localho
 
 ## Scripts
 
-| Command                     | Description                                                                       |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| `npm run dev`               | Start all services in watch mode (concurrency 10)                                 |
-| `npm run dev:auth`          | Start auth-service only                                                           |
-| `npm run dev:community`     | Start community-service + auth-service                                            |
-| `npm run dev:messaging`     | Start messaging-service + auth-service                                            |
-| `npm run build`             | Build all packages and apps                                                       |
-| `npm run lint`              | ESLint across all workspaces                                                      |
-| `npm run test`              | Vitest across all workspaces                                                      |
-| `npm run db:migrate`        | Run Prisma migrations — **broken on Windows + Docker Desktop** (see Known Issues) |
-| `npm run db:seed`           | Seed the PostgreSQL database                                                      |
-| `npm run db:seed:community` | Seed community-service MongoDB data                                               |
-| `npm run db:generate`       | Regenerate Prisma client after schema changes                                     |
+| Command                        | Description                                                                                                                                                            |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                  | Start all services in watch mode (concurrency 10)                                                                                                                      |
+| `npm run dev:auth`             | Start auth-service only                                                                                                                                                |
+| `npm run dev:community`        | Start community-service + auth-service                                                                                                                                 |
+| `npm run dev:messaging`        | Start messaging-service + auth-service                                                                                                                                 |
+| `npm run build`                | Build all packages and apps                                                                                                                                            |
+| `npm run lint`                 | ESLint across all workspaces                                                                                                                                           |
+| `npm run test`                 | Vitest across all workspaces                                                                                                                                           |
+| `npm run db:migrate`           | **Orphaned** — migrates the unused `@mindora/database` package, not any real service DB. Use `cd apps/<service> && npx prisma migrate dev` instead (see Known Issues). |
+| `npm run db:seed`              | **Orphaned** — same issue, seeds the unused `mindora` database                                                                                                         |
+| `npm run db:seed:profiles`     | Seed user-service — 30 therapist profiles                                                                                                                              |
+| `npm run db:seed:appointments` | Seed appointment-service — sample bookings                                                                                                                             |
+| `npm run db:seed:mood`         | Seed mood-tracking-service                                                                                                                                             |
+| `npm run db:seed:community`    | Seed community-service MongoDB data                                                                                                                                    |
+| `npm run db:generate`          | Regenerate Prisma client for `@mindora/database` — **not** the per-service clients, run `npx prisma generate` inside each service for those                            |
 
 ---
 
@@ -516,6 +596,58 @@ npm run db:generate   # fine — runs prisma generate (no network)
 ```
 
 **This issue does not affect production** — CI runs on Linux and production deployments use Linux containers where Prisma's Rust binary connects normally.
+
+> **Update (2026-07-29):** `cd apps/user-service && npx prisma migrate dev` ran
+> and applied cleanly in this environment (Windows, Docker Desktop) with no
+> P1000 error. Not sure yet whether the underlying networking issue was fixed
+> by a Docker Desktop/Prisma update since this was written, or whether it's
+> config-dependent — flagging rather than deleting the workaround above.
+> Worth re-verifying next time someone hits this before assuming it's still
+> broken.
+
+---
+
+### Root `db:seed` doesn't produce any usable login accounts
+
+Every service README's "seed" instructions that say `npm run db:seed`
+(root-level) are pointing at the orphaned `@mindora/database` package (see
+[Shared packages](#mindoradatabase--orphaned-not-imported-by-any-service)) —
+confirmed by direct query, **the `patient@test.mindora.local` /
+`therapist@test.mindora.local` / `admin@test.mindora.local` accounts
+documented in multiple READMEs do not currently exist in either the orphaned
+`mindora` database or the real `mindora_auth` database that auth-service
+actually reads from.** `apps/auth-service/src/seed.ts` only creates the 30
+fixed-UUID `THERAPIST` accounts with a non-login dummy password (they exist
+solely so `appointment-service`'s cross-service therapist check resolves) —
+it does not create any of the 4 named test-login accounts referenced
+elsewhere. As of this writing there is no working seed path to get those 4
+accounts into `mindora_auth`. Needs a real fix (a new seed script targeting
+`AUTH_DATABASE_URL`), not just a doc update — flagged here so it isn't lost.
+
+### Local dev: `npm run dev` fails across the board after a while
+
+Two independent, recurring causes, not a single bug:
+
+1. **Stale processes on 3001–3007/3009.** If a service was ever started
+   outside of `npm run dev` (manual `tsx watch`, a killed-then-orphaned
+   process, etc.), it keeps holding its port and every future `npm run dev`
+   fails that service with `EADDRINUSE` immediately. Find and kill it:
+   ```bash
+   netstat -ano | findstr :3001   # note the PID in the last column
+   taskkill /PID <pid> /F
+   ```
+2. **RabbitMQ/Kong containers not running, or RabbitMQ still booting.**
+   `admin-service` and `notification-service` both `process.exit(1)` on any
+   RabbitMQ connection failure at startup — no retry. If RabbitMQ was just
+   started (`docker start mindora-rabbitmq`), it takes on the order of a
+   minute to become healthy; if either service tried to connect before that,
+   it will have already exited and `tsx watch` will **not** restart it (only
+   file changes trigger a restart). Once RabbitMQ reports healthy
+   (`docker inspect mindora-rabbitmq --format '{{.State.Health.Status}}'`),
+   restart just those two:
+   ```bash
+   npx turbo run dev --filter=@mindora/admin-service --filter=@mindora/notification-service
+   ```
 
 ---
 

@@ -42,9 +42,25 @@ See root `.env.example`. Key vars:
 
 ## Seed users
 
-```bash
-npm run db:seed
-```
+> **⚠️ Broken as of 2026-07-30.** `npm run db:seed` (root) migrates/seeds the
+> orphaned `@mindora/database` package, not the `mindora_auth` database this
+> service actually reads from (`AUTH_DATABASE_URL`). Confirmed by direct
+> query: **none of the 4 accounts below currently exist in `mindora_auth` (or
+> anywhere else).** There is no working seed path for them right now — this
+> table describes the intended dev accounts, not something you can currently
+> get by running a command. See the root `README.md`'s Known Issues section.
+>
+> What **does** work:
+>
+> ```bash
+> npm run seed -w @mindora/auth-service
+> ```
+>
+> This seeds 30 fixed-UUID `THERAPIST` accounts with a shared dummy password
+> (`Seeded-Therapist-Not-A-Real-Login-1!`) — not real logins, they exist only
+> so `appointment-service`'s cross-service therapist check resolves. Pair
+> with `npm run db:seed:profiles -w` in user-service for the matching
+> profile data (8 of the 30 have a seeded photo — see root `CHANGELOG.md`).
 
 | Role      | Email                           | Password         |
 | --------- | ------------------------------- | ---------------- |

@@ -29,7 +29,7 @@
     "express": "^4.21.2",
     "supertest": "^7.1.0",
     "typescript": "^5.8.2",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.10"
   },
   "peerDependencies": {
     "express": ">=4.21.2"

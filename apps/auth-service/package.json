@@ -18,6 +18,7 @@
     "start": "node dist/index.js",
     "lint": "eslint src/",
     "test": "vitest run",
+    "seed": "tsx src/seed.ts",
     "generate:service-token": "tsx scripts/generate-service-token.ts",
     "backfill:lowercase-emails": "tsx scripts/backfill-lowercase-emails.ts",
     "docs:generate": "tsx src/docs/generate.ts"

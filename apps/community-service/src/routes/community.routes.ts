@@ -17,6 +17,7 @@ import {
   authenticatedRouteLimiter,
   publicRouteLimiter,
 } from '../middleware/rate-limit.js';
+import { asyncHandler } from '../middleware/async-handler.js';
 
 const router = Router();
 
@@ -120,7 +121,7 @@ router.post(
   authenticatedRouteLimiter,
   authenticate,
   requireRole('ADMIN'),
-  async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     const result = CreateGroupDto.safeParse(req.body);
 
     if (!result.success) {
@@ -152,7 +153,7 @@ router.post(
       console.error('Create group error:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
-  }
+  })
 );
 
 /**
@@ -196,7 +197,7 @@ router.post(
 router.get(
   '/groups',
   publicRouteLimiter,
-  async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(
       50,
@@ -220,7 +221,7 @@ router.get(
       console.error('List groups error:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
-  }
+  })
 );
 
 /**
@@ -287,7 +288,7 @@ router.post(
   '/groups/:id/posts',
   authenticatedRouteLimiter,
   authenticate,
-  async (req: AuthenticatedRequest, res: Response) => {
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id as string)) {
@@ -340,7 +341,7 @@ router.post(
       console.error('Create post error:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
-  }
+  })
 );
 
 /**
@@ -392,7 +393,7 @@ router.post(
   '/groups/:id/posts/:postId/comments',
   authenticatedRouteLimiter,
   authenticate,
-  async (req: AuthenticatedRequest, res: Response) => {
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const id = req.params.id as string;
     const postId = req.params.postId as string;
 
@@ -449,7 +450,7 @@ router.post(
       console.error('Create comment error:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
-  }
+  })
 );
 
 /**
@@ -517,7 +518,7 @@ router.post(
   '/groups/:id/posts/:postId/react',
   authenticatedRouteLimiter,
   authenticate,
-  async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     const postId = req.params.postId as string;
 
     if (!mongoose.Types.ObjectId.isValid(postId)) {
@@ -564,7 +565,7 @@ router.post(
       console.error('React to post error:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
-  }
+  })
 );
 
 /**
@@ -608,7 +609,7 @@ router.post(
   '/reports',
   authenticatedRouteLimiter,
   authenticate,
-  async (req: AuthenticatedRequest, res: Response) => {
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { contentId, contentType, reason } = req.body;
 
     if (!contentId || !contentType || !reason) {
@@ -669,7 +670,7 @@ router.post(
       console.error('Create report error:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
-  }
+  })
 );
 /**
  * @swagger
@@ -730,7 +731,7 @@ router.post(
 router.get(
   '/groups/:id/posts',
   publicRouteLimiter,
-  async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const groupId = id as string;
 
@@ -776,7 +777,7 @@ router.get(
       console.error('List posts error:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
-  }
+  })
 );
 
 // INTERNAL SERVICE ENDPOINT — not exposed through the public Kong
@@ -786,7 +787,7 @@ internalRouter.get(
   '/internal/community/reports',
   authenticatedRouteLimiter,
   authenticate,
-  async (req: AuthenticatedRequest, res: Response) => {
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     if (req.user?.role !== 'SERVICE') {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -822,7 +823,7 @@ internalRouter.get(
       console.error('List reports error:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
-  }
+  })
 );
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
@@ -832,7 +833,7 @@ internalRouter.put(
   '/internal/community/reports/:id/resolve',
   authenticatedRouteLimiter,
   authenticate,
-  async (req: AuthenticatedRequest, res: Response) => {
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     if (req.user?.role !== 'SERVICE') {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -880,7 +881,7 @@ internalRouter.put(
       console.error('Resolve report error:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
-  }
+  })
 );
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
@@ -892,7 +893,7 @@ internalRouter.get(
   '/internal/community/posts/:postId/author',
   authenticatedRouteLimiter,
   authenticate,
-  async (req: AuthenticatedRequest, res: Response) => {
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     if (req.user?.role !== 'SERVICE') {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -914,7 +915,7 @@ internalRouter.get(
       console.error('Decrypt post author error:', error);
       return res.status(500).json({ error: 'Internal server error' });
     }
-  }
+  })
 );
 
 export default router;
