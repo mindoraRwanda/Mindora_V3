@@ -3,6 +3,95 @@
 Notable backend changes, newest first. This is a working log for the team, not
 a public release changelog — entries describe what changed and why.
 
+## 2026-08-12
+
+### Security — Socket.io layer was completely unauthenticated (messaging-service)
+
+**Breaking change to the socket contract.** Until now the socket layer had no
+authentication whatsoever. It trusted whatever `userId` / `senderId` a client
+put in each event payload, and never checked room membership — so any client
+that could reach port 3006 could join any conversation, read its history, send
+messages as any user, and forge read receipts. Only the REST layer was
+protected. In an app where message bodies are otherwise encrypted at rest,
+this was the weakest link.
+
+- **Handshake auth** (`io.use`): connections now require a valid access token
+  (`io(url, { auth: { token } })`), verified with the same secret/issuer as the
+  REST layer, and rejected if the token has been blacklisted by logout.
+- **All handlers derive the acting user from the token.** `senderId` and
+  `userId` in event payloads are ignored. `send_message` with a spoofed
+  `senderId` now records the authenticated user.
+- **Participant authorization** on `join_conversation`, `send_message`,
+  `mark_read` and `mark_conversation_read` via a shared `loadOwnConversation`
+  helper. Invalid id / missing conversation / not-a-participant all return the
+  same `Conversation not found`, so callers can't probe which ids exist.
+- **`mark_read` is now scoped** to `{ _id, conversationId, senderId: { $ne: caller } }`
+  — previously a mismatched id pair could reach a message in a different
+  conversation, and you could mark your own messages read.
+
+**Frontend impact:** clients must pass the token in the handshake, and can drop
+`userId`/`senderId` from payloads.
+
+### Added — WhatsApp-style delivery/read ticks
+
+- **`Message.deliveredAt`** (new field). Gives the three states: sent
+  (`deliveredAt: null` → one tick), delivered (→ two ticks), read (`readAt` →
+  blue). Neither field is ever cleared once set, so **ticks only move
+  forwards** — unlike a presence-derived approximation, which would drop from
+  two ticks back to one when the recipient went offline without reading.
+- Delivery is recorded when the recipient's socket is already in the room at
+  send time (via adapter-aware `fetchSockets()`, so it stays correct across
+  server instances), or when they next join the conversation. Broadcast as
+  **`messages_delivered`**.
+- Reading implies delivery: `deliveredAt` is backfilled on read, but only when
+  it was never set, so the timestamp keeps meaning "first arrived".
+
+### Added — `mark_conversation_read` (bulk)
+
+Opening a chat with N unread messages previously meant emitting N separate
+`mark_read` events, each doing its own `findOneAndUpdate` plus a counter
+decrement. The new event does the whole conversation in two writes and one
+`conversation_read` broadcast, and resets `unreadCount` to 0 rather than
+decrementing N times.
+
+### Fixed — typing indicator could stick forever
+
+`typing_start` set a Redis key with a 5 s TTL, but **key expiry emits nothing**
+— so if the sender's tab died mid-compose the recipient never received
+`user_stopped_typing` and the indicator stayed up indefinitely. Added a
+server-side timer per (conversation, user) that emits the stop event when the
+TTL lapses, plus explicit cleanup on `disconnect` that both emits the stop and
+clears pending timers (which also fixes a per-conversation timer leak).
+
+### Fixed — mood endpoints returned an opaque 500 for a non-UUID token subject
+
+`mood_entries.user_id` is a `uuid` column and `/summary` casts it explicitly
+(`${userId}::uuid`), so a token whose `sub` wasn't a UUID made Postgres throw
+deep inside the query. That surfaced as `500 Internal server error` — looking
+like a server fault when it was really a malformed credential. `verifyJwt` in
+mood-tracking-service now rejects such tokens with a `401` that names the
+problem. **SERVICE tokens are exempt** — they carry a service name as the
+subject (`sub: "community-service"`) and the SERVICE-only routes never query by
+user id. The `/report/:userId` path parameter is guarded for the same reason.
+
+### Fixed — 500 responses used the wrong JSON key in two services
+
+The global error middleware added during the async-crash audit returned
+`{ error: ... }`, but `mood-tracking-service` (28 responses) and
+`admin-service` (12) use `{ message: ... }` everywhere else. Clients reading
+`.message` saw `undefined` and fell back to "Unknown error", which made a real
+500 impossible to diagnose from the frontend. Both now return `{ message }`.
+`community-service` and `messaging-service` genuinely use `error` throughout
+and were left alone.
+
+**Verification:** `tsc --noEmit` clean; messaging-service 39/39 tests (the 9
+socket tests were rewritten for the authenticated handshake, plus 4 new ones
+covering token rejection, outsider access, and senderId spoofing);
+mood-tracking-service 13/13; plus a 16-check live end-to-end run against the
+running services covering handshake rejection, outsider join, the full
+sent→delivered→read tick progression, spoof rejection, typing auto-expiry, and
+typing cleanup on disconnect.
+
 ## 2026-08-07
 
 ### Added — Mood check-in: today-status, editing, backdating, dashboard summary

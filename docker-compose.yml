@@ -11,8 +11,16 @@
 # ${VAR:-default} substitution pattern already used by the kong service's
 # JWT_SECRET, sourced from a root .env file that `docker compose` auto-loads.
 x-app-env: &app-env
+  # Drives cookie Secure/SameSite (auth-service) and the fail-fast checks on
+  # JWT_SECRET / MESSAGE_ENCRYPTION_KEY. Left as development here on purpose:
+  # deployments must set NODE_ENV=production, which also switches the refresh
+  # cookie to SameSite=None; Secure so it survives a cross-domain frontend.
+  NODE_ENV: ${NODE_ENV:-development}
   JWT_SECRET: ${JWT_SECRET:-mindora-dev-jwt-secret-change-in-production}
   JWT_ISSUER: ${JWT_ISSUER:-mindora-auth}
+  # Messages and lastMessage previews are AES-256-GCM encrypted at rest.
+  # Production refuses to boot on the dev default.
+  MESSAGE_ENCRYPTION_KEY: ${MESSAGE_ENCRYPTION_KEY:-mindora-dev-message-key-32bytes!!}
 
 services:
   postgres:
@@ -104,13 +112,22 @@ services:
     restart: unless-stopped
     environment:
       KONG_DATABASE: 'off'
-      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      # Pointed at the *rendered* config by the entrypoint below — kong.yml is
+      # a template containing ${JWT_SECRET} / ${KONG_CORS_ORIGINS}.
       KONG_PROXY_LISTEN: '0.0.0.0:8000'
       KONG_ADMIN_LISTEN: '0.0.0.0:8001'
       KONG_LOG_LEVEL: notice
+      # The dev default only applies locally; deployments must set a real
+      # value or the entrypoint refuses to start.
       JWT_SECRET: ${JWT_SECRET:-mindora-dev-jwt-secret-change-in-production}
+      # Comma-separated allowlist. Add the deployed frontend origin here —
+      # '*' is rejected, because credentials: true is on.
+      KONG_CORS_ORIGINS: ${KONG_CORS_ORIGINS:-http://localhost:3000}
+    entrypoint: ['/kong-entrypoint.sh']
+    command: ['kong', 'docker-start']
     volumes:
       - ./infrastructure/kong/kong.yml:/kong/kong.yml:ro
+      - ./infrastructure/kong/docker-entrypoint.sh:/kong-entrypoint.sh:ro
     ports:
       - '8000:8000'
       - '8001:8001'
@@ -436,6 +453,34 @@ services:
           '--tries=1',
           '--spider',
           'http://localhost:3009/health',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Aggregates the other services' OpenAPI specs. No database or broker, so no
+  # depends_on — it serves docs whether or not the upstreams are reachable.
+  docs-gateway:
+    build:
+      context: .
+      dockerfile: apps/docs-gateway/Dockerfile
+    container_name: mindora-docs-gateway
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      DOCS_GATEWAY_PORT: 3010
+    ports:
+      - '3010:3010'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'wget',
+          '--no-verbose',
+          '--tries=1',
+          '--spider',
+          'http://localhost:3010/health',
         ]
       interval: 10s
       timeout: 5s

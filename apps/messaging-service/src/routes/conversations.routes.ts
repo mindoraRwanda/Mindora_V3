@@ -227,7 +227,9 @@ router.get(
           participantName: participantId
             ? (nameMap.get(participantId) ?? null)
             : null,
-          lastMessage: c.lastMessage?.content ?? null,
+          lastMessage: c.lastMessage?.content
+            ? decryptContent(c.lastMessage.content)
+            : null,
           lastMessageAt: c.lastMessage?.sentAt ?? null,
           unreadCount: unreadMap.get(c._id.toString()) ?? 0,
         };

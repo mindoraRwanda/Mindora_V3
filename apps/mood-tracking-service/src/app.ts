@@ -31,7 +31,10 @@ export function createApp() {
   // dropped DB connection) returns a 500 instead of crashing the process.
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error('Unhandled error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    // `message`, not `error` — every other response this service returns uses
+    // `message`, and clients read that key. Mismatching it here made genuine
+    // 500s surface on the frontend as "Unknown error".
+    res.status(500).json({ message: 'Internal server error' });
   });
 
   return app;

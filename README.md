@@ -264,36 +264,59 @@ is encrypted at rest with AES-256-GCM.
 
 #### Socket.io events
 
-Connect to `ws://localhost:3006`. After connecting, emit `register_presence` to appear online.
+**Connections are authenticated.** Connect to `ws://localhost:3006` (directly —
+there is no `/socket.io/` route in Kong) passing the access token in the
+handshake:
+
+```js
+const socket = io('http://localhost:3006', { auth: { token: accessToken } });
+```
+
+A missing, invalid, or logout-revoked token is rejected with a `connect_error`
+carrying `Unauthorized: …`. Every handler derives the acting user from that
+token — **`userId` / `senderId` in event payloads are ignored**, and each
+conversation-scoped event verifies the caller is a participant. "Not found",
+"invalid id" and "not yours" all return `Conversation not found` so callers
+can't probe which conversation ids exist.
 
 **Client → Server**
 
-| Event                 | Payload                                 | Description                                               |
-| --------------------- | --------------------------------------- | --------------------------------------------------------- |
-| `register_presence`   | `{ userId }`                            | Mark user online (90 s Redis TTL).                        |
-| `heartbeat`           | —                                       | Refresh presence TTL every 30 s.                          |
-| `logout_presence`     | —                                       | Remove presence key immediately on tab close.             |
-| `create_conversation` | `{ participants: [id, id] }`            | Create/retrieve a conversation without HTTP.              |
-| `join_conversation`   | `{ conversationId }`                    | Join room; receives `message_history` (last 50 messages). |
-| `send_message`        | `{ conversationId, content, senderId }` | Persist and broadcast a message.                          |
-| `mark_read`           | `{ conversationId, messageId }`         | Mark message read; notifies sender.                       |
-| `typing_start`        | `{ conversationId, userId }`            | Broadcast typing indicator (5 s auto-expiry).             |
-| `typing_stop`         | `{ conversationId, userId }`            | Clear typing indicator.                                   |
+| Event                    | Payload                         | Description                                                                                      |
+| ------------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `register_presence`      | — (payload ignored)             | Mark user online (60 s Redis TTL).                                                               |
+| `heartbeat`              | —                               | Refresh presence TTL every 30 s.                                                                 |
+| `logout_presence`        | —                               | Remove presence key immediately on tab close.                                                    |
+| `create_conversation`    | `{ participants: [id, id] }`    | Create/retrieve a conversation. Caller must be one of the participants.                          |
+| `join_conversation`      | `{ conversationId }`            | Join room; receives `message_history` (last 50), then marks the other side's messages delivered. |
+| `send_message`           | `{ conversationId, content }`   | Persist and broadcast. `senderId` is taken from the token, not the payload.                      |
+| `mark_read`              | `{ conversationId, messageId }` | Mark one message read; notifies the sender.                                                      |
+| `mark_conversation_read` | `{ conversationId }`            | Mark **all** unread messages from the other participant read, in two writes and one broadcast.   |
+| `typing_start`           | `{ conversationId }`            | Broadcast typing indicator (5 s server-enforced expiry).                                         |
+| `typing_stop`            | `{ conversationId }`            | Clear typing indicator.                                                                          |
 
 **Server → Client**
 
-| Event                  | Payload                                                 | Description                                           |
-| ---------------------- | ------------------------------------------------------- | ----------------------------------------------------- |
-| `conversation_created` | `{ _id, participants }`                                 | Response to `create_conversation`.                    |
-| `joined_conversation`  | `{ conversationId }`                                    | Confirms room join.                                   |
-| `message_history`      | `{ conversationId, messages[] }`                        | Last 50 messages on join.                             |
-| `new_message`          | `{ _id, conversationId, senderId, content, createdAt }` | Broadcast to all room members.                        |
-| `message_read`         | `{ conversationId, messageId }`                         | Sent to the room (excluding original sender) on read. |
-| `user_typing`          | `{ conversationId, userId }`                            | Broadcast on `typing_start`.                          |
-| `user_stopped_typing`  | `{ conversationId, userId }`                            | Broadcast on `typing_stop`.                           |
-| `error`                | `{ message }`                                           | Emitted for any validation or server error.           |
+| Event                  | Payload                                                                      | Description                                                         |
+| ---------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `conversation_created` | `{ _id, participants }`                                                      | Response to `create_conversation`.                                  |
+| `joined_conversation`  | `{ conversationId, participant }`                                            | Confirms room join; includes the other participant's resolved name. |
+| `message_history`      | `{ conversationId, messages[] }`                                             | Last 50 messages on join (each with `deliveredAt`, `readAt`).       |
+| `new_message`          | `{ _id, conversationId, senderId, content, createdAt, deliveredAt, readAt }` | Broadcast to all room members.                                      |
+| `messages_delivered`   | `{ conversationId, messageIds[], deliveredAt, deliveredTo }`                 | Recipient received them — advances one tick to two.                 |
+| `message_read`         | `{ conversationId, messageId, readAt, readBy }`                              | Single message read.                                                |
+| `conversation_read`    | `{ conversationId, messageIds[], readAt, readBy }`                           | Response to `mark_conversation_read` — blue ticks.                  |
+| `user_typing`          | `{ conversationId, userId }`                                                 | Broadcast on `typing_start`.                                        |
+| `user_stopped_typing`  | `{ conversationId, userId }`                                                 | On `typing_stop`, on 5 s expiry, or on disconnect.                  |
+| `presence_changed`     | `{ userId, online, lastSeen }`                                               | A tracked user's presence changed.                                  |
+| `error`                | `{ message }`                                                                | Emitted for any validation or server error.                         |
 
-**Data models (MongoDB):** `Conversation` (participants[2], lastMessage), `Message` (conversationId, senderId, content, readAt)
+**Read-receipt ticks.** `deliveredAt` and `readAt` on each message give the
+three WhatsApp-style states: sent (`deliveredAt: null`), delivered
+(`deliveredAt` set → two ticks), read (`readAt` set → blue). Neither field is
+ever cleared once set, so ticks only move forwards. Delivery is recorded when
+the recipient's socket is in the room at send time, or when they next join.
+
+**Data models (MongoDB):** `Conversation` (participants[2], lastMessage), `Message` (conversationId, senderId, content, deliveredAt, readAt)
 
 ---
 

@@ -34,7 +34,11 @@ import {
   getPasswordResetUserId,
   storePasswordResetToken,
 } from '../lib/redis.js';
-import { clearRefreshCookie, issueAuthSession } from '../lib/session.js';
+import {
+  clearRefreshCookie,
+  issueAuthSession,
+  refreshCookieOptions,
+} from '../lib/session.js';
 import {
   createRefreshToken,
   getRefreshTokenExpiry,
@@ -235,11 +239,8 @@ authRouter.post(
     });
 
     res.cookie(config.cookieName, newRefreshToken, {
-      httpOnly: true,
-      secure: config.isProduction,
-      sameSite: 'lax',
+      ...refreshCookieOptions(),
       maxAge: config.refreshTokenDays * 24 * 60 * 60 * 1000,
-      path: '/',
     });
 
     res.status(200).json({ accessToken });

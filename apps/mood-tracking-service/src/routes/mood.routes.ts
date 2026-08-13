@@ -276,6 +276,14 @@ moodRouter.get(
     }
 
     const patientId = routeParam(req.params.userId);
+    // Same reason as the token-subject guard: this id reaches a `uuid` column
+    // and a `::uuid` cast in computeWeeklyInsights, so a malformed value would
+    // throw inside the query and surface as an opaque 500.
+    if (!UUID_PATTERN.test(patientId)) {
+      res.status(404).json({ message: 'No mood data for patient' });
+      return;
+    }
+
     const since = new Date();
     since.setUTCDate(since.getUTCDate() - 30);
 

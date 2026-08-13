@@ -51,7 +51,9 @@ export function createApp() {
   // Global error handler
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error('[admin-service] Unhandled error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    // `message`, not `error` — matches this service's own route responses so
+    // clients can read a single key.
+    res.status(500).json({ message: 'Internal server error' });
   });
 
   return app;
