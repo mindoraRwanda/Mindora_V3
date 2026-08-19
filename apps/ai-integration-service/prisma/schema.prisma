@@ -30,6 +30,33 @@ model AiInteraction {
   @@map("ai_interactions")
 }
 
+// Durable record of a crisis detection, written to this service's own
+// database before the user is answered.
+//
+// Previously a Level 5 disclosure existed only as a fire-and-forget RabbitMQ
+// publish: the route returned before writing any ai_interactions row, so if
+// the broker was briefly down there was no record anywhere that a user had
+// disclosed an active plan. This table is the source of truth; the RabbitMQ
+// publish (which populates the clinician queue in Admin Service) is treated
+// as delivery of that record and retried until it succeeds.
+model CrisisAlert {
+  id           String    @id @default(uuid())
+  user_id      String
+  session_id   String?
+  crisis_level Int       @db.SmallInt
+  detected_at  DateTime  @default(now()) @db.Timestamptz
+  // Delivery bookkeeping for the outbox sweeper.
+  published    Boolean   @default(false)
+  published_at DateTime? @db.Timestamptz
+  attempts     Int       @default(0)
+  last_error   String?
+
+  // Sweeper scans for undelivered rows oldest-first.
+  @@index([published, detected_at])
+  @@index([user_id])
+  @@map("crisis_alerts")
+}
+
 // Links a Mindora patient to their account on the external Therapy Chatbot
 // API (a separate service with its own signup/login and conversation
 // history — see src/chatbotClient.ts). One row per patient; the chatbot
@@ -39,7 +66,10 @@ model ChatbotAccount {
   mindora_user_id  String    @unique
   chatbot_user_id  String
   chatbot_email    String
-  // AES-256-GCM encryption is applied at the application layer before writing this field
+  // AES-256-GCM encryption is applied at the application layer before writing
+  // this field, and access_token below — both are live credentials for that
+  // patient's chat account. Read them back through decrypt() in
+  // src/chatbotClient.ts, never directly.
   chatbot_password String
   access_token     String?
   token_expires_at DateTime? @db.Timestamptz

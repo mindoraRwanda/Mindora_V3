@@ -15,6 +15,7 @@
     "dev:auth": "turbo run dev --filter=@mindora/auth-service",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "smoke:gateway": "node scripts/smoke-gateway.mjs",
     "format": "prettier --write \"**/*.{ts,js,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,md,yml,yaml}\"",
     "db:generate": "npm run generate -w @mindora/database",

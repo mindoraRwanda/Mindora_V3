@@ -131,6 +131,11 @@ curl http://localhost:3001/health
 
 # Via Kong gateway
 curl http://localhost:8000/api/v1/auth/health
+
+# Every service, routed through Kong — checks the gateway wiring, not the
+# services themselves. See "Gateway smoke test" under Testing for why a
+# green `npm run test` does not cover this.
+npm run smoke:gateway
 ```
 
 ## Project structure
@@ -551,6 +556,20 @@ varies by how the spec is generated:
 | `npm run db:seed:mood`         | Seed mood-tracking-service                                                                                                                                             |
 | `npm run db:seed:community`    | Seed community-service MongoDB data                                                                                                                                    |
 | `npm run db:generate`          | Regenerate Prisma client for `@mindora/database` — **not** the per-service clients, run `npx prisma generate` inside each service for those                            |
+| `npm run smoke:gateway`        | Check every service is reachable **through Kong**. Needs a running stack; not part of `npm run test`. `GATEWAY_URL=` to target a deployed gateway                      |
+
+---
+
+## Documentation
+
+| Document                                                       | What it covers                                                                                             |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| [`CHANGELOG.md`](./CHANGELOG.md)                               | Working log of notable backend changes, newest first — what changed and why                                |
+| [`DEPLOYMENT.md`](./DEPLOYMENT.md)                             | How to deploy, written for someone who has not worked on the codebase. **Read its Blockers section first.** |
+| [`docs/ai-safety-handoff.md`](./docs/ai-safety-handoff.md)     | Crisis detection/response gaps handed to the AI team and clinical lead. Gates launch to real users.         |
+| [`docs/ai-integration-backlog.md`](./docs/ai-integration-backlog.md) | Known engineering gaps in the chatbot integration. Non-blocking.                                      |
+| `docs/*.yaml`                                                  | OpenAPI specs, also served per-service at `/docs` and aggregated by docs-gateway                           |
+| [`BACKEND_COMPLETE.md`](./BACKEND_COMPLETE.md)                 | Sprint-by-sprint record of what was built                                                                  |
 
 ---
 
@@ -570,6 +589,33 @@ Tests use **Vitest** and run via Turborepo (`npm run test`).
 | `@mindora/validation`             | Unit                               | all Zod schema shapes                                                                                         |
 
 > Auth and user service tests mock ioredis using `vi.fn().mockImplementation(class { ... })` — the Vitest 4.x constructor-mock pattern.
+
+### Gateway smoke test — the gap `npm run test` cannot cover
+
+Every suite above drives Express directly through supertest, so **nothing in
+`npm run test` crosses Kong**. That leaves the gateway's path handling
+untested, and the same bug shipped four separate times: `community-api`,
+`ai-api`, `messaging-api` and `notification-api` each had `strip_path: true`
+while the service expected the full `/api/v1/<name>/...` path. Every route
+404s, health checks stay green, and it is only ever found by a person clicking
+through the UI.
+
+```bash
+npm run smoke:gateway                          # against local docker-compose
+GATEWAY_URL=https://api.mindora.rw npm run smoke:gateway
+```
+
+It requests one real route per service and passes on 200/401/403 — the
+question is whether the request *reached the right service*, not whether the
+caller is authorized. It fails on Express's `Cannot GET /x` (Kong forwarded a
+path the service does not serve), Kong's `no Route matched`, and 502/503.
+Exits non-zero, so CI can run it against a live stack.
+
+**When you add a service, add it to `CHECKS` in
+[`scripts/smoke-gateway.mjs`](./scripts/smoke-gateway.mjs)** — a service missing
+from that list is a service whose gateway wiring nothing verifies. Probe paths
+must not 404 on missing data, or a legitimate empty response is indistinguishable
+from a broken route.
 
 ---
 

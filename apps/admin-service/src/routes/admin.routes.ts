@@ -470,17 +470,27 @@ adminRouter.get(
       return;
     }
 
-    const { page, limit } = parsed.data;
+    const { page, limit, acknowledged } = parsed.data;
     const skip = (page - 1) * limit;
-    const where = { resolved: false };
+    const where = {
+      resolved: false,
+      ...(acknowledged === undefined
+        ? {}
+        : acknowledged
+          ? { acknowledgedAt: { not: null } }
+          : { acknowledgedAt: null }),
+    };
+
+    // Unacknowledged is a triage queue, so oldest first — the alert that has
+    // gone unseen longest is the one that needs attention. Every other view
+    // keeps newest-first.
+    const orderBy =
+      acknowledged === false
+        ? ({ createdAt: 'asc' } as const)
+        : ({ createdAt: 'desc' } as const);
 
     const [alerts, total] = await Promise.all([
-      prisma.system_alerts.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
+      prisma.system_alerts.findMany({ where, orderBy, skip, take: limit }),
       prisma.system_alerts.count({ where }),
     ]);
 
@@ -515,6 +525,70 @@ adminRouter.put(
     });
 
     res.status(200).json({ message: 'Alert resolved', id });
+  })
+);
+
+// Acknowledge — a named clinician confirms they have SEEN this alert.
+//
+// Deliberately separate from /resolve: resolving says the situation was dealt
+// with, acknowledging says a human has eyes on it. For a crisis alert the
+// time between raised and acknowledged is the number that matters, and
+// collapsing the two would make an alert nobody has opened indistinguishable
+// from one that is merely still open.
+//
+// Idempotent: re-acknowledging keeps the FIRST acknowledgement, so the
+// original response time is not overwritten by a later viewer.
+adminRouter.put(
+  '/alerts/:id/acknowledge',
+  asyncHandler(async (req, res) => {
+    const authReq = req as unknown as AuthenticatedRequest;
+    const id = req.params.id as string;
+
+    const alert = await prisma.system_alerts.findUnique({ where: { id } });
+    if (!alert) {
+      res.status(404).json({ error: 'Alert not found' });
+      return;
+    }
+
+    if (alert.acknowledgedAt) {
+      res.status(200).json({
+        message: 'Alert already acknowledged',
+        id,
+        acknowledgedAt: alert.acknowledgedAt,
+        acknowledgedBy: alert.acknowledgedBy,
+      });
+      return;
+    }
+
+    const acknowledgedAt = new Date();
+    await prisma.system_alerts.update({
+      where: { id },
+      data: { acknowledgedAt, acknowledgedBy: authReq.user!.userId },
+    });
+
+    await prisma.audit_logs.create({
+      data: {
+        adminId: authReq.user!.userId,
+        actionType: 'ALERT_ACKNOWLEDGED',
+        targetId: id,
+        metadata: {
+          eventType: alert.eventType,
+          severity: alert.severity,
+          // How long the alert sat unseen. This is the metric the escalation
+          // policy will eventually be built against.
+          secondsToAcknowledge: Math.round(
+            (acknowledgedAt.getTime() - alert.createdAt.getTime()) / 1000
+          ),
+        },
+      },
+    });
+
+    res.status(200).json({
+      message: 'Alert acknowledged',
+      id,
+      acknowledgedAt,
+      acknowledgedBy: authReq.user!.userId,
+    });
   })
 );
 

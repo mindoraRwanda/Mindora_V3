@@ -7,7 +7,7 @@
 // first three hours of every day.
 
 /** The calendar date (YYYY-MM-DD) that `instant` falls on in `timeZone`. */
-function ymdInTimeZone(instant: Date, timeZone: string): string {
+export function ymdInTimeZone(instant: Date, timeZone: string): string {
   // en-CA formats as YYYY-MM-DD, which is already the shape we want.
   return new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -57,10 +57,24 @@ function localMidnightUtc(ymd: string, timeZone: string): Date {
   return new Date(asIfUtc - offsetMsAt(new Date(firstPass), timeZone));
 }
 
-function addDays(ymd: string, days: number): string {
+/**
+ * Calendar arithmetic on a YYYY-MM-DD string, independent of any zone.
+ *
+ * Parsing as UTC is deliberate: these are date labels, not instants, and UTC
+ * has no DST, so "the day before 2026-03-30" is the same answer everywhere.
+ */
+export function addDays(ymd: string, days: number): string {
   const next = new Date(Date.parse(`${ymd}T00:00:00Z`));
   next.setUTCDate(next.getUTCDate() + days);
   return next.toISOString().slice(0, 10);
+}
+
+/** Whole days from `from` to `to`, both YYYY-MM-DD. */
+export function daysBetween(from: string, to: string): number {
+  return (
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+    86_400_000
+  );
 }
 
 export interface LocalDayRange {

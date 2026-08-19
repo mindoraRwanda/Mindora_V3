@@ -11,6 +11,16 @@ set -eu
 TEMPLATE="${KONG_CONFIG_TEMPLATE:-/kong/kong.yml}"
 RENDERED="${KONG_CONFIG_RENDERED:-/tmp/kong.rendered.yml}"
 
+# Where the backend services live, the one value that genuinely differs per
+# environment: host.docker.internal under docker compose, or the platform's
+# private DNS name on Railway. No default — guessing it would silently route
+# every request into a black hole.
+if [ -z "${KONG_UPSTREAM_HOST:-}" ]; then
+  echo "FATAL: KONG_UPSTREAM_HOST is not set (e.g. 'host.docker.internal'" >&2
+  echo "       locally, or 'mindorav3.railway.internal' on Railway)." >&2
+  exit 1
+fi
+
 # Fail loudly rather than start a gateway that validates tokens against an
 # empty or placeholder secret.
 if [ -z "${JWT_SECRET:-}" ]; then
@@ -37,22 +47,41 @@ case "${KONG_CORS_ORIGINS}" in
     ;;
 esac
 
-ORIGINS_YAML=$(
-  printf '%s' "${KONG_CORS_ORIGINS}" | tr ',' '\n' | while IFS= read -r origin; do
-    trimmed=$(printf '%s' "$origin" | tr -d ' ')
-    [ -n "$trimmed" ] && printf '\\n        - %s' "$trimmed"
-  done
-)
+# Built as a single-line YAML flow sequence — ["a","b"] — rather than an
+# indented block. A multi-line sed replacement needs embedded newlines, which
+# are not portable across sed implementations and silently truncated the list
+# to its first entry when this was written that way.
+ORIGINS_LIST=""
+OLD_IFS="$IFS"
+IFS=','
+for origin in ${KONG_CORS_ORIGINS}; do
+  trimmed=$(printf '%s' "$origin" | tr -d '[:space:]')
+  [ -z "$trimmed" ] && continue
+  if [ -z "$ORIGINS_LIST" ]; then
+    ORIGINS_LIST="\"${trimmed}\""
+  else
+    ORIGINS_LIST="${ORIGINS_LIST},\"${trimmed}\""
+  fi
+done
+IFS="$OLD_IFS"
+
+if [ -z "$ORIGINS_LIST" ]; then
+  echo "FATAL: KONG_CORS_ORIGINS contained no usable origins." >&2
+  exit 1
+fi
 
 # sed rather than envsubst: envsubst comes from gettext, which is not present
 # in the Kong image.
-sed -e "s|\${JWT_SECRET}|${JWT_SECRET}|g" \
-    -e "s|origins: \${KONG_CORS_ORIGINS}|origins:${ORIGINS_YAML}|" \
+sed -e "s|\${KONG_UPSTREAM_HOST}|${KONG_UPSTREAM_HOST}|g" \
+    -e "s|\${JWT_SECRET}|${JWT_SECRET}|g" \
+    -e "s|origins: \${KONG_CORS_ORIGINS}|origins: [${ORIGINS_LIST}]|" \
     "$TEMPLATE" > "$RENDERED"
 
-if grep -q '\${' "$RENDERED"; then
+# Comment lines are excluded: the template documents its own placeholders in
+# prose, and matching those would fail every render.
+if grep -v '^[[:space:]]*#' "$RENDERED" | grep -q '\${'; then
   echo "FATAL: unsubstituted placeholders remain in the rendered Kong config:" >&2
-  grep -n '\${' "$RENDERED" >&2
+  grep -n '\${' "$RENDERED" | grep -v ':[[:space:]]*#' >&2
   exit 1
 fi
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
@@ -308,10 +308,17 @@ describe('GET /streak', () => {
     vi.clearAllMocks();
     mockIsBlacklisted.mockResolvedValue(false);
     mockMoodFindMany.mockReset();
+    // Two consecutive days ending "today" relative to the faked clock below.
     mockMoodFindMany.mockResolvedValue([
       { recordedAt: new Date('2026-06-10T12:00:00.000Z') },
       { recordedAt: new Date('2026-06-09T12:00:00.000Z') },
     ]);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-10T15:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('returns streak count', async () => {
@@ -323,6 +330,48 @@ describe('GET /streak', () => {
     expect(response.status).toBe(200);
     expect(response.body.streak).toBe(2);
   });
+
+  it('reports 0 once the run is no longer live', async () => {
+    // Same entries, but the clock has moved on well past them — the run ended.
+    vi.setSystemTime(new Date('2026-06-20T09:00:00.000Z'));
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/streak')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.streak).toBe(0);
+    // The date of the last check-in is still worth showing.
+    expect(response.body.lastCheckedIn).toBe('2026-06-10T00:00:00.000Z');
+  });
+
+  it('rejects an unknown time zone', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/streak?timezone=Mars/Olympus_Mons')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(400);
+  });
+
+  it('groups days in the supplied zone', async () => {
+    // 23:00 and 01:00 UTC are two UTC days but a single local day in Kigali
+    // (UTC+3): 02:00 and 04:00 on 2026-06-10. That is one day of streak.
+    mockMoodFindMany.mockResolvedValue([
+      { recordedAt: new Date('2026-06-10T01:00:00.000Z') },
+      { recordedAt: new Date('2026-06-09T23:00:00.000Z') },
+    ]);
+    vi.setSystemTime(new Date('2026-06-10T12:00:00.000Z'));
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/streak?timezone=Africa/Kigali')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.streak).toBe(1);
+  });
 });
 
 describe('mood helpers', () => {
@@ -332,12 +381,64 @@ describe('mood helpers', () => {
   });
 
   it('calculates consecutive streak', () => {
-    const result = calculateStreak([
-      { recordedAt: new Date('2026-06-10T10:00:00.000Z') },
-      { recordedAt: new Date('2026-06-09T09:00:00.000Z') },
-      { recordedAt: new Date('2026-06-08T08:00:00.000Z') },
-    ]);
+    const result = calculateStreak(
+      [
+        { recordedAt: new Date('2026-06-10T10:00:00.000Z') },
+        { recordedAt: new Date('2026-06-09T09:00:00.000Z') },
+        { recordedAt: new Date('2026-06-08T08:00:00.000Z') },
+      ],
+      { now: new Date('2026-06-10T20:00:00.000Z') }
+    );
     expect(result.streak).toBe(3);
+  });
+
+  it('keeps a streak alive when the last check-in was yesterday', () => {
+    // Still savable today, so it has not been broken.
+    const result = calculateStreak(
+      [
+        { recordedAt: new Date('2026-06-09T10:00:00.000Z') },
+        { recordedAt: new Date('2026-06-08T09:00:00.000Z') },
+      ],
+      { now: new Date('2026-06-10T08:00:00.000Z') }
+    );
+    expect(result.streak).toBe(2);
+  });
+
+  it('reports 0 for a run that ended two or more days ago', () => {
+    // The bug this guards: without a liveness check this returned 2 forever,
+    // so a user returning after months was shown a streak they no longer had.
+    const result = calculateStreak(
+      [
+        { recordedAt: new Date('2026-06-09T10:00:00.000Z') },
+        { recordedAt: new Date('2026-06-08T09:00:00.000Z') },
+      ],
+      { now: new Date('2026-06-11T08:00:00.000Z') }
+    );
+    expect(result).toEqual({ streak: 0, lastCheckedIn: '2026-06-09' });
+  });
+
+  it('does not count a lone old entry as a 1-day streak', () => {
+    const result = calculateStreak(
+      [{ recordedAt: new Date('2025-01-05T10:00:00.000Z') }],
+      { now: new Date('2026-06-10T08:00:00.000Z') }
+    );
+    expect(result.streak).toBe(0);
+  });
+
+  it('counts several check-ins in one local day once', () => {
+    const result = calculateStreak(
+      [
+        { recordedAt: new Date('2026-06-10T18:00:00.000Z') },
+        { recordedAt: new Date('2026-06-10T08:00:00.000Z') },
+        { recordedAt: new Date('2026-06-09T09:00:00.000Z') },
+      ],
+      { now: new Date('2026-06-10T20:00:00.000Z') }
+    );
+    expect(result.streak).toBe(2);
+  });
+
+  it('returns 0 and no date for a user with no entries', () => {
+    expect(calculateStreak([])).toEqual({ streak: 0, lastCheckedIn: null });
   });
 });
 

@@ -3,6 +3,200 @@
 Notable backend changes, newest first. This is a working log for the team, not
 a public release changelog — entries describe what changed and why.
 
+## 2026-08-17 — 2026-08-19
+
+### Fixed — Every request to four services 404'd at the gateway
+
+`infrastructure/kong/kong.yml`. A Kong route with `strip_path: true` removes
+the `/api/v1/<name>` prefix before proxying, which is correct only for services
+that mount their routers at the root. Four services expect the full path
+instead, and every one of their routes returned `404 Cannot GET /...` through
+the gateway while their health checks stayed green and their test suites
+stayed passing:
+
+- **`community-api`** and **`ai-api`** — found earlier, `strip_path: false`.
+- **`messaging-api`** — `app.use('/api/v1/messaging/conversations', ...)`.
+  Symptom: the chat UI could not open a conversation at all.
+- **`notification-api`** — the subtle one. It mounts at the root
+  (`app.use(notificationsRouter)`) but bakes the full path into the route,
+  `notificationsRouter.get('/api/v1/notifications/logs')`. **An audit that reads
+  only `app.use()` mounts misses this shape**, which is how it survived a sweep
+  that caught the other three.
+
+No service code changed; the mismatch is entirely in the gateway config.
+
+### Added — `npm run smoke:gateway`
+
+`scripts/smoke-gateway.mjs`. Every service's suite drives Express through
+supertest, so nothing in `npm run test` crosses Kong — which is why the routing
+bug above shipped four times and was found each time by a person clicking
+through the UI.
+
+Requests one real route per service through the gateway and passes on
+200/401/403: the question is whether the request reached the right service, not
+whether the caller is authorized. Fails on Express's `Cannot GET /x`, Kong's
+`no Route matched`, and 502/503. Mints its own token, so it needs no seeded
+credentials, and is strictly read-only. Exits non-zero for CI; `GATEWAY_URL=`
+targets a deployed gateway.
+
+Not wired into `turbo run test` on purpose — it needs a live stack and would
+break CI. Verified by reintroducing the `notification-api` bug and confirming
+the check failed with the specific cause before restoring it.
+
+### Fixed — The mood streak never expired
+
+`apps/mood-tracking-service/src/lib/streak.ts`. `calculateStreak` counted the
+consecutive run ending at the user's most recent entry without checking when
+that entry was, so it reported the length of the last unbroken run the user
+*ever* had. Someone who checked in twice in March still saw "2 days" months
+later, and a single old entry read as a live 1-day streak.
+
+A run now counts only while it is still live: last check-in today (counting) or
+yesterday (still savable). Anything older reports `0`, with `lastCheckedIn`
+still returned so the date can be shown after a lapse. The existing test used
+fixed dates and passed either way; it now injects a clock.
+
+**Behaviour change on the write path:** backfilling only old days no longer
+fires a `mood.streak` milestone event, because the run it belongs to is not
+live. Earning a "7-day streak" notification by backdating a week was never
+intended.
+
+### Added — `GET /streak` accepts `?timezone=`
+
+Streaks are counted in calendar days, so they need the user's zone for the same
+reason `/today` does — plus whether a streak is live depends on what "today"
+and "yesterday" are for that user. Reuses the IANA-validated field from
+`moodTodayQuerySchema` and groups days via the existing `local-day.ts` helpers,
+which are now exported.
+
+Defaults to UTC, so existing clients keep working — but **on the UTC default a
+Kigali user's streak is wrong for the first three hours of each local day**, so
+frontends should send `Intl.DateTimeFormat().resolvedOptions().timeZone`. The
+two call sites with no user zone to hand (the write-path milestone check, and
+the clinician-facing patient summary) stay UTC deliberately, documented at each.
+
+### Added — `AUDIO` session type for appointments
+
+The booking UI offered an "Audio call" option that no request could ever
+satisfy: `AUDIO` existed in neither the Zod enum, the Prisma schemas, nor the
+Postgres enum, so every audio booking returned `400 Validation failed`.
+
+Added across all seven definitions — `packages/validation`,
+`packages/events` (`APPOINTMENT_SESSION_TYPES`), both `schema.prisma` files,
+`docs/appointment-service.yaml`, and migration
+`20260818000000_add_audio_session_type` (`ALTER TYPE ... ADD VALUE`, purely
+additive). The `sessionTypeLabel` switch in notification-service needed a case
+too, or an audio booking would have told the patient "Appointment appointment
+scheduled."
+
+**Still mismatched:** the UI offers only Video and Audio, while the backend
+supports `VIDEO`, `AUDIO`, `IN_PERSON`, `CHAT`. The latter two have no way to
+be selected.
+
+### Added — Structured request logging in auth-service
+
+`src/lib/logger.ts` and `src/middleware/request-log.ts`. One line per event as
+`timestamp LEVEL [tag] message key=value`, no logging dependency — every
+service here logs with plain `console.*` and this keeps that consistent.
+
+- **Request ids.** Every request gets one, echoed as `X-Request-Id` and
+  returned in 500 bodies, so `grep req=3f9c21a8` follows a request through the
+  route logic, the HTTP summary, and any stack trace.
+- **`POST /refresh` now says *why* it rejected.** One opaque 401 covered five
+  causes — no cookie, token unknown, revoked, already rotated, expired — which
+  demand completely different fixes. The diagnosis runs only on the failing
+  path, so the happy path costs nothing.
+- **Session config printed at boot**, plus a warning when the refresh cookie is
+  `SameSite=Lax`: a browser on another origin will not send it to
+  `POST /refresh`, so sessions die when the 15-minute access token does no
+  matter what `refreshTokenDays` says.
+- **`uncaughtException` / `unhandledRejection` handlers.** A crash mid-request
+  previously produced nothing but Node's default stack, and appeared at the
+  frontend only as a gateway 502.
+- Secrets and PII stay out: refresh tokens are logged as an 8-char hash prefix,
+  emails redacted to `p***@example.com`, and login failures record which half
+  failed **only** server-side — the response stays a generic `Invalid
+  credentials` so it is not an account-enumeration oracle.
+
+`LOG_LEVEL=debug` adds the per-request `/health` lines that are suppressed by
+default so Kong's polling does not bury everything else.
+
+### Fixed — `.env` was read after config had already been frozen
+
+`auth`, `mood-tracking`, `appointment` and `user` services each called
+`dotenv.config()` in the body of `index.ts`, below `import { config } from
+'./config.js'`. ES module imports are hoisted and fully evaluated first, so
+`config.ts` read `process.env` **before any `.env` file was loaded** and froze
+the fallbacks.
+
+Each now has a dependency-free `src/env.ts` imported on the first line — the
+pattern `admin`, `ai-integration` and `notification` already used.
+
+**Latent, with no effect on current behaviour**: the only key involved is
+`JWT_SECRET`, and this repo's `.env` sets it to the same value as the dev
+fallback, so nothing observable changed. It would have bitten the moment anyone
+set a real secret — a non-production environment would silently keep signing
+with the secret published in this repo, which is exactly what
+`resolveJwtSecret` exists to prevent.
+
+**`messaging` and `community` were deliberately left alone.** Their
+`import 'dotenv/config'` runs first, so they do not have this bug — but they
+load only their own `.env`, never the root one. Adding root there would change
+which database they use (`MONGO_URI` differs between root and
+`apps/messaging-service/.env`, and community has no `.env` at all). Worth
+deciding separately; until then, a rotated root `JWT_SECRET` would break those
+two while the rest picked it up.
+
+### Added — Durable crisis alerting and admin acknowledgement
+
+Summarised here for the record; both were authored outside this pass, and
+`docs/ai-safety-handoff.md` is the authority on the safety picture.
+
+- **`ai-integration-service`** — new `crisis_alerts` table (migration
+  `20260817000000`). A crisis detection is now written locally *before* the
+  user is answered and treated as the source of truth, with the RabbitMQ
+  publish treated as delivery of that row and retried by a sweeper. Previously
+  the fire-and-forget publish was the only record, so a broker outage meant a
+  disclosure of an active suicide plan left no trace anywhere.
+- **`admin-service`** — `acknowledged_at` / `acknowledged_by` on `system_alerts`
+  (migration `20260817000100`), kept deliberately separate from `/resolve`:
+  resolving says the situation was dealt with, acknowledging says a human has
+  eyes on it. The unacknowledged view is a triage queue and sorts oldest-first.
+
+**The platform remains testers-only** until the detection and response gaps in
+`docs/ai-safety-handoff.md` are resolved. That document, not this entry, is the
+launch gate.
+
+### Fixed — CRLF line endings broke the Kong container
+
+New `.gitattributes` pins `*.sh`, `Dockerfile` and `docker-entrypoint*` to LF.
+A CRLF shebang makes the kernel look for an interpreter literally named
+`/bin/sh\r`, which surfaces as `exec /kong-entrypoint.sh: no such file or
+directory` for a file that is plainly there. This broke the gateway on a
+Windows dev machine and would have broken any deployment built from a Windows
+checkout. Most of the working tree's "modified" files are this normalisation
+rather than content changes.
+
+### Documentation
+
+- **`.env.example` was missing 15 variables that the code reads**, including
+  `NODE_ENV` (which decides whether cross-domain sessions work at all),
+  `RESEND_EMAIL_API_KEY`, the Firebase credential pair, `COMMUNITY_ENCRYPTION_KEY`,
+  `CORS_ALLOWED_ORIGINS`, `JWT_ISSUER` and `LOG_LEVEL`. All now documented with
+  what breaks when they are unset. Audited by diffing every `process.env.X` and
+  Prisma `env("X")` read against the file.
+- **`MONGO_URI` was documented under the wrong name.** The file listed only
+  `MONGODB_URI`, which nothing but
+  `apps/messaging-service/scripts/backfill-encrypt.ts` reads — both community
+  and messaging read `MONGO_URI`. Anyone following `.env.example` left both
+  services on their localhost fallback. Both names are now documented, with the
+  mismatch called out; **the backfill script should be corrected to read
+  `MONGO_URI`** so a data backfill cannot target a different database than the
+  service it is backfilling.
+- **README** gained a documentation index (there was no pointer to
+  `DEPLOYMENT.md`, `CHANGELOG.md` or the AI docs from anywhere), the
+  `smoke:gateway` script, and a Testing subsection explaining the gateway gap.
+
 ## 2026-08-12
 
 ### Security — Socket.io layer was completely unauthenticated (messaging-service)

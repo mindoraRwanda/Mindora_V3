@@ -1,27 +1,41 @@
 _format_version: '3.0'
 
-# Microservices run on the host during local dev (npm run dev).
-# Kong in Docker reaches them via host.docker.internal.
+# Single Kong config for every environment.
+#
+# There used to be a second copy of this file (kong.railway.yml) that differed
+# only in the upstream host. The two drifted: the Railway one kept
+# `origins: ['*']` with credentials enabled, and a committed JWT secret that
+# had to be pasted in by hand before building the image. Both are now
+# ${PLACEHOLDER}s substituted at container start by docker-entrypoint.sh, so
+# there is one file and the environment-specific values are deployment config.
+#
+# ${KONG_UPSTREAM_HOST} is the only thing that varies by environment:
+#   local (docker compose) : host.docker.internal — services run on the host
+#   Railway                : mindorav3.railway.internal — the bundle service's
+#                            private DNS. Confirm against RAILWAY_PRIVATE_DOMAIN
+#                            on that service's Variables tab if it's renamed.
 
 services:
   - name: auth-service
-    url: http://host.docker.internal:3001
+    url: http://${KONG_UPSTREAM_HOST}:3001
   - name: user-service
-    url: http://host.docker.internal:3002
+    url: http://${KONG_UPSTREAM_HOST}:3002
   - name: appointment-service
-    url: http://host.docker.internal:3003
+    url: http://${KONG_UPSTREAM_HOST}:3003
   - name: mood-tracking-service
-    url: http://host.docker.internal:3004
+    url: http://${KONG_UPSTREAM_HOST}:3004
   - name: community-service
-    url: http://host.docker.internal:3005
+    url: http://${KONG_UPSTREAM_HOST}:3005
   - name: messaging-service
-    url: http://host.docker.internal:3006
+    url: http://${KONG_UPSTREAM_HOST}:3006
   - name: ai-integration-service
-    url: http://host.docker.internal:3007
+    url: http://${KONG_UPSTREAM_HOST}:3007
   - name: notification-service
-    url: http://host.docker.internal:3008
+    url: http://${KONG_UPSTREAM_HOST}:3008
   - name: admin-service
-    url: http://host.docker.internal:3009
+    url: http://${KONG_UPSTREAM_HOST}:3009
+  - name: docs-gateway
+    url: http://${KONG_UPSTREAM_HOST}:3010
 
 routes:
   # Public health checks (no JWT) — full path forwarded to each service
@@ -154,6 +168,18 @@ routes:
     service: admin-service
     paths: [/api/v1/admin/health]
     strip_path: false
+    methods: [GET, OPTIONS]
+
+  # Aggregated Swagger UI. No jwt plugin on purpose: a browser loading the
+  # docs page can't attach a Bearer token, so gating it here would just make
+  # it unreachable. It exposes the shape of every endpoint (not data) — if
+  # that's not acceptable in production, drop this route rather than adding
+  # jwt, and reach the docs through the service's own port instead.
+  # strip_path: true because docs-gateway mounts Swagger UI at '/'.
+  - name: docs-gateway-api
+    service: docs-gateway
+    paths: [/docs]
+    strip_path: true
     methods: [GET, OPTIONS]
 
   # Protected API routes (JWT + rate limit)
@@ -301,8 +327,16 @@ routes:
 
   - name: messaging-api
     service: messaging-service
+    # strip_path: false — same mismatch already fixed for community-api and
+    # ai-api above: messaging-service mounts at the full gateway path
+    # (app.use('/api/v1/messaging/conversations', ...), and likewise for
+    # /api/v1/messaging/presence/:userId), so it expects the whole path rather
+    # than the stripped remainder. strip_path: true 404s every messaging route
+    # through the gateway (confirmed: 'Cannot GET /conversations'), which
+    # surfaces in the UI as a chat that will not open. The test suite can't
+    # catch it — supertest hits Express directly and never crosses Kong.
     paths: [/api/v1/messaging]
-    strip_path: true
+    strip_path: false
     plugins:
       - name: jwt
       - name: rate-limiting
@@ -328,8 +362,18 @@ routes:
 
   - name: notification-api
     service: notification-service
+    # strip_path: false — fourth instance of the mismatch fixed for
+    # community-api, ai-api and messaging-api. notification-service mounts its
+    # router at the root (app.use(notificationsRouter)) but bakes the full path
+    # into the route itself, notificationsRouter.get('/api/v1/notifications/logs'),
+    # so it still expects the whole path. strip_path: true forwarded '/logs'
+    # and 404'd ('Cannot GET /logs').
+    #
+    # Worth noting for future audits: reading only the app.use() mounts misses
+    # this shape, because the prefix lives on the route rather than the mount.
+    # scripts/smoke-gateway.mjs checks the behaviour instead of the wiring.
     paths: [/api/v1/notifications]
-    strip_path: true
+    strip_path: false
     plugins:
       - name: jwt
       - name: rate-limiting

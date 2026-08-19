@@ -2,6 +2,7 @@ import './env.js'; // must be first — loads .env before any module reads proce
 import http from 'http';
 import app from './app.js';
 import { connectDatabase } from './database.js';
+import { startCrisisAlertSweeper } from './lib/crisis-alerts.js';
 
 const SERVICE_NAME = 'ai-integration-service';
 const PORT = Number(process.env.AI_SERVICE_PORT) || 3007;
@@ -9,6 +10,11 @@ const PORT = Number(process.env.AI_SERVICE_PORT) || 3007;
 async function start(): Promise<void> {
   try {
     await connectDatabase();
+
+    // Retries crisis alerts that could not be delivered to the clinician
+    // queue when they were raised (typically a RabbitMQ outage). Without it,
+    // an alert recorded during downtime would never reach anyone.
+    startCrisisAlertSweeper();
 
     const server = http.createServer(app);
 

@@ -9,6 +9,7 @@ import { Prisma } from '../generated/prisma/index.js';
 import {
   logMoodSchema,
   moodHistoryQuerySchema,
+  moodStreakQuerySchema,
   moodSummaryQuerySchema,
   moodTodayQuerySchema,
   updateMoodSchema,
@@ -145,6 +146,14 @@ moodRouter.post(
       select: { recordedAt: true },
       orderBy: { recordedAt: 'desc' },
     });
+    // UTC, not the user's zone: the write path has no timezone to work from
+    // (logMoodSchema carries none), and milestone events have always been
+    // counted this way. The entry just written anchors the run, so the
+    // liveness check passes for a normal check-in either way.
+    //
+    // One deliberate consequence: backfilling only old days no longer fires a
+    // milestone, because the run it belongs to is no longer live. Earning a
+    // "7-day streak" push by backdating a week of entries was never intended.
     const { streak, lastCheckedIn } = calculateStreak(allRecordedDays);
     if (
       lastCheckedIn &&
@@ -315,6 +324,9 @@ moodRouter.get(
       return nums.reduce((sum, v) => sum + v, 0) / nums.length;
     };
 
+    // UTC: this is a clinician reading someone else's summary, and the request
+    // carries the *viewer's* context, not the patient's zone. Guessing from
+    // the viewer would be worse than a documented, consistent UTC reading.
     const { streak, lastCheckedIn } = calculateStreak(entries);
     const insights = await computeWeeklyInsights(patientId);
 
@@ -348,13 +360,24 @@ moodRouter.get(
       return;
     }
 
+    const parsed = moodStreakQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
     const entries = await prisma.moodEntry.findMany({
       where: { userId: authReq.user.userId },
       select: { recordedAt: true },
       orderBy: { recordedAt: 'desc' },
     });
 
-    const { streak, lastCheckedIn } = calculateStreak(entries);
+    const { streak, lastCheckedIn } = calculateStreak(entries, {
+      timeZone: parsed.data.timezone,
+    });
     res.status(200).json({
       streak,
       lastCheckedIn: lastCheckedIn ? `${lastCheckedIn}T00:00:00.000Z` : null,

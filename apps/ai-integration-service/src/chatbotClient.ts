@@ -12,7 +12,9 @@ import { decrypt, encrypt } from './lib/crypto.js';
 export class ChatbotApiError extends Error {
   constructor(
     message: string,
-    public readonly status?: number
+    public readonly status?: number,
+    /** Seconds to wait, parsed from Retry-After on a 429. */
+    public readonly retryAfterSeconds?: number
   ) {
     super(message);
     this.name = 'ChatbotApiError';
@@ -76,9 +78,20 @@ async function chatbotFetch(
     );
   }
   if (!response.ok) {
+    // The chatbot rate-limits to 20 messages per user per rolling 60s and
+    // returns Retry-After. Carrying it through lets the route tell the client
+    // how long to wait instead of collapsing this into a generic failure.
+    let retryAfterSeconds: number | undefined;
+    if (response.status === 429) {
+      const header = response.headers.get('retry-after');
+      const parsed = header ? Number(header) : NaN;
+      // Retry-After may also be an HTTP-date; only trust the delta-seconds form.
+      retryAfterSeconds = Number.isFinite(parsed) && parsed >= 0 ? parsed : 60;
+    }
     throw new ChatbotApiError(
       `Therapy chatbot returned ${response.status} for ${path}`,
-      response.status
+      response.status,
+      retryAfterSeconds
     );
   }
   return response;
@@ -122,6 +135,53 @@ async function login(
   return { accessToken: body.access_token };
 }
 
+/**
+ * Deletes the patient's conversation (and its messages) on the chatbot side,
+ * then clears our pointer to it so the next chat starts a fresh one.
+ *
+ * Without this, "delete my data" only ever cleared Mindora's audit copy and
+ * left the actual therapy transcript on the chatbot's servers indefinitely.
+ *
+ * Returns false if there was nothing to delete or the remote refused. The
+ * caller still deletes locally: leaving a user's data on both sides because
+ * one side failed is worse than a partial deletion we can report and retry.
+ */
+export async function deleteChatbotConversation(
+  mindoraUserId: string
+): Promise<boolean> {
+  const account = await prisma.chatbotAccount.findUnique({
+    where: { mindora_user_id: mindoraUserId },
+  });
+  if (!account?.conversation_id) {
+    return false;
+  }
+
+  let deleted = false;
+  try {
+    const { accessToken } = await refreshSession(account);
+    await chatbotFetch(
+      `/auth/conversations/${account.conversation_id}`,
+      { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } },
+      15_000
+    );
+    deleted = true;
+  } catch (err) {
+    console.error(
+      `[chatbot] Remote conversation delete failed for user ${mindoraUserId}:`,
+      err
+    );
+  }
+
+  // Cleared even when the remote call failed — we must not keep handing out a
+  // conversation id the user has asked us to forget.
+  await prisma.chatbotAccount.update({
+    where: { id: account.id },
+    data: { conversation_id: null },
+  });
+
+  return deleted;
+}
+
 async function createConversation(accessToken: string): Promise<string> {
   const res = await chatbotFetch(
     '/auth/conversations',
@@ -136,16 +196,22 @@ async function provisionAccount(mindoraUserId: string) {
   const email = `${mindoraUserId}@mindora-patients.internal`;
   const password = randomBytes(24).toString('hex');
 
-  const { accessToken } = await signup(email, password);
+  const { accessToken, userId: chatbotUserId } = await signup(email, password);
   const conversationId = await createConversation(accessToken);
 
   return prisma.chatbotAccount.create({
     data: {
       mindora_user_id: mindoraUserId,
-      chatbot_user_id: mindoraUserId,
+      // The chatbot's own id for this account, not ours. These are different
+      // systems with different user tables; this previously stored the
+      // Mindora id, making the column useless for correlating with the
+      // chatbot side.
+      chatbot_user_id: chatbotUserId,
       chatbot_email: email,
       chatbot_password: encrypt(password),
-      access_token: accessToken,
+      // Encrypted like the password: this is a live bearer credential for
+      // that patient's chat history, not just a cache key.
+      access_token: encrypt(accessToken),
       token_expires_at: decodeTokenExpiry(accessToken),
       conversation_id: conversationId,
     },
@@ -171,7 +237,7 @@ async function refreshSession(
   await prisma.chatbotAccount.update({
     where: { id: account.id },
     data: {
-      access_token: accessToken,
+      access_token: encrypt(accessToken),
       token_expires_at: decodeTokenExpiry(accessToken),
       conversation_id: conversationId,
     },
@@ -190,7 +256,7 @@ async function getOrCreateSession(
   if (!existing) {
     const created = await provisionAccount(mindoraUserId);
     return {
-      accessToken: created.access_token!,
+      accessToken: decrypt(created.access_token!),
       conversationId: created.conversation_id!,
     };
   }
@@ -202,10 +268,17 @@ async function getOrCreateSession(
     existing.token_expires_at.getTime() - EXPIRY_BUFFER_MS > Date.now();
 
   if (tokenIsFresh) {
-    return {
-      accessToken: existing.access_token!,
-      conversationId: existing.conversation_id!,
-    };
+    try {
+      return {
+        accessToken: decrypt(existing.access_token!),
+        conversationId: existing.conversation_id!,
+      };
+    } catch {
+      // Rows written before the token was encrypted (or after a key change)
+      // won't decrypt. Re-authenticating costs one request and repairs the
+      // row, which is better than failing the patient's message.
+      return refreshSession(existing);
+    }
   }
 
   return refreshSession(existing);

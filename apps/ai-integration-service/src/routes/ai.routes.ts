@@ -3,41 +3,45 @@ import {
   requireRole,
   type AuthenticatedRequest,
 } from '@mindora/auth-middleware';
-import { connect } from '@mindora/queue';
-import { EXCHANGES } from '@mindora/events';
 import { runPreFilter } from '../preFilter.js';
+import { recordCrisisAlert } from '../lib/crisis-alerts.js';
 import { prisma } from '../database.js';
-import { chatWithBot } from '../chatbotClient.js';
-import { encrypt } from '../lib/crypto.js';
+import {
+  chatWithBot,
+  ChatbotApiError,
+  deleteChatbotConversation,
+} from '../chatbotClient.js';
+import { decrypt, encrypt } from '../lib/crypto.js';
 import { asyncHandler } from '../middleware/async-handler.js';
 
 const router = Router();
 
-async function publishCrisisEvent(
-  userId: string,
-  crisisLevel: number,
-  sessionId: string | null
-): Promise<void> {
-  const connection = await connect();
-  const channel = await connection.createChannel();
-  await channel.assertExchange(EXCHANGES.AI, 'fanout', { durable: true });
-  channel.publish(
-    EXCHANGES.AI,
-    '',
-    Buffer.from(
-      JSON.stringify({
-        eventId: crypto.randomUUID(),
-        occurredAt: new Date().toISOString(),
-        userId,
-        sessionId,
-        crisisLevel,
-        timestamp: new Date().toISOString(),
-      })
-    ),
-    { persistent: true, contentType: 'application/json' }
-  );
-  await channel.close();
+// One unreadable row (key rotation, a bad historical write) must not fail the
+// whole history page. Null is honest about the loss; throwing would hide the
+// rest of the user's history behind a 500.
+function safeDecrypt(value: string): string | null {
+  try {
+    return decrypt(value);
+  } catch {
+    return null;
+  }
 }
+
+// Shown verbatim when the pre-filter detects an active plan. Wording supplied
+// by clinical review (Rulinda, 2026-08): it avoids implying the system has
+// independently assessed the person's clinical risk, and points at services
+// rather than asserting a diagnosis.
+//
+// PENDING: the specific helpline numbers this used to hard-code were removed
+// because they had not been verified. Before launch these must be replaced
+// with verified, current services for the user's region, ideally as
+// configuration so they can be corrected without a deploy.
+const CRISIS_RESPONSE =
+  'It sounds like you may be going through a very difficult moment, and you ' +
+  'deserve support from someone who can help you stay safe. Please reach out ' +
+  'to a mental health professional or an appropriate crisis or emergency ' +
+  'service in your area. If you are in immediate danger, please seek urgent ' +
+  'in-person help now. We can also help connect you with appropriate support.';
 
 // POST /api/v1/ai/chat — submit a message to the AI (PATIENT only)
 router.post(
@@ -56,50 +60,84 @@ router.post(
     }
 
     const userId = req.user?.userId;
+    // Checked before the crisis branch, not after: an alert with no user is
+    // undeliverable (the event schema requires a UUID userId, and consumers
+    // drop payloads that fail validation), so 'unknown' would have been a
+    // silently discarded crisis.
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
     const resolvedSessionId = typeof sessionId === 'string' ? sessionId : null;
 
     const crisisLevel = await runPreFilter(message, userId);
 
     // Level 5 — immediate escalation; AI is never called under any circumstances
     if (crisisLevel === 5) {
-      // INTENTIONAL fire-and-forget: do NOT await publishCrisisEvent.
-      // The safety response must reach the user even if RabbitMQ is down, restarting,
-      // or unreachable. Awaiting here would mean a broker outage causes the user to
-      // receive a 500 error instead of the crisis helpline message — the worst possible
-      // failure mode for this code path. The .catch ensures the error is logged without
-      // propagating to the response flow.
-      publishCrisisEvent(
-        userId ?? 'unknown',
+      // Durable first, delivery second. recordCrisisAlert commits a row to
+      // this service's own database before returning, then attempts the
+      // RabbitMQ publish that populates the clinician queue without blocking
+      // this response — a broker outage must never delay or fail the safety
+      // message, but it must also no longer lose the alert (an undelivered
+      // row is retried by the sweeper in lib/crisis-alerts.ts).
+      await recordCrisisAlert({
+        userId,
+        sessionId: resolvedSessionId,
         crisisLevel,
-        resolvedSessionId
-      ).catch((err) => {
-        console.error(
-          '[pre-filter] Failed to publish crisis event to RabbitMQ:',
-          err
-        );
       });
 
+      // Recorded in the patient's own history too. This route used to return
+      // before writing anything, so the single most serious thing a user can
+      // disclose was the one thing absent from their record.
+      await prisma.aiInteraction
+        .create({
+          data: {
+            user_id: userId,
+            session_id: resolvedSessionId ?? 'crisis',
+            user_message: encrypt(message),
+            ai_response: encrypt(CRISIS_RESPONSE),
+            input_flagged: true,
+            output_flagged: false,
+            crisis_level: crisisLevel,
+            response_ms: 0,
+          },
+        })
+        .catch((err) => {
+          // The alert is already durable; failing to write the history copy
+          // must not stop the user seeing the safety message.
+          console.error('[crisis] failed to record interaction:', err);
+        });
+
       res.status(200).json({
-        response:
-          "I'm concerned about your safety right now. Please reach out to a crisis helpline immediately. In Rwanda: Umutima Counselling Centre +250 788 386 225. International: Crisis Text Line — text HOME to 741741. You are not alone.",
+        response: CRISIS_RESPONSE,
         crisisLevel: 5,
         sessionId: null,
       });
       return;
     }
 
-    // TODO[clinical-review]: Levels 3 and 4 currently set inputFlagged and continue
-    // to the AI call. A formal escalation path for these levels — specifically whether
-    // Level 3 (passive ideation) and Level 4 (active ideation without plan) should
-    // trigger therapist SMS alerts, in-app safety check prompts, or modified AI system
-    // prompts — has NOT been defined yet and requires clinical review before go-live.
-    // See: AFSP Safe Messaging Guidelines, Columbia Suicide Severity Rating Scale (C-SSRS).
+    // ⚠️ KNOWN GAP — NOT SAFE FOR REAL USERS. Levels 3 and 4 (passive ideation,
+    // and suicidal or self-harm thoughts) are flagged here and then sent to the
+    // AI as an ordinary message. No clinician is alerted and no safety response
+    // is shown.
+    //
+    // Clinical review (Rulinda, 2026-08) has since specified the intended
+    // behaviour: L3 should give a supportive, safety-focused response plus a
+    // clinical flag; L4 should raise a higher-priority alert while the AI gives
+    // only a brief supportive reply and attempts no safety assessment.
+    //
+    // That is NOT implemented, for two reasons, both tracked in
+    // docs/ai-safety-handoff.md:
+    //   1. The external chatbot API accepts only {conversation_id, content} —
+    //      there is no way to instruct its tone, so a "safety-focused AI
+    //      response" needs either a new upstream parameter or a templated
+    //      reply from our side. That choice is still open.
+    //   2. The detection layer itself is being rebuilt by the AI team with
+    //      clinical input; wiring L3/L4 to today's keyword matcher would
+    //      escalate on its false positives.
+    //
+    // Current deployment is TESTERS ONLY on that basis.
     const inputFlagged = crisisLevel >= 1;
-
-    if (!userId) {
-      res.status(401).json({ message: 'Unauthorized' });
-      return;
-    }
 
     const start = Date.now();
     let botMessage;
@@ -107,6 +145,20 @@ router.post(
       botMessage = await chatWithBot(userId, message);
     } catch (err) {
       console.error('[chat] Therapy chatbot call failed:', err);
+      // A rate limit is the user sending too fast, not the service being
+      // broken. Pass it through as 429 with the wait time so the client can
+      // show a countdown rather than "temporarily unavailable", which would
+      // read as a fault and invite an immediate retry.
+      if (err instanceof ChatbotApiError && err.status === 429) {
+        const retryAfter = err.retryAfterSeconds ?? 60;
+        res.setHeader('Retry-After', String(retryAfter));
+        res.status(429).json({
+          message:
+            'Too many messages. Please wait a moment before sending again.',
+          retryAfterSeconds: retryAfter,
+        });
+        return;
+      }
       res
         .status(502)
         .json({ message: 'The AI companion is temporarily unavailable' });
@@ -135,15 +187,94 @@ router.post(
   })
 );
 
-// GET /api/v1/ai/history — retrieve session interaction history (PATIENT only)
-router.get('/history', requireRole('PATIENT'), (_req, res) => {
-  res.status(501).json({ message: 'Not implemented yet' });
-});
+// GET /api/v1/ai/history — retrieve own chat history (PATIENT only)
+//
+// Served from this service's own ai_interactions rows rather than proxied to
+// the chatbot: the data is already here, it stays readable when the external
+// service is down, and it avoids a second round-trip per page load.
+router.get(
+  '/history',
+  requireRole('PATIENT'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
 
-// DELETE /api/v1/ai/history — delete all interaction history (PATIENT only)
-router.delete('/history', requireRole('PATIENT'), (_req, res) => {
-  res.status(501).json({ message: 'Not implemented yet' });
-});
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+
+    const [rows, total] = await Promise.all([
+      prisma.aiInteraction.findMany({
+        where: { user_id: userId },
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.aiInteraction.count({ where: { user_id: userId } }),
+    ]);
+
+    res.status(200).json({
+      interactions: rows.map((row) => ({
+        id: row.id,
+        sessionId: row.session_id,
+        // Stored encrypted; a row that fails to decrypt (key rotation, bad
+        // write) must not take down the whole page, so it degrades to null
+        // rather than throwing.
+        message: safeDecrypt(row.user_message),
+        response: safeDecrypt(row.ai_response),
+        crisisLevel: row.crisis_level,
+        createdAt: row.created_at,
+      })),
+      total,
+      page,
+      limit,
+    });
+  })
+);
+
+// DELETE /api/v1/ai/history — erase own chat history (PATIENT only)
+//
+// Deletes on BOTH sides. Previously this was a 501 stub, and nothing in this
+// repo ever called the chatbot's delete endpoint, so a user's therapy
+// transcript survived on the external service forever.
+router.delete(
+  '/history',
+  requireRole('PATIENT'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+
+    // Remote first: if it throws unexpectedly we still want to have tried
+    // before touching local rows. It resolves false rather than throwing when
+    // the remote refuses.
+    const remoteDeleted = await deleteChatbotConversation(userId);
+
+    const { count } = await prisma.aiInteraction.deleteMany({
+      where: { user_id: userId },
+    });
+
+    // remoteDeleted is reported, not hidden: if it is false the transcript may
+    // still exist on the chatbot's side and someone needs to follow up. A
+    // silent 200 here would misrepresent a data-deletion request as complete.
+    if (!remoteDeleted) {
+      console.warn(
+        `[ai.history] Local history cleared for ${userId} but remote ` +
+          `conversation was not confirmed deleted — manual follow-up needed.`
+      );
+    }
+
+    res.status(200).json({
+      message: 'Chat history deleted',
+      localInteractionsDeleted: count,
+      remoteConversationDeleted: remoteDeleted,
+    });
+  })
+);
 
 // GET /api/v1/ai/usage — aggregate token usage report (ADMIN only)
 router.get(

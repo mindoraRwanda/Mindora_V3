@@ -1,15 +1,7 @@
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { config as dotenvConfig } from 'dotenv';
+import './env.js'; // must be first — loads .env before any module reads process.env
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { registerHealthEndpoints } from './lib/health.js';
-
-const moduleDir = dirname(fileURLToPath(import.meta.url));
-
-dotenvConfig({ path: resolve(moduleDir, '../../../.env') });
-dotenvConfig({ path: resolve(moduleDir, '../../../packages/database/.env') });
-dotenvConfig();
 
 const SERVICE_NAME = 'mood-tracking-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/mood/health';

@@ -46,8 +46,18 @@ model system_alerts {
   resolved  Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
 
+  // Acknowledgement is distinct from resolution: acknowledged means a named
+  // clinician has SEEN it, resolved means the situation was dealt with. The
+  // gap between raised and acknowledged is the number that matters for a
+  // crisis alert, and without recording it there is no way to tell an alert
+  // nobody has looked at from one that is merely still open.
+  acknowledgedAt DateTime? @map("acknowledged_at")
+  acknowledgedBy String?   @map("acknowledged_by")
+
   @@index([severity])
   @@index([resolved])
   @@index([createdAt])
+  // Supports the queue's default view: unacknowledged, oldest first.
+  @@index([acknowledgedAt, createdAt])
   @@map("system_alerts")
 }

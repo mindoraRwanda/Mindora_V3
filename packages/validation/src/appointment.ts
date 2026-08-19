@@ -7,7 +7,11 @@ const appointmentStatusSchema = z.enum([
   'COMPLETED',
 ]);
 
-const sessionTypeSchema = z.enum(['VIDEO', 'IN_PERSON', 'CHAT']);
+// Keep in sync with SessionType in both Prisma schemas,
+// APPOINTMENT_SESSION_TYPES in @mindora/events, and the enum in
+// docs/appointment-service.yaml — a value missing from any one of them is
+// rejected somewhere in the chain rather than at a single obvious place.
+const sessionTypeSchema = z.enum(['VIDEO', 'AUDIO', 'IN_PERSON', 'CHAT']);
 
 export const availabilityQuerySchema = z.object({
   from: z.coerce.date().optional(),

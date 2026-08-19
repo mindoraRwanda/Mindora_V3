@@ -1,0 +1,17 @@
+# Shell scripts MUST keep LF endings, even when checked out on Windows.
+#
+# A CRLF shebang makes the kernel look for an interpreter literally named
+# "/bin/sh\r", which does not exist. Inside a Linux container that surfaces as
+# the deeply unhelpful:
+#
+#   exec /kong-entrypoint.sh: no such file or directory
+#
+# ...for a file that is plainly there. This broke the Kong gateway on a
+# Windows dev machine and would have broken any deployment building from a
+# Windows checkout.
+*.sh text eol=lf
+
+# Same reasoning for anything else executed by a Linux container.
+Dockerfile text eol=lf
+*.Dockerfile text eol=lf
+docker-entrypoint* text eol=lf

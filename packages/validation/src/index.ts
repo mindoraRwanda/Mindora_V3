@@ -45,11 +45,13 @@ export {
   moodHistoryQuerySchema,
   moodSummaryQuerySchema,
   moodTodayQuerySchema,
+  moodStreakQuerySchema,
   type LogMoodDto,
   type UpdateMoodDto,
   type MoodHistoryQueryDto,
   type MoodSummaryQueryDto,
   type MoodTodayQueryDto,
+  type MoodStreakQueryDto,
 } from './mood.js';
 export {
   listAlertsQuerySchema,
