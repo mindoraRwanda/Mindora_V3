@@ -615,10 +615,22 @@ export const openApiSpec = {
             name: 'limit',
             schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
           },
+          {
+            in: 'query',
+            name: 'acknowledged',
+            description:
+              'Triage filter. `false` returns only alerts no clinician has opened yet, ' +
+              'ordered OLDEST first, since the longest-unseen crisis is the most urgent. ' +
+              '`true` returns only acknowledged ones. Omit for all unresolved alerts, ' +
+              'newest first - the original behaviour, so this is additive for existing callers.',
+            schema: { type: 'string', enum: ['true', 'false'] },
+          },
         ],
         responses: {
           '200': {
-            description: 'Paginated unresolved alerts, newest first.',
+            description:
+              'Paginated unresolved alerts. Newest first, except when ' +
+              '`acknowledged=false`, which is oldest first.',
             content: {
               'application/json': {
                 schema: {
@@ -685,6 +697,59 @@ export const openApiSpec = {
         ],
         responses: {
           '200': { description: 'Alert resolved.' },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+          '403': { $ref: '#/components/responses/Forbidden' },
+          '404': {
+            description: 'Alert not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorMessage' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/alerts/{id}/acknowledge': {
+      put: {
+        tags: ['Alerts'],
+        summary: 'Record that a clinician has seen an alert (ADMIN only)',
+        description:
+          'Deliberately separate from /resolve: resolving says the situation was dealt ' +
+          'with, acknowledging says a human has eyes on it. Collapsing the two would make ' +
+          'an alert nobody has opened indistinguishable from one that is merely still open. ' +
+          'Idempotent - re-acknowledging keeps the FIRST acknowledgement, so an original ' +
+          'response time is never overwritten by a later viewer, and returns 200 with the ' +
+          'existing values. Writes an audit_logs entry (actionType ALERT_ACKNOWLEDGED) ' +
+          'carrying secondsToAcknowledge - how long the alert sat unseen, which is the ' +
+          'metric the escalation policy will be built against.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description:
+              'Alert acknowledged, or already was - the body reports which.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    id: { type: 'string' },
+                    acknowledgedAt: { type: 'string', format: 'date-time' },
+                    acknowledgedBy: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
           '401': { $ref: '#/components/responses/Unauthorized' },
           '403': { $ref: '#/components/responses/Forbidden' },
           '404': {

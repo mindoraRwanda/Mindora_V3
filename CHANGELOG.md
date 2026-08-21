@@ -48,7 +48,7 @@ the check failed with the specific cause before restoring it.
 `apps/mood-tracking-service/src/lib/streak.ts`. `calculateStreak` counted the
 consecutive run ending at the user's most recent entry without checking when
 that entry was, so it reported the length of the last unbroken run the user
-*ever* had. Someone who checked in twice in March still saw "2 days" months
+_ever_ had. Someone who checked in twice in March still saw "2 days" months
 later, and a single old entry read as a live 1-day streak.
 
 A run now counts only while it is still live: last check-in today (counting) or
@@ -102,7 +102,7 @@ service here logs with plain `console.*` and this keeps that consistent.
 - **Request ids.** Every request gets one, echoed as `X-Request-Id` and
   returned in 500 bodies, so `grep req=3f9c21a8` follows a request through the
   route logic, the HTTP summary, and any stack trace.
-- **`POST /refresh` now says *why* it rejected.** One opaque 401 covered five
+- **`POST /refresh` now says _why_ it rejected.** One opaque 401 covered five
   causes — no cookie, token unknown, revoked, already rotated, expired — which
   demand completely different fixes. The diagnosis runs only on the failing
   path, so the happy path costs nothing.
@@ -116,7 +116,7 @@ service here logs with plain `console.*` and this keeps that consistent.
 - Secrets and PII stay out: refresh tokens are logged as an 8-char hash prefix,
   emails redacted to `p***@example.com`, and login failures record which half
   failed **only** server-side — the response stays a generic `Invalid
-  credentials` so it is not an account-enumeration oracle.
+credentials` so it is not an account-enumeration oracle.
 
 `LOG_LEVEL=debug` adds the per-request `/health` lines that are suppressed by
 default so Kong's polling does not bury everything else.
@@ -153,7 +153,7 @@ Summarised here for the record; both were authored outside this pass, and
 `docs/ai-safety-handoff.md` is the authority on the safety picture.
 
 - **`ai-integration-service`** — new `crisis_alerts` table (migration
-  `20260817000000`). A crisis detection is now written locally *before* the
+  `20260817000000`). A crisis detection is now written locally _before_ the
   user is answered and treated as the source of truth, with the RabbitMQ
   publish treated as delivery of that row and retried by a sweeper. Previously
   the fire-and-forget publish was the only record, so a broker outage meant a

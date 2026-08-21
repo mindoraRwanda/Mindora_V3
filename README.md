@@ -13,7 +13,6 @@ Mental health platform monorepo — Turborepo + npm workspaces, 9 microservices,
 
 ```bash
 node -v    # v24.x
-node -v    # v24.x
 npm -v
 docker -v
 ```
@@ -38,21 +37,21 @@ copy .env.example .env # Windows
 
 Key variables (defaults work for local Docker):
 
-| Variable                        | Description                                            |
-| ------------------------------- | ------------------------------------------------------ |
-| `DATABASE_URL`                  | PostgreSQL connection string                           |
-| `MONGODB_URI`                   | MongoDB connection string                              |
-| `REDIS_URL`                     | Redis connection string                                |
-| `RABBITMQ_URL`                  | RabbitMQ AMQP connection string                        |
-| `JWT_SECRET`                    | HS256 signing key — must match Kong config             |
-| `APP_BASE_URL`                  | Auth service base URL (password reset links)           |
-| `GOOGLE_CLIENT_ID`              | Google OAuth client ID (optional)                      |
-| `GOOGLE_CLIENT_SECRET`          | Google OAuth secret (optional)                         |
-| `RESEND_EMAIL_API_KEY`          | Resend API key for email notifications                 |
-| `AT_API_KEY`                    | Africa's Talking API key for SMS                       |
-| `AT_USERNAME`                   | Africa's Talking username                              |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | FCM service account JSON (inline or file path)         |
-| `USER_SERVICE_URL`              | Used by notification-service to fetch user preferences |
+| Variable                        | Description                                                                                                                                            |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                  | PostgreSQL connection string                                                                                                                           |
+| `MONGO_URI`                     | MongoDB connection string — community + messaging. Note the name: `MONGODB_URI` is a **different** variable read only by the messaging backfill script |
+| `REDIS_URL`                     | Redis connection string                                                                                                                                |
+| `RABBITMQ_URL`                  | RabbitMQ AMQP connection string                                                                                                                        |
+| `JWT_SECRET`                    | HS256 signing key — must match Kong config                                                                                                             |
+| `APP_BASE_URL`                  | Auth service base URL (password reset links)                                                                                                           |
+| `GOOGLE_CLIENT_ID`              | Google OAuth client ID (optional)                                                                                                                      |
+| `GOOGLE_CLIENT_SECRET`          | Google OAuth secret (optional)                                                                                                                         |
+| `RESEND_EMAIL_API_KEY`          | Resend API key for email notifications                                                                                                                 |
+| `AT_API_KEY`                    | Africa's Talking API key for SMS                                                                                                                       |
+| `AT_USERNAME`                   | Africa's Talking username                                                                                                                              |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | FCM service account JSON (inline or file path)                                                                                                         |
+| `USER_SERVICE_URL`              | Used by notification-service to fetch user preferences                                                                                                 |
 
 ### 3. Start infrastructure
 
@@ -361,6 +360,49 @@ directly to `mindora.notifications.dlq`.
 
 ---
 
+## Internal service-to-service API
+
+Routes under `/internal/*` are **not part of the public API** and are omitted
+from the per-service OpenAPI specs on purpose — those are served publicly at
+`/docs`. They are reachable through Kong (`user-internal`, `auth-internal`,
+`appointment-internal`, `mood-internal`, `community-internal` routes) but
+require a **SERVICE-role JWT**, which each service checks itself after Kong
+validates the signature.
+
+Generate one with:
+
+```bash
+npm run generate:service-token --workspace=@mindora/auth-service
+```
+
+Set it as `INTERNAL_SERVICE_TOKEN`. It is **non-expiring** — see the security
+note below.
+
+| Method | Route                            | Service | Purpose                                                                    |
+| ------ | -------------------------------- | ------- | -------------------------------------------------------------------------- |
+| GET    | `/internal/auth/users/:id`       | auth    | Identity (email, role) lookup — Auth owns the `users` table                |
+| GET    | `/internal/auth/users`           | auth    | Paginated user list, backs Admin Service's list via the User Service proxy |
+| PATCH  | `/internal/auth/users/:id`       | auth    | Flip `isActive` when Admin suspends/reactivates a user                     |
+| GET    | `/internal/auth/analytics`       | auth    | User-table aggregates for platform analytics                               |
+| GET    | `/internal/users/analytics`      | user    | Proxies to `/internal/auth/analytics`                                      |
+| GET    | `/internal/users/:id`            | user    | Profile lookup for other services (e.g. notification preferences)          |
+| GET    | `/internal/users`                | user    | Proxies Auth's user list                                                   |
+| PUT    | `/internal/users/:id/suspend`    | user    | Proxies to Auth — User Service holds no `isActive` state of its own        |
+| PUT    | `/internal/users/:id/reactivate` | user    | Mirror of suspend                                                          |
+
+> **Route-order gotcha:** `/internal/users/analytics` must be registered
+> _before_ `/internal/users/:id`, or Express treats `analytics` as an `:id` and
+> returns `404 User not found`. This was found by testing
+> `GET /api/v1/admin/analytics` through Kong — `tsc` cannot catch it.
+
+> **⚠️ Security — non-expiring service token.** `INTERNAL_SERVICE_TOKEN` never
+> expires. If it leaks, anyone can read identity data for any user and suspend
+> accounts. Replace with rotating credentials before production; if
+> compromised, regenerate, update every service, and redeploy. Tracked in
+> `BACKEND_COMPLETE.md` → "Known Security Limitations".
+
+---
+
 ## Shared packages
 
 ### `@mindora/auth-middleware`
@@ -562,14 +604,14 @@ varies by how the spec is generated:
 
 ## Documentation
 
-| Document                                                       | What it covers                                                                                             |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| [`CHANGELOG.md`](./CHANGELOG.md)                               | Working log of notable backend changes, newest first — what changed and why                                |
-| [`DEPLOYMENT.md`](./DEPLOYMENT.md)                             | How to deploy, written for someone who has not worked on the codebase. **Read its Blockers section first.** |
-| [`docs/ai-safety-handoff.md`](./docs/ai-safety-handoff.md)     | Crisis detection/response gaps handed to the AI team and clinical lead. Gates launch to real users.         |
-| [`docs/ai-integration-backlog.md`](./docs/ai-integration-backlog.md) | Known engineering gaps in the chatbot integration. Non-blocking.                                      |
-| `docs/*.yaml`                                                  | OpenAPI specs, also served per-service at `/docs` and aggregated by docs-gateway                           |
-| [`BACKEND_COMPLETE.md`](./BACKEND_COMPLETE.md)                 | Sprint-by-sprint record of what was built                                                                  |
+| Document                                                             | What it covers                                                                                              |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| [`CHANGELOG.md`](./CHANGELOG.md)                                     | Working log of notable backend changes, newest first — what changed and why                                 |
+| [`DEPLOYMENT.md`](./DEPLOYMENT.md)                                   | How to deploy, written for someone who has not worked on the codebase. **Read its Blockers section first.** |
+| [`docs/ai-safety-handoff.md`](./docs/ai-safety-handoff.md)           | Crisis detection/response gaps handed to the AI team and clinical lead. Gates launch to real users.         |
+| [`docs/ai-integration-backlog.md`](./docs/ai-integration-backlog.md) | Known engineering gaps in the chatbot integration. Non-blocking.                                            |
+| `docs/*.yaml`                                                        | OpenAPI specs, also served per-service at `/docs` and aggregated by docs-gateway                            |
+| [`BACKEND_COMPLETE.md`](./BACKEND_COMPLETE.md)                       | Sprint-by-sprint record of what was built                                                                   |
 
 ---
 
@@ -606,7 +648,7 @@ GATEWAY_URL=https://api.mindora.rw npm run smoke:gateway
 ```
 
 It requests one real route per service and passes on 200/401/403 — the
-question is whether the request *reached the right service*, not whether the
+question is whether the request _reached the right service_, not whether the
 caller is authorized. It fails on Express's `Cannot GET /x` (Kong forwarded a
 path the service does not serve), Kong's `no Route matched`, and 502/503.
 Exits non-zero, so CI can run it against a live stack.
