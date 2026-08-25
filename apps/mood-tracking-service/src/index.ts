@@ -2,12 +2,50 @@ import './env.js'; // must be first — loads .env before any module reads proce
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { registerHealthEndpoints } from './lib/health.js';
+import { startMoodEventSweeper } from './lib/pending-mood-events.js';
+import { prisma } from './lib/prisma.js';
 
 const SERVICE_NAME = 'mood-tracking-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/mood/health';
 
+// Without these, a crash mid-request kills the process with nothing in the
+// terminal but the default stack — and from the frontend it appears only as
+// a gateway 502, since Kong sees the connection drop rather than a reply.
+process.on('uncaughtException', (error) => {
+  console.error(`✗ [${SERVICE_NAME}] uncaught exception — exiting:`, error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error(`✗ [${SERVICE_NAME}] unhandled promise rejection:`, reason);
+});
+
+async function isDatabaseHealthy(): Promise<boolean> {
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('health check timeout')), 3000)
+      ),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const app = createApp();
-registerHealthEndpoints(app, SERVICE_NAME, GATEWAY_HEALTH_PATH);
+registerHealthEndpoints(
+  app,
+  SERVICE_NAME,
+  GATEWAY_HEALTH_PATH,
+  isDatabaseHealthy
+);
+
+// Retries mood.concern/mood.streak events that could not be delivered when
+// they were raised (typically a RabbitMQ outage). Without it, an event
+// recorded during downtime would never reach admin/notification consumers.
+startMoodEventSweeper();
 
 app.listen(config.port, () => {
   console.log(

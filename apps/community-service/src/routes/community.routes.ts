@@ -4,8 +4,9 @@ import {
   CreatePostDto,
   CreateCommentDto,
 } from '@mindora/validation';
-import { authenticate, requireRole } from '@mindora/auth-middleware';
+import { requireRole } from '@mindora/auth-middleware';
 import type { AuthenticatedRequest } from '@mindora/auth-middleware';
+import { authenticate } from '../middleware/authenticate.js';
 import { CommunityGroup, Post, Comment } from '../models/index.js';
 import type { IPost } from '../models/Post.js';
 import mongoose from 'mongoose';

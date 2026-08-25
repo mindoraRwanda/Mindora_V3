@@ -204,6 +204,8 @@ routes:
     strip_path: true
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 200
@@ -246,6 +248,8 @@ routes:
     strip_path: true
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 150
@@ -272,6 +276,8 @@ routes:
     strip_path: true
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 200
@@ -306,6 +312,8 @@ routes:
     strip_path: false
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 300
@@ -339,6 +347,8 @@ routes:
     strip_path: false
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 500
@@ -355,6 +365,8 @@ routes:
     strip_path: false
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 60
@@ -376,6 +388,8 @@ routes:
     strip_path: false
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 100
@@ -387,6 +401,8 @@ routes:
     strip_path: true
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 100
@@ -408,6 +424,14 @@ routes:
 # infrastructure/kong/docker-entrypoint.sh; Kong's declarative config has no
 # native env-var expansion.
 plugins:
+  # No route here accepts file uploads (checked: no multer/upload handler
+  # anywhere in apps/*/src) — every body is JSON (chat messages, mood
+  # journal entries, community posts). 10MB is generous headroom over any
+  # real payload while still bounding what an unauthenticated or malicious
+  # client can send at a public endpoint.
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 10
   - name: cors
     config:
       origins: ${KONG_CORS_ORIGINS}

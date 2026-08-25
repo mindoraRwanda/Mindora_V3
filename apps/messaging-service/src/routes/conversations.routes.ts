@@ -1,9 +1,7 @@
 import { Router, Response } from 'express';
 import mongoose from 'mongoose';
-import {
-  authenticate,
-  type AuthenticatedRequest,
-} from '@mindora/auth-middleware';
+import { authenticate } from '../middleware/authenticate.js';
+import type { AuthenticatedRequest } from '@mindora/auth-middleware';
 import { Conversation, Message } from '../models/index.js';
 import { decryptContent } from '../utils/encryption.js';
 import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';

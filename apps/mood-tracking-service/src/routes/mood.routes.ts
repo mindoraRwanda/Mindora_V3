@@ -19,7 +19,7 @@ import { averageScore, shouldPublishMoodConcern } from '../lib/concern.js';
 import { encryptJournalNote } from '../lib/journal-crypto.js';
 import { computeWeeklyInsights } from '../lib/insights.js';
 import { localDayRange } from '../lib/local-day.js';
-import { publishMoodEvent } from '../lib/publish-mood-event.js';
+import { recordAndPublishMoodEvent } from '../lib/pending-mood-events.js';
 import {
   deleteInsightsCache,
   getDailyLogCount,
@@ -64,18 +64,13 @@ async function checkForMoodConcern(userId: string): Promise<void> {
   if (!shouldPublishMoodConcern(recentScores)) {
     return;
   }
-  // RabbitMQ being down must never fail a write that's already committed.
-  try {
-    await publishMoodEvent(
-      createMoodConcernEvent({
-        userId,
-        avgMoodScore: averageScore(recentScores),
-        recentScores,
-      })
-    );
-  } catch (err) {
-    console.error('[mood.concern] Failed to publish event:', err);
-  }
+  await recordAndPublishMoodEvent(
+    createMoodConcernEvent({
+      userId,
+      avgMoodScore: averageScore(recentScores),
+      recentScores,
+    })
+  );
 }
 
 moodRouter.post(
@@ -161,18 +156,14 @@ moodRouter.post(
         streak as (typeof MOOD_STREAK_MILESTONES)[number]
       )
     ) {
-      try {
-        await publishMoodEvent(
-          createMoodStreakEvent({
-            userId,
-            streak,
-            milestone: streak as 7 | 14 | 30,
-            lastCheckedIn: `${lastCheckedIn}T00:00:00.000Z`,
-          })
-        );
-      } catch (err) {
-        console.error('[mood.streak] Failed to publish event:', err);
-      }
+      await recordAndPublishMoodEvent(
+        createMoodStreakEvent({
+          userId,
+          streak,
+          milestone: streak as 7 | 14 | 30,
+          lastCheckedIn: `${lastCheckedIn}T00:00:00.000Z`,
+        })
+      );
     }
 
     res.status(201).json(serializeMoodEntry(entry, { includeJournal: true }));

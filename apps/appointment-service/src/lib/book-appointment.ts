@@ -63,17 +63,24 @@ export async function bookAppointmentWithLock(
     });
   });
 
-  await publishAppointmentEvent(
-    createAppointmentBookedEvent({
-      appointmentId: appointment.id,
-      patientId: appointment.patientId,
-      therapistId: appointment.therapistId,
-      slotStart: appointment.slotStart.toISOString(),
-      slotEnd: appointment.slotEnd.toISOString(),
-      sessionType: appointment.sessionType as AppointmentSessionType,
-    }),
-    config.rabbitUrl
-  );
+  // RabbitMQ being down must never fail a booking that's already committed —
+  // the appointment exists either way; a lost event here only means
+  // downstream notifications don't fire for it.
+  try {
+    await publishAppointmentEvent(
+      createAppointmentBookedEvent({
+        appointmentId: appointment.id,
+        patientId: appointment.patientId,
+        therapistId: appointment.therapistId,
+        slotStart: appointment.slotStart.toISOString(),
+        slotEnd: appointment.slotEnd.toISOString(),
+        sessionType: appointment.sessionType as AppointmentSessionType,
+      }),
+      config.rabbitUrl
+    );
+  } catch (err) {
+    console.error('[appointment.booked] Failed to publish event:', err);
+  }
 
   return appointment;
 }

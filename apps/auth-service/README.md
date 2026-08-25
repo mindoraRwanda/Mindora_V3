@@ -42,13 +42,13 @@ See root `.env.example`. Key vars:
 
 ## Seed users
 
-> **⚠️ Broken as of 2026-07-30.** `npm run db:seed` (root) migrates/seeds the
-> orphaned `@mindora/database` package, not the `mindora_auth` database this
-> service actually reads from (`AUTH_DATABASE_URL`). Confirmed by direct
-> query: **none of the 4 accounts below currently exist in `mindora_auth` (or
-> anywhere else).** There is no working seed path for them right now — this
-> table describes the intended dev accounts, not something you can currently
-> get by running a command. See the root `README.md`'s Known Issues section.
+> **⚠️ No working seed path as of 2026-08-25.** The root `npm run db:seed`
+> command (and the orphaned `@mindora/database` package it pointed at,
+> neither of which ever reached `mindora_auth`) has been deleted. Confirmed by
+> direct query: **none of the 4 accounts below currently exist in
+> `mindora_auth` (or anywhere else).** This table describes the intended dev
+> accounts, not something you can currently get by running a command. See the
+> root `README.md`'s Known Issues section.
 >
 > What **does** work:
 >

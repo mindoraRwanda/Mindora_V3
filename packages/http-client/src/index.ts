@@ -26,9 +26,21 @@ export type HttpClientOptions = {
   timeoutMs?: number;
 };
 
-// Circuit breaker options — controls how Opossum behaves
+// Circuit breaker options — controls how Opossum behaves.
+//
+// timeout is deliberately `false` (disabled), not a fixed number. The real
+// per-call timeout is already enforced below via
+// `signal: AbortSignal.timeout(timeoutMs)`, which respects whatever the
+// caller passed in HttpClientOptions. A single breaker instance is cached
+// per baseUrl (see getBreaker) and reused across every call to that
+// service, so a static `timeout` here would apply the FIRST call's
+// duration ceiling to every subsequent call regardless of its own
+// timeoutMs — silently overriding a caller that asks for more time than
+// whatever value happened to be baked in. Opossum still counts an aborted
+// fetch's rejection toward errorThresholdPercentage, so the circuit still
+// opens on repeated timeouts.
 const BREAKER_OPTIONS = {
-  timeout: 5000, // if a request takes longer than 5s, it fails
+  timeout: false as const,
   errorThresholdPercentage: 50, // open circuit if 50% of requests fail
   resetTimeout: 10000, // try again after 10 seconds
 };

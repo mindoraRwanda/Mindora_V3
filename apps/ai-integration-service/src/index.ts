@@ -7,6 +7,18 @@ import { startCrisisAlertSweeper } from './lib/crisis-alerts.js';
 const SERVICE_NAME = 'ai-integration-service';
 const PORT = Number(process.env.AI_SERVICE_PORT) || 3007;
 
+// Without these, a crash mid-request kills the process with nothing in the
+// terminal but the default stack — and from the frontend it appears only as
+// a gateway 502, since Kong sees the connection drop rather than a reply.
+process.on('uncaughtException', (error) => {
+  console.error(`✗ [${SERVICE_NAME}] uncaught exception — exiting:`, error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error(`✗ [${SERVICE_NAME}] unhandled promise rejection:`, reason);
+});
+
 async function start(): Promise<void> {
   try {
     await connectDatabase();

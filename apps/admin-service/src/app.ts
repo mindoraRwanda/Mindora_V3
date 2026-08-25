@@ -4,7 +4,7 @@ import express, {
   type NextFunction,
 } from 'express';
 import swaggerUi from 'swagger-ui-express';
-import { authenticate } from '@mindora/auth-middleware';
+import { authenticate } from './middleware/authenticate.js';
 import { adminRouter } from './routes/admin.routes.js';
 import { openApiSpec } from './docs/openapi.js';
 import { authenticatedRouteLimiter } from './middleware/rate-limit.js';
@@ -31,7 +31,11 @@ export function createApp() {
 
   const healthResponse = () => ({ status: 'ok', service: SERVICE_NAME });
 
-  // Health endpoints — no auth required
+  // Health endpoints — no auth required. Unconditional 200 is deliberate
+  // here, not an oversight: admin-service has no database of its own (see
+  // BACKEND_COMPLETE.md) and no other cheap, meaningful dependency to check
+  // — unlike the Prisma/Mongo-backed services, there's nothing for this
+  // check to verify beyond "the process is running and Express is up".
   app.get('/health', (_req, res) => {
     res.status(200).json(healthResponse());
   });

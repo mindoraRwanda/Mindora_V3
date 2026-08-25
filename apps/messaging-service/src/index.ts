@@ -3,8 +3,21 @@ import http from 'http';
 import app from './app.js';
 import { connectDatabase } from './database.js';
 import { initializeSocket } from './socket.js';
+import { startMessageEventSweeper } from './lib/pending-message-events.js';
 
 const PORT = process.env.PORT || 3006;
+
+// Without these, a crash mid-request kills the process with nothing in the
+// terminal but the default stack — and from the frontend it appears only as
+// a gateway 502, since Kong sees the connection drop rather than a reply.
+process.on('uncaughtException', (error) => {
+  console.error('✗ [messaging-service] uncaught exception — exiting:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('✗ [messaging-service] unhandled promise rejection:', reason);
+});
 
 const start = async () => {
   try {
@@ -13,6 +26,11 @@ const start = async () => {
     console.log('⏳ Connecting to MongoDB...');
     await connectDatabase();
     console.log('✓ Database connection established');
+
+    // Retries message.received events that could not be delivered when they
+    // were raised (typically a RabbitMQ outage). Without it, an event
+    // recorded during downtime would never reach Notification Service.
+    startMessageEventSweeper();
 
     // Create HTTP server from Express app
     const httpServer = http.createServer(app);

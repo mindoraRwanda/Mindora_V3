@@ -72,6 +72,14 @@ These now fail fast rather than starting insecurely.
 | `KONG_CORS_ORIGINS`   | Kong                | Comma-separated allowlist, e.g. `https://app.mindora.rw`. `*` is **rejected** by the entrypoint.                                   |
 | `NODE_ENV=production` | bundle              | Drives cookie `Secure` + `SameSite=None`. Without it, auth silently breaks cross-domain.                                           |
 
+> **`JWT_ISSUER` is a second, undocumented half of the pair above.** Every
+> service defaults it to `mindora-auth` if unset, and `infrastructure/kong/kong.yml`
+> hardcodes the same string as its JWT consumer's key. If you ever set
+> `JWT_ISSUER` on the bundle to something else without also updating that
+> line in `kong.yml`, every authenticated request 401s — a symptom
+> identical to a `JWT_SECRET` mismatch. Simplest fix: don't set `JWT_ISSUER`
+> at all unless you're also editing `kong.yml` in the same change.
+
 ### 3.2 Will start but be insecure or broken
 
 | Variable                        | Notes                                                                                                                                                                                                   |
@@ -130,6 +138,7 @@ USER_SERVICE_URL=http://localhost:3002          # same container, leave as-is
 | --------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `THERAPY_CHATBOT_BASE_URL`                    | AI companion chat   | External FastAPI service, already deployed on Railway.                                                                       |
 | `RESEND_EMAIL_API_KEY`                        | Email notifications | **Needs a verified sending domain** before production. Currently a personal/sandbox key.                                     |
+| `RESEND_FROM_EMAIL`                           | Email notifications | **Set this too, not just the API key.** Unset falls back to Resend's own shared sandbox address (`onboarding@resend.dev`) — a real API key alone does not change who mail appears to come from. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON`               | Push notifications  | **Currently a personal developer's Firebase project.** Must move to a company-owned account.                                 |
 | `AT_API_KEY` / `AT_USERNAME` / `AT_SENDER_ID` | SMS                 | Africa's Talking. Needs a registered sender ID for Rwanda. `SMS_ENABLED=false` by default, leave it off unless that is done. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`   | Google sign-in      | Optional. If unset, the OAuth endpoints return 503 rather than breaking. Set `GOOGLE_CALLBACK_URL` to the deployed callback. |
@@ -196,7 +205,14 @@ SELECT hypertable_name FROM timescaledb_information.hypertables;
 
 ### 4.4 Seeding
 
-Optional, for demo data. **`npm run db:seed` at the repo root does not work** —
+Optional, for demo data — **do not run this against the real production
+database** unless you deliberately want 30 fictional therapist accounts
+(fixed UUIDs, `*.mindora.local` emails, non-login dummy password) and their
+matching profiles + generic stock headshot photos live in it. Nothing runs
+this automatically; it's entirely manual, but worth being explicit about
+before someone runs it out of habit against the wrong `*_DATABASE_URL`.
+
+**`npm run db:seed` at the repo root does not work** —
 it targets the orphaned package. Use:
 
 ```bash
@@ -222,7 +238,7 @@ not exist**; no seed script creates them.
 
 ### Expect a noisy first boot
 
-Five services (`admin`, `ai-integration`, `auth`, `messaging`,
+Six services (`admin`, `ai-integration`, `auth`, `community`, `messaging`,
 `notification`) exit immediately if RabbitMQ or their database is not reachable
 yet. There is no startup retry. Under pm2 they restart until dependencies come
 up, so this self-heals, but the first minute of logs will show crashes. That is
@@ -248,7 +264,9 @@ curl https://<kong-host>/api/v1/admin/health
 
 All should return `{"status":"ok",...}`. A 502 means Kong reached but the
 upstream is down, check `KONG_UPSTREAM_HOST`. A 404 means the Kong route
-config did not load.
+config did not load. A 503 with `{"status":"error",...}` means Kong reached
+the service and the service is running, but *that service's own database*
+is unreachable — check its `*_DATABASE_URL` / `MONGO_URI`, not Kong.
 
 Then confirm CORS is right, using your real frontend origin:
 
@@ -280,6 +298,23 @@ reference to one, it is stale.
 
 **Kong's admin API on 8001 must not be public.** It allows reconfiguring the
 gateway.
+
+**Health checks now fail loudly, not just "not 200."** Every service's
+`/health` used to return an unconditional `{"status":"ok"}` — it could never
+distinguish "actually fine" from "up but the database died." Every Prisma-
+and MongoDB-backed service now checks that connection on each health request
+and returns `503 {"status":"error",...}` if it's unreachable (Prisma is
+timeout-guarded at 3s so a hung database fails the probe fast instead of
+hanging it). `admin-service` and `docs-gateway` are the exceptions —
+deliberately unconditional 200, since neither has a database to check. If a
+deploy suddenly shows services as unhealthy that used to pass, check that
+service's own database connectivity first — it's very likely telling the
+truth now, not regressing.
+
+**Kong now caps request bodies at 10MB.** No route accepts file uploads —
+every body is JSON — so this should never be hit in normal use. If a future
+feature adds uploads, that route will need its own larger
+`request-size-limiting` override, not a bump to the global default.
 
 **Socket.io does not go through Kong.** The messaging websocket connects
 directly to port 3006. There is no `/socket.io/` route on the gateway. The
@@ -323,7 +358,19 @@ phrase matching only, and is **English only**. Users are expected to write in
 Kinyarwanda, French, and Swahili, and crisis disclosure in those languages is
 currently not detected at all.
 
-A related reliability gap: when the filter does trigger, the alert is sent to
-RabbitMQ as fire-and-forget with no retry. If the broker is briefly down the
-alert is lost silently. That part is fixable in code but is waiting on the
-clinical answer to "who should be notified, and how fast".
+**Update (2026-08-25): the RabbitMQ reliability gap previously noted here is
+fixed.** Crisis alerts (`apps/ai-integration-service/src/lib/crisis-alerts.ts`),
+mood-concern/streak events, and messaging's `message.received` event are all
+now written to their own service's database *before* publishing, with a
+30-second sweeper retrying anything RabbitMQ didn't accept — a broker outage
+at the moment of detection no longer loses the record silently. That was pure
+reliability plumbing and didn't require a clinical decision, so it shipped
+independently.
+
+What's still genuinely blocked on the clinical lead is unchanged: **who
+should be notified when a crisis alert can't be delivered after 10 delivery
+attempts, and how fast.** Right now an exhausted alert only
+logs `console.error` — visible in the container logs, not paged to anyone.
+That policy (an on-call rotation? SMS to a duty clinician? something else)
+needs the same clinical answer as items 1 and 2 above before it's worth
+building.

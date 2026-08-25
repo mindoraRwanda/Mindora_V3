@@ -77,14 +77,14 @@ docker compose up -d
 
 ### 4. Database setup
 
-> **⚠️ `npm run db:migrate` / `npm run db:seed` are dead ends.** Both map to
-> the `@mindora/database` workspace (`packages/database`), which no service
-> has imported since the DB-per-service split — it migrates and seeds the
-> orphaned `mindora` database, not the `mindora_auth` / `mindora_user` / etc.
-> databases the running services actually read from. Following this section
-> literally gives you zero usable accounts in the real system. See
-> [Known Issues](#known-issues--workarounds) for the current state and
-> per-service migrate/seed commands below.
+> **⚠️ There is no root-level `db:migrate` / `db:seed` command.** They used to
+> map to the `@mindora/database` workspace (`packages/database`), which no
+> service had imported since the DB-per-service split — it migrated and
+> seeded an orphaned `mindora` database, not the `mindora_auth` /
+> `mindora_user` / etc. databases the running services actually read from.
+> Both the package and the dead scripts have been removed (2026-08-25). Use
+> the per-service migrate/seed commands below instead. See
+> [Known Issues](#known-issues--workarounds) for the current state.
 
 Each PostgreSQL-backed service owns its own Prisma schema and migrates
 independently:
@@ -153,7 +153,6 @@ Mindora_V3/
 │   └── admin-service/         # Port 3009
 ├── packages/
 │   ├── auth-middleware/       # @mindora/auth-middleware — JWT verify, blacklist, requireRole
-│   ├── database/              # @mindora/database — Prisma client + schema
 │   ├── events/                # @mindora/events — shared event types + exchange names
 │   ├── queue/                 # @mindora/queue — RabbitMQ publish/subscribe helpers
 │   ├── validation/            # @mindora/validation — Zod DTOs
@@ -436,15 +435,15 @@ Exports: `createVerifyJwt`, `authenticate`, `requireRole`, `verifyAccessToken`,
 
 ---
 
-### `@mindora/database` — orphaned, not imported by any service
+### `@mindora/database` — removed (2026-08-25)
 
-Leftover from before the DB-per-service split. `grep`-confirmed: no `apps/*/package.json`
-depends on it anymore. Each PostgreSQL-backed service now owns its own Prisma
-schema (`apps/<service>/prisma/schema.prisma`) with no cross-service relations.
-The package still exists on disk with its own schema/migrations pointing at a
-`mindora` database that no running service reads from — the root `db:generate`
-/ `db:migrate` / `db:seed` scripts still point here, which is why they're
-flagged above. Safe to ignore; candidate for deletion.
+Leftover from before the DB-per-service split; `grep`-confirmed no
+`apps/*/package.json` depended on it. Each PostgreSQL-backed service owns its
+own Prisma schema (`apps/<service>/prisma/schema.prisma`) with no
+cross-service relations. The package (and the root `db:generate` / `db:migrate`
+/ `db:seed` scripts that pointed at it) has been deleted — it also had a
+`postinstall: prisma generate` with no `DATABASE_URL` available at Docker
+build time, which failed `Dockerfile.bundle`'s `npm install` step outright.
 
 ---
 
@@ -591,14 +590,16 @@ varies by how the spec is generated:
 | `npm run build`                | Build all packages and apps                                                                                                                                            |
 | `npm run lint`                 | ESLint across all workspaces                                                                                                                                           |
 | `npm run test`                 | Vitest across all workspaces                                                                                                                                           |
-| `npm run db:migrate`           | **Orphaned** — migrates the unused `@mindora/database` package, not any real service DB. Use `cd apps/<service> && npx prisma migrate dev` instead (see Known Issues). |
-| `npm run db:seed`              | **Orphaned** — same issue, seeds the unused `mindora` database                                                                                                         |
 | `npm run db:seed:profiles`     | Seed user-service — 30 therapist profiles                                                                                                                              |
 | `npm run db:seed:appointments` | Seed appointment-service — sample bookings                                                                                                                             |
 | `npm run db:seed:mood`         | Seed mood-tracking-service                                                                                                                                             |
-| `npm run db:seed:community`    | Seed community-service MongoDB data                                                                                                                                    |
-| `npm run db:generate`          | Regenerate Prisma client for `@mindora/database` — **not** the per-service clients, run `npx prisma generate` inside each service for those                            |
+| `npm run db:seed:community`    | Seed community-service MongoDB data                                                                                                                                   |
 | `npm run smoke:gateway`        | Check every service is reachable **through Kong**. Needs a running stack; not part of `npm run test`. `GATEWAY_URL=` to target a deployed gateway                      |
+
+There is no root-level `db:migrate` / `db:seed` / `db:generate` anymore (they
+targeted the now-deleted `@mindora/database` package — see Known Issues).
+Run Prisma commands per service instead: `cd apps/<service> && npx prisma
+migrate dev` / `npx prisma generate`.
 
 ---
 
@@ -718,16 +719,16 @@ npm run db:generate   # fine — runs prisma generate (no network)
 
 ---
 
-### Root `db:seed` doesn't produce any usable login accounts
+### No working seed path for the 4 named test-login accounts
 
-Every service README's "seed" instructions that say `npm run db:seed`
-(root-level) are pointing at the orphaned `@mindora/database` package (see
-[Shared packages](#mindoradatabase--orphaned-not-imported-by-any-service)) —
-confirmed by direct query, **the `patient@test.mindora.local` /
-`therapist@test.mindora.local` / `admin@test.mindora.local` accounts
-documented in multiple READMEs do not currently exist in either the orphaned
-`mindora` database or the real `mindora_auth` database that auth-service
-actually reads from.** `apps/auth-service/src/seed.ts` only creates the 30
+The root `db:seed` script (and the `@mindora/database` package it pointed
+at) has been deleted (2026-08-25) — it never produced usable accounts in the
+first place, since it seeded an orphaned `mindora` database, not the real
+`mindora_auth` database auth-service reads from. Removing the dead command
+doesn't fix the underlying gap: confirmed by direct query, **the
+`patient@test.mindora.local` / `therapist@test.mindora.local` /
+`admin@test.mindora.local` accounts documented in multiple READMEs do not
+exist in `mindora_auth`.** `apps/auth-service/src/seed.ts` only creates the 30
 fixed-UUID `THERAPIST` accounts with a non-login dummy password (they exist
 solely so `appointment-service`'s cross-service therapist check resolves) —
 it does not create any of the 4 named test-login accounts referenced

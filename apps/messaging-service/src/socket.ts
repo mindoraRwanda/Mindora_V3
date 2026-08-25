@@ -7,7 +7,7 @@ import { Conversation, Message } from './models/index.js';
 import { isMongoConnected } from './database.js';
 import { getRedisClient } from './utils/redis.js';
 import { decryptContent, encryptContent } from './utils/encryption.js';
-import { publishMessageReceivedEvent } from './lib/publish-message-event.js';
+import { recordAndPublishMessageEvent } from './lib/pending-message-events.js';
 import { resolveUserName } from './lib/resolve-username.js';
 import { corsOriginCallback } from './lib/cors-origin.js';
 import {
@@ -25,6 +25,12 @@ export const initializeSocket = async (
   httpServer: HttpServer,
   skipRedis = false
 ): Promise<SocketIOServer> => {
+  // Resolved once, eagerly, so a missing/insecure JWT_SECRET fails fast here
+  // at startup (index.ts's start() exits the process on a thrown error)
+  // instead of on the first socket handshake, which would otherwise leave
+  // the service looking "up" while every connection attempt is rejected.
+  const jwtSecret = resolveJwtSecret();
+
   io = new SocketIOServer(httpServer, {
     cors: {
       origin: corsOriginCallback,
@@ -71,7 +77,7 @@ export const initializeSocket = async (
       try {
         const payload = verifyAccessToken(
           raw,
-          resolveJwtSecret(),
+          jwtSecret,
           process.env.JWT_ISSUER
         );
 
@@ -566,9 +572,13 @@ export const initializeSocket = async (
             }
           }
 
-          // Fire-and-forget: a RabbitMQ outage must never block real-time
-          // delivery, which has already happened via the emit above.
-          publishMessageReceivedEvent({
+          // Not awaited: a RabbitMQ outage must never block real-time
+          // delivery, which has already happened via the emit above. Unlike
+          // a bare fire-and-forget publish, this durably records the event
+          // first (see lib/pending-message-events.ts), so a broker blip at
+          // this exact moment no longer drops it silently — the sweeper
+          // retries it.
+          recordAndPublishMessageEvent({
             messageId: message._id.toString(),
             conversationId,
             senderId,
@@ -579,7 +589,7 @@ export const initializeSocket = async (
             content: content.trim(),
           }).catch((err) => {
             console.error(
-              `[${socket.id}] Failed to publish message.received event:`,
+              `[${socket.id}] Failed to record message.received event:`,
               err
             );
           });

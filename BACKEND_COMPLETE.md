@@ -8,16 +8,17 @@ independently, with no cross-service Prisma relations. All PostgreSQL
 databases run on the same `mindora-postgres` container (host port 5434).
 Admin Service has no database of its own — it has no persistent storage.
 
-> **Correction (2026-07-30):** this previously said the shared
-> `@mindora/database` package "has been removed (2026-07-12)." That's not
-> accurate — `packages/database` still exists on disk, with its own
-> schema/migrations pointing at a separate `mindora` database. What's true is
-> that no service imports it anymore (confirmed via `grep` across every
-> `apps/*/package.json`) — it's orphaned, not deleted. The root-level
-> `npm run db:generate` / `db:migrate` / `db:seed` scripts still point at it,
-> which means those commands silently operate on a database nothing reads
-> from. See the root `README.md`'s Known Issues section for the practical
-> fallout (the documented test-login accounts don't exist anywhere).
+> **Correction (2026-08-25): actually removed this time.** This section has
+> flip-flopped once already — a 2026-07-30 correction walked back an earlier
+> "removed" claim after finding `packages/database` still on disk, orphaned
+> but present. It has now genuinely been deleted, along with the root-level
+> `db:generate` / `db:migrate` / `db:seed` scripts that pointed at it. The
+> deletion wasn't just cleanup: the package's `postinstall` ran `prisma
+> generate` against a schema requiring `DATABASE_URL`, which is never set at
+> the point `Dockerfile.bundle` runs `npm install` — so every production
+> Docker build was failing outright at that line. See the root `README.md`'s
+> Known Issues section for the still-open practical fallout (the documented
+> test-login accounts don't exist anywhere, independent of this package).
 
 | Service                | Database                              | Port    |
 | ---------------------- | ------------------------------------- | ------- |

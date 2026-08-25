@@ -53,6 +53,8 @@ const mockMoodCount = vi.fn();
 const mockMoodAggregate = vi.fn();
 const mockQueryRaw = vi.fn();
 const mockPublishMoodEvent = vi.fn();
+const mockPendingMoodEventCreate = vi.fn();
+const mockPendingMoodEventUpdate = vi.fn();
 const mockIsBlacklisted = vi.fn();
 const mockGetDailyLogCount = vi.fn();
 const mockIncrementDailyLogCount = vi.fn();
@@ -67,6 +69,11 @@ vi.mock('../lib/prisma.js', () => ({
       findMany: (...args: unknown[]) => mockMoodFindMany(...args),
       count: (...args: unknown[]) => mockMoodCount(...args),
       aggregate: (...args: unknown[]) => mockMoodAggregate(...args),
+    },
+    // Backs the mood-concern/streak durable outbox (lib/pending-mood-events.ts).
+    pendingMoodEvent: {
+      create: (...args: unknown[]) => mockPendingMoodEventCreate(...args),
+      update: (...args: unknown[]) => mockPendingMoodEventUpdate(...args),
     },
     $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
   },
@@ -450,6 +457,10 @@ describe('mood.concern event', () => {
     mockIncrementDailyLogCount.mockResolvedValue(1);
     mockDeleteInsightsCache.mockResolvedValue(undefined);
     mockPublishMoodEvent.mockResolvedValue(undefined);
+    // Durable outbox (lib/pending-mood-events.ts) writes a row before
+    // publishing — recordAndPublishMoodEvent needs both to resolve.
+    mockPendingMoodEventCreate.mockResolvedValue({ id: 'pending-event-id' });
+    mockPendingMoodEventUpdate.mockResolvedValue({});
     mockMoodCreate.mockReset();
     mockMoodFindMany.mockReset();
     mockMoodCreate.mockResolvedValue(sampleEntry({ moodScore: 2 }));

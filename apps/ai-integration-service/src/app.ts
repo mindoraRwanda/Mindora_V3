@@ -4,12 +4,10 @@ import express, {
   type Response,
 } from 'express';
 import swaggerUi from 'swagger-ui-express';
-import {
-  authenticate,
-  type AuthenticatedRequest,
-} from '@mindora/auth-middleware';
+import { authenticate } from './middleware/authenticate.js';
 import aiRouter from './routes/ai.routes.js';
 import { openApiSpec } from './docs/openapi.js';
+import { prisma } from './database.js';
 
 const SERVICE_NAME = 'ai-integration-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/ai/health';
@@ -36,18 +34,43 @@ app.use(
   })
 );
 
-// JWT authentication is required on every endpoint — no public routes in this service.
+const healthResponse = (healthy: boolean) => ({
+  status: healthy ? 'ok' : 'error',
+  service: SERVICE_NAME,
+});
+
+// A bare 200 can't tell an operator "up but the database is gone" from
+// "actually fine". Timeout-guarded so a hung database makes the check fail
+// fast (503) instead of hanging the probe.
+async function isDatabaseHealthy(): Promise<boolean> {
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('health check timeout')), 3000)
+      ),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Health endpoints — no auth required. Must be mounted before
+// app.use(authenticate) below, same reasoning as the /docs mount above: a
+// route registered after that middleware inherits the JWT requirement.
+app.get('/health', async (_req, res) => {
+  const healthy = await isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
+});
+
+app.get(GATEWAY_HEALTH_PATH, async (_req, res) => {
+  const healthy = await isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
+});
+
+// JWT authentication is required on every remaining endpoint.
 app.use(authenticate as express.RequestHandler);
-
-const healthResponse = () => ({ status: 'ok', service: SERVICE_NAME });
-
-app.get('/health', (_req: AuthenticatedRequest, res) => {
-  res.status(200).json(healthResponse());
-});
-
-app.get(GATEWAY_HEALTH_PATH, (_req: AuthenticatedRequest, res) => {
-  res.status(200).json(healthResponse());
-});
 
 app.use('/api/v1/ai', aiRouter);
 

@@ -3,8 +3,11 @@ import { logNotification } from './notificationLogger.js';
 
 let resend: Resend | null = null;
 
-// Resend sandbox sender — replace once a custom sending domain is verified.
-const FROM = 'Mindora <onboarding@resend.dev>';
+// Defaults to Resend's own shared sandbox sender — fine for local dev, but
+// it will silently keep sending from onboarding@resend.dev in production
+// even with a real RESEND_EMAIL_API_KEY unless RESEND_FROM_EMAIL is set to
+// an address on a verified sending domain.
+const FROM = process.env.RESEND_FROM_EMAIL ?? 'Mindora <onboarding@resend.dev>';
 
 export function initResend(): void {
   const apiKey = process.env.RESEND_EMAIL_API_KEY;

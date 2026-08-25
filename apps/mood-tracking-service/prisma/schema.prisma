@@ -28,3 +28,24 @@ model MoodEntry {
   @@index([userId, recordedAt])
   @@map("mood_entries")
 }
+
+// Durable outbox for mood.concern and mood.streak events — mirrors the
+// crisis-alert pattern in ai-integration-service's CrisisAlert model.
+// RabbitMQ being briefly down must never lose one of these silently: the
+// row is written first, publishing is best-effort from the request path,
+// and the sweeper in lib/pending-mood-events.ts retries anything left
+// undelivered.
+model PendingMoodEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  eventType   String    @map("event_type")
+  payload     Json
+  createdAt   DateTime  @default(now()) @map("created_at")
+  published   Boolean   @default(false)
+  publishedAt DateTime? @map("published_at")
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+
+  // Sweeper scans for undelivered rows oldest-first.
+  @@index([published, createdAt])
+  @@map("pending_mood_events")
+}

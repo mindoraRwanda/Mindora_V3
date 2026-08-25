@@ -3,10 +3,22 @@ import express, {
   type Request,
   type Response,
 } from 'express';
+import mongoose from 'mongoose';
 import communityRoutes, { internalRouter } from './routes/community.routes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './docs/swagger.js';
 import { publicRouteLimiter } from './middleware/rate-limit.js';
+
+// mongoose tracks connection state in memory — readyState 1 is "connected".
+// A bare 200 can't tell an operator "up but the database is gone" from
+// "actually fine".
+function isDatabaseHealthy(): boolean {
+  return mongoose.connection.readyState === 1;
+}
+
+function healthResponse(healthy: boolean) {
+  return { status: healthy ? 'ok' : 'error', service: 'community-service' };
+}
 
 const app = express();
 
@@ -30,8 +42,9 @@ app.get('/docs.json', publicRouteLimiter, (_req, res) => {
   res.send(swaggerSpec);
 });
 
-app.get('/health', publicRouteLimiter, (req, res) => {
-  res.status(200).json({ status: 'ok' });
+app.get('/health', publicRouteLimiter, (_req, res) => {
+  const healthy = isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
 });
 
 app.use('/api/v1/community', communityRoutes);
@@ -41,7 +54,8 @@ app.use('/api/v1/community', communityRoutes);
 app.use(internalRouter);
 
 app.get('/api/v1/community/health', publicRouteLimiter, (_req, res) => {
-  res.status(200).json({ status: 'ok', service: 'community-service' });
+  const healthy = isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
 });
 
 // Catches errors forwarded via next(err) — including rejected promises

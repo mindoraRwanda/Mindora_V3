@@ -69,8 +69,8 @@ would be wrong for the first three hours of every day. Clients should send
 ```bash
 docker compose up -d postgres redis rabbitmq
 
-# NOT `npm run db:migrate` — that targets the orphaned @mindora/database
-# package, not this service's own DB (MOOD_DATABASE_URL)
+# There is no root-level db:migrate — migrate this service's own DB directly
+# (MOOD_DATABASE_URL)
 cd apps/mood-tracking-service && npx prisma migrate dev
 cd ../..
 

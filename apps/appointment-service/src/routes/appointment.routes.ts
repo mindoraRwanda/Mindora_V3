@@ -313,18 +313,25 @@ appointmentRouter.put(
       data: { status: 'CONFIRMED' },
     });
 
-    await publishAppointmentEvent(
-      createAppointmentConfirmedEvent({
-        appointmentId: updated.id,
-        patientId: updated.patientId,
-        therapistId: updated.therapistId,
-        slotStart: updated.slotStart.toISOString(),
-        slotEnd: updated.slotEnd.toISOString(),
-        sessionType: updated.sessionType as AppointmentSessionType,
-        confirmedByUserId: authReq.user.userId,
-      }),
-      config.rabbitUrl
-    );
+    // RabbitMQ being down must never fail a status change that's already
+    // committed — a lost event here only means downstream notifications
+    // don't fire for it.
+    try {
+      await publishAppointmentEvent(
+        createAppointmentConfirmedEvent({
+          appointmentId: updated.id,
+          patientId: updated.patientId,
+          therapistId: updated.therapistId,
+          slotStart: updated.slotStart.toISOString(),
+          slotEnd: updated.slotEnd.toISOString(),
+          sessionType: updated.sessionType as AppointmentSessionType,
+          confirmedByUserId: authReq.user.userId,
+        }),
+        config.rabbitUrl
+      );
+    } catch (err) {
+      console.error('[appointment.confirmed] Failed to publish event:', err);
+    }
 
     res.status(200).json(serializeAppointment(updated));
   })
@@ -386,19 +393,23 @@ appointmentRouter.put(
       },
     });
 
-    await publishAppointmentEvent(
-      createAppointmentCancelledEvent({
-        appointmentId: updated.id,
-        patientId: updated.patientId,
-        therapistId: updated.therapistId,
-        slotStart: updated.slotStart.toISOString(),
-        slotEnd: updated.slotEnd.toISOString(),
-        sessionType: updated.sessionType as AppointmentSessionType,
-        cancelledByUserId: authReq.user.userId,
-        cancellationReason: parsed.data.cancellationReason,
-      }),
-      config.rabbitUrl
-    );
+    try {
+      await publishAppointmentEvent(
+        createAppointmentCancelledEvent({
+          appointmentId: updated.id,
+          patientId: updated.patientId,
+          therapistId: updated.therapistId,
+          slotStart: updated.slotStart.toISOString(),
+          slotEnd: updated.slotEnd.toISOString(),
+          sessionType: updated.sessionType as AppointmentSessionType,
+          cancelledByUserId: authReq.user.userId,
+          cancellationReason: parsed.data.cancellationReason,
+        }),
+        config.rabbitUrl
+      );
+    } catch (err) {
+      console.error('[appointment.cancelled] Failed to publish event:', err);
+    }
 
     res.status(200).json(serializeAppointment(updated));
   })
@@ -443,18 +454,22 @@ appointmentRouter.put(
       data: { status: 'COMPLETED' },
     });
 
-    await publishAppointmentEvent(
-      createAppointmentCompletedEvent({
-        appointmentId: updated.id,
-        patientId: updated.patientId,
-        therapistId: updated.therapistId,
-        slotStart: updated.slotStart.toISOString(),
-        slotEnd: updated.slotEnd.toISOString(),
-        sessionType: updated.sessionType as AppointmentSessionType,
-        completedByUserId: authReq.user.userId,
-      }),
-      config.rabbitUrl
-    );
+    try {
+      await publishAppointmentEvent(
+        createAppointmentCompletedEvent({
+          appointmentId: updated.id,
+          patientId: updated.patientId,
+          therapistId: updated.therapistId,
+          slotStart: updated.slotStart.toISOString(),
+          slotEnd: updated.slotEnd.toISOString(),
+          sessionType: updated.sessionType as AppointmentSessionType,
+          completedByUserId: authReq.user.userId,
+        }),
+        config.rabbitUrl
+      );
+    } catch (err) {
+      console.error('[appointment.completed] Failed to publish event:', err);
+    }
 
     res.status(200).json(serializeAppointment(updated));
   })
