@@ -581,20 +581,20 @@ varies by how the spec is generated:
 
 ## Scripts
 
-| Command                        | Description                                                                                                                                                            |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                  | Start all services in watch mode (concurrency 10)                                                                                                                      |
-| `npm run dev:auth`             | Start auth-service only                                                                                                                                                |
-| `npm run dev:community`        | Start community-service + auth-service                                                                                                                                 |
-| `npm run dev:messaging`        | Start messaging-service + auth-service                                                                                                                                 |
-| `npm run build`                | Build all packages and apps                                                                                                                                            |
-| `npm run lint`                 | ESLint across all workspaces                                                                                                                                           |
-| `npm run test`                 | Vitest across all workspaces                                                                                                                                           |
-| `npm run db:seed:profiles`     | Seed user-service — 30 therapist profiles                                                                                                                              |
-| `npm run db:seed:appointments` | Seed appointment-service — sample bookings                                                                                                                             |
-| `npm run db:seed:mood`         | Seed mood-tracking-service                                                                                                                                             |
-| `npm run db:seed:community`    | Seed community-service MongoDB data                                                                                                                                   |
-| `npm run smoke:gateway`        | Check every service is reachable **through Kong**. Needs a running stack; not part of `npm run test`. `GATEWAY_URL=` to target a deployed gateway                      |
+| Command                        | Description                                                                                                                                       |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                  | Start all services in watch mode (concurrency 10)                                                                                                 |
+| `npm run dev:auth`             | Start auth-service only                                                                                                                           |
+| `npm run dev:community`        | Start community-service + auth-service                                                                                                            |
+| `npm run dev:messaging`        | Start messaging-service + auth-service                                                                                                            |
+| `npm run build`                | Build all packages and apps                                                                                                                       |
+| `npm run lint`                 | ESLint across all workspaces                                                                                                                      |
+| `npm run test`                 | Vitest across all workspaces                                                                                                                      |
+| `npm run db:seed:profiles`     | Seed user-service — 30 therapist profiles                                                                                                         |
+| `npm run db:seed:appointments` | Seed appointment-service — sample bookings                                                                                                        |
+| `npm run db:seed:mood`         | Seed mood-tracking-service                                                                                                                        |
+| `npm run db:seed:community`    | Seed community-service MongoDB data                                                                                                               |
+| `npm run smoke:gateway`        | Check every service is reachable **through Kong**. Needs a running stack; not part of `npm run test`. `GATEWAY_URL=` to target a deployed gateway |
 
 There is no root-level `db:migrate` / `db:seed` / `db:generate` anymore (they
 targeted the now-deleted `@mindora/database` package — see Known Issues).

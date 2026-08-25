@@ -14,7 +14,7 @@ Admin Service has no database of its own — it has no persistent storage.
 > but present. It has now genuinely been deleted, along with the root-level
 > `db:generate` / `db:migrate` / `db:seed` scripts that pointed at it. The
 > deletion wasn't just cleanup: the package's `postinstall` ran `prisma
-> generate` against a schema requiring `DATABASE_URL`, which is never set at
+generate` against a schema requiring `DATABASE_URL`, which is never set at
 > the point `Dockerfile.bundle` runs `npm install` — so every production
 > Docker build was failing outright at that line. See the root `README.md`'s
 > Known Issues section for the still-open practical fallout (the documented

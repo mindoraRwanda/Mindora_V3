@@ -88,10 +88,7 @@ export async function sweepUndeliveredMoodEvents(): Promise<number> {
   });
 
   for (const row of pending) {
-    await attemptDelivery(
-      row.id,
-      row.payload as unknown as MoodDomainEvent
-    );
+    await attemptDelivery(row.id, row.payload as unknown as MoodDomainEvent);
   }
 
   const exhausted = await prisma.pendingMoodEvent.count({

@@ -134,14 +134,14 @@ USER_SERVICE_URL=http://localhost:3002          # same container, leave as-is
 
 ### 3.4 Third-party credentials
 
-| Variable                                      | Needed for          | Status                                                                                                                       |
-| --------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `THERAPY_CHATBOT_BASE_URL`                    | AI companion chat   | External FastAPI service, already deployed on Railway.                                                                       |
-| `RESEND_EMAIL_API_KEY`                        | Email notifications | **Needs a verified sending domain** before production. Currently a personal/sandbox key.                                     |
+| Variable                                      | Needed for          | Status                                                                                                                                                                                          |
+| --------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `THERAPY_CHATBOT_BASE_URL`                    | AI companion chat   | External FastAPI service, already deployed on Railway.                                                                                                                                          |
+| `RESEND_EMAIL_API_KEY`                        | Email notifications | **Needs a verified sending domain** before production. Currently a personal/sandbox key.                                                                                                        |
 | `RESEND_FROM_EMAIL`                           | Email notifications | **Set this too, not just the API key.** Unset falls back to Resend's own shared sandbox address (`onboarding@resend.dev`) — a real API key alone does not change who mail appears to come from. |
-| `FIREBASE_SERVICE_ACCOUNT_JSON`               | Push notifications  | **Currently a personal developer's Firebase project.** Must move to a company-owned account.                                 |
-| `AT_API_KEY` / `AT_USERNAME` / `AT_SENDER_ID` | SMS                 | Africa's Talking. Needs a registered sender ID for Rwanda. `SMS_ENABLED=false` by default, leave it off unless that is done. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`   | Google sign-in      | Optional. If unset, the OAuth endpoints return 503 rather than breaking. Set `GOOGLE_CALLBACK_URL` to the deployed callback. |
+| `FIREBASE_SERVICE_ACCOUNT_JSON`               | Push notifications  | **Currently a personal developer's Firebase project.** Must move to a company-owned account.                                                                                                    |
+| `AT_API_KEY` / `AT_USERNAME` / `AT_SENDER_ID` | SMS                 | Africa's Talking. Needs a registered sender ID for Rwanda. `SMS_ENABLED=false` by default, leave it off unless that is done.                                                                    |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`   | Google sign-in      | Optional. If unset, the OAuth endpoints return 503 rather than breaking. Set `GOOGLE_CALLBACK_URL` to the deployed callback.                                                                    |
 
 ---
 
@@ -265,7 +265,7 @@ curl https://<kong-host>/api/v1/admin/health
 All should return `{"status":"ok",...}`. A 502 means Kong reached but the
 upstream is down, check `KONG_UPSTREAM_HOST`. A 404 means the Kong route
 config did not load. A 503 with `{"status":"error",...}` means Kong reached
-the service and the service is running, but *that service's own database*
+the service and the service is running, but _that service's own database_
 is unreachable — check its `*_DATABASE_URL` / `MONGO_URI`, not Kong.
 
 Then confirm CORS is right, using your real frontend origin:
@@ -361,7 +361,7 @@ currently not detected at all.
 **Update (2026-08-25): the RabbitMQ reliability gap previously noted here is
 fixed.** Crisis alerts (`apps/ai-integration-service/src/lib/crisis-alerts.ts`),
 mood-concern/streak events, and messaging's `message.received` event are all
-now written to their own service's database *before* publishing, with a
+now written to their own service's database _before_ publishing, with a
 30-second sweeper retrying anything RabbitMQ didn't accept — a broker outage
 at the moment of detection no longer loses the record silently. That was pure
 reliability plumbing and didn't require a clinical decision, so it shipped

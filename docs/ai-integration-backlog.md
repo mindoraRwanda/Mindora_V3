@@ -83,7 +83,7 @@ has two consequences:
 - Our development traffic hits their production system, adding load and
   polluting whatever analytics they collect.
 
-Note the current test suite does *not* hit the live backend — `fetch` is
+Note the current test suite does _not_ hit the live backend — `fetch` is
 mocked throughout `chatbotClient.test.ts`. This gap is about running the
 service, not about tests.
 
