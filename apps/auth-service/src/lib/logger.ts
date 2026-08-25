@@ -17,11 +17,21 @@ export type LogLevel = keyof typeof LEVELS;
 const threshold =
   LEVELS[(process.env.LOG_LEVEL as LogLevel) ?? 'info'] ?? LEVELS.info;
 
+// Strips control characters (newlines included) before a value reaches the
+// log — several call sites pass user-controlled strings straight through
+// (a login email, req.originalUrl, ...), and without this a value containing
+// \n/\r could forge what looks like a separate, fabricated log line (log
+// injection / log forging, CWE-117).
+function sanitizeForLog(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\x00-\x1f\x7f]/g, '');
+}
+
 function renderFields(fields: LogFields): string {
   return Object.entries(fields)
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([key, value]) => {
-      const rendered = String(value);
+      const rendered = sanitizeForLog(String(value));
       // Quote values containing whitespace so `msg=two words` can't be read as
       // two separate fields by eye or by grep.
       return /\s/.test(rendered)
@@ -46,7 +56,7 @@ function emit(
     new Date().toISOString(),
     level.toUpperCase().padEnd(5),
     `[${tag}]`,
-    message,
+    sanitizeForLog(message),
     rendered,
   ]
     .filter(Boolean)

@@ -5,6 +5,7 @@ import express, {
 } from 'express';
 import swaggerUi from 'swagger-ui-express';
 import { authenticate } from './middleware/authenticate.js';
+import { authenticatedRouteLimiter } from './middleware/rate-limit.js';
 import aiRouter from './routes/ai.routes.js';
 import { openApiSpec } from './docs/openapi.js';
 import { prisma } from './database.js';
@@ -69,8 +70,11 @@ app.get(GATEWAY_HEALTH_PATH, async (_req, res) => {
   res.status(healthy ? 200 : 503).json(healthResponse(healthy));
 });
 
-// JWT authentication is required on every remaining endpoint.
-app.use(authenticate as express.RequestHandler);
+// JWT authentication is required on every remaining endpoint. Rate-limited
+// first, same as every other service's authenticated routes — otherwise an
+// attacker can brute-force tokens against the authorization check with no
+// throttling at all.
+app.use(authenticatedRouteLimiter, authenticate as express.RequestHandler);
 
 app.use('/api/v1/ai', aiRouter);
 
