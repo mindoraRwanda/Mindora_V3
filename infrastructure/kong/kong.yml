@@ -1,56 +1,41 @@
 _format_version: '3.0'
 
-# Microservices run on the host during local dev (npm run dev).
-# Kong in Docker reaches them via host.docker.internal.
-
-# Global CORS so the web build of the mobile app (served from a dev origin like
-# http://localhost:8081/19006/etc, different from Kong's :8000) can call the API
-# at all — browsers block cross-origin requests without this (mobile apps aren't
-# affected, CORS is a browser-only mechanism). credentials: true is needed so the
-# httpOnly refreshToken cookie set by auth-service's /login can ride along on
-# fetch(..., { credentials: 'include' }); Kong reflects the actual request Origin
-# instead of a literal "*" whenever credentials is true, so this stays spec-valid.
-plugins:
-  - name: cors
-    config:
-      origins:
-        - '*'
-      methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
-      headers:
-        [
-          Accept,
-          Accept-Version,
-          Content-Length,
-          Content-MD5,
-          Content-Type,
-          Date,
-          Authorization,
-          X-Auth-Token,
-        ]
-      exposed_headers: [X-Auth-Token]
-      credentials: true
-      max_age: 3600
-      preflight_continue: false
+# Single Kong config for every environment.
+#
+# There used to be a second copy of this file (kong.railway.yml) that differed
+# only in the upstream host. The two drifted: the Railway one kept
+# `origins: ['*']` with credentials enabled, and a committed JWT secret that
+# had to be pasted in by hand before building the image. Both are now
+# ${PLACEHOLDER}s substituted at container start by docker-entrypoint.sh, so
+# there is one file and the environment-specific values are deployment config.
+#
+# ${KONG_UPSTREAM_HOST} is the only thing that varies by environment:
+#   local (docker compose) : host.docker.internal — services run on the host
+#   Railway                : mindorav3.railway.internal — the bundle service's
+#                            private DNS. Confirm against RAILWAY_PRIVATE_DOMAIN
+#                            on that service's Variables tab if it's renamed.
 
 services:
   - name: auth-service
-    url: http://host.docker.internal:3001
+    url: http://${KONG_UPSTREAM_HOST}:3001
   - name: user-service
-    url: http://host.docker.internal:3002
+    url: http://${KONG_UPSTREAM_HOST}:3002
   - name: appointment-service
-    url: http://host.docker.internal:3003
+    url: http://${KONG_UPSTREAM_HOST}:3003
   - name: mood-tracking-service
-    url: http://host.docker.internal:3004
+    url: http://${KONG_UPSTREAM_HOST}:3004
   - name: community-service
-    url: http://host.docker.internal:3005
+    url: http://${KONG_UPSTREAM_HOST}:3005
   - name: messaging-service
-    url: http://host.docker.internal:3006
+    url: http://${KONG_UPSTREAM_HOST}:3006
   - name: ai-integration-service
-    url: http://host.docker.internal:3007
+    url: http://${KONG_UPSTREAM_HOST}:3007
   - name: notification-service
-    url: http://host.docker.internal:3008
+    url: http://${KONG_UPSTREAM_HOST}:3008
   - name: admin-service
-    url: http://host.docker.internal:3009
+    url: http://${KONG_UPSTREAM_HOST}:3009
+  - name: docs-gateway
+    url: http://${KONG_UPSTREAM_HOST}:3010
 
 routes:
   # Public health checks (no JWT) — full path forwarded to each service
@@ -185,6 +170,18 @@ routes:
     strip_path: false
     methods: [GET, OPTIONS]
 
+  # Aggregated Swagger UI. No jwt plugin on purpose: a browser loading the
+  # docs page can't attach a Bearer token, so gating it here would just make
+  # it unreachable. It exposes the shape of every endpoint (not data) — if
+  # that's not acceptable in production, drop this route rather than adding
+  # jwt, and reach the docs through the service's own port instead.
+  # strip_path: true because docs-gateway mounts Swagger UI at '/'.
+  - name: docs-gateway-api
+    service: docs-gateway
+    paths: [/docs]
+    strip_path: true
+    methods: [GET, OPTIONS]
+
   # Protected API routes (JWT + rate limit)
   - name: auth-api
     service: auth-service
@@ -207,6 +204,8 @@ routes:
     strip_path: true
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 200
@@ -249,6 +248,8 @@ routes:
     strip_path: true
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 150
@@ -275,6 +276,8 @@ routes:
     strip_path: true
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 200
@@ -309,6 +312,8 @@ routes:
     strip_path: false
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 300
@@ -330,10 +335,20 @@ routes:
 
   - name: messaging-api
     service: messaging-service
+    # strip_path: false — same mismatch already fixed for community-api and
+    # ai-api above: messaging-service mounts at the full gateway path
+    # (app.use('/api/v1/messaging/conversations', ...), and likewise for
+    # /api/v1/messaging/presence/:userId), so it expects the whole path rather
+    # than the stripped remainder. strip_path: true 404s every messaging route
+    # through the gateway (confirmed: 'Cannot GET /conversations'), which
+    # surfaces in the UI as a chat that will not open. The test suite can't
+    # catch it — supertest hits Express directly and never crosses Kong.
     paths: [/api/v1/messaging]
-    strip_path: true
+    strip_path: false
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 500
@@ -350,6 +365,8 @@ routes:
     strip_path: false
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 60
@@ -357,10 +374,22 @@ routes:
 
   - name: notification-api
     service: notification-service
+    # strip_path: false — fourth instance of the mismatch fixed for
+    # community-api, ai-api and messaging-api. notification-service mounts its
+    # router at the root (app.use(notificationsRouter)) but bakes the full path
+    # into the route itself, notificationsRouter.get('/api/v1/notifications/logs'),
+    # so it still expects the whole path. strip_path: true forwarded '/logs'
+    # and 404'd ('Cannot GET /logs').
+    #
+    # Worth noting for future audits: reading only the app.use() mounts misses
+    # this shape, because the prefix lives on the route rather than the mount.
+    # scripts/smoke-gateway.mjs checks the behaviour instead of the wiring.
     paths: [/api/v1/notifications]
-    strip_path: true
+    strip_path: false
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 100
@@ -372,25 +401,40 @@ routes:
     strip_path: true
     plugins:
       - name: jwt
+        config:
+          claims_to_verify: [exp]
       - name: rate-limiting
         config:
           minute: 100
           policy: local
 
-# Global — applies to every route above. The frontend now lives in a
-# separate repo/origin (e.g. http://localhost:3000) instead of being served
-# same-origin from this monorepo, so browser requests through the gateway
-# need real CORS headers. credentials: true is required because apiFetch()
-# uses credentials: 'include' (the HttpOnly refresh-token cookie) — that
-# means origins must be an explicit allowlist, never '*' (the CORS spec
-# forbids a wildcard origin when credentials are allowed). Add any other
-# frontend origins (deployed URL, alternate dev ports) to this list as
-# they come up.
+# Global — applies to every route above. The frontend lives on a separate
+# origin, so browser requests through the gateway need real CORS headers.
+# credentials: true is required because apiFetch() uses
+# credentials: 'include' (the HttpOnly refresh-token cookie) — and that in
+# turn means origins MUST be an explicit allowlist: the CORS spec forbids a
+# wildcard origin when credentials are allowed.
+#
+# NOTE: this file previously declared `plugins:` twice (a '*'-origin block at
+# the top and this one). YAML forbids duplicate keys — strict parsers reject
+# the file outright, and Kong's lenient parser silently kept only the last
+# block, so the '*' block never did anything. Keep exactly one `plugins:` key.
+#
+# ${...} placeholders are substituted at container start by
+# infrastructure/kong/docker-entrypoint.sh; Kong's declarative config has no
+# native env-var expansion.
 plugins:
+  # No route here accepts file uploads (checked: no multer/upload handler
+  # anywhere in apps/*/src) — every body is JSON (chat messages, mood
+  # journal entries, community posts). 10MB is generous headroom over any
+  # real payload while still bounding what an unauthenticated or malicious
+  # client can send at a public endpoint.
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 10
   - name: cors
     config:
-      origins:
-        - http://localhost:3000
+      origins: ${KONG_CORS_ORIGINS}
       methods:
         - GET
         - POST
@@ -400,10 +444,18 @@ plugins:
         - OPTIONS
       headers:
         - Accept
-        - Authorization
+        - Accept-Version
+        - Content-Length
+        - Content-MD5
         - Content-Type
+        - Date
+        - Authorization
+        - X-Auth-Token
+      exposed_headers:
+        - X-Auth-Token
       credentials: true
       max_age: 3600
+      preflight_continue: false
 
 consumers:
   - username: mindora-platform
@@ -411,5 +463,6 @@ consumers:
 jwt_secrets:
   - consumer: mindora-platform
     key: mindora-auth
-    # Must match JWT_SECRET in .env — Kong declarative config does not expand env vars
-    secret: mindora-dev-jwt-secret-change-in-production
+    # Substituted from the JWT_SECRET env var at container start — must match
+    # the value the services sign with. Never commit a real secret here.
+    secret: ${JWT_SECRET}

@@ -1,13 +1,50 @@
 import { randomUUID } from 'node:crypto';
-import { EXCHANGES, messageReceivedEventSchema } from '@mindora/events';
+import {
+  EXCHANGES,
+  messageReceivedEventSchema,
+  type MessageReceivedEvent,
+} from '@mindora/events';
 import { connect } from '@mindora/queue';
 
-interface MessageReceivedInput {
+export interface MessageReceivedInput {
   messageId: string;
   conversationId: string;
   senderId: string;
   recipientId: string | null;
   content: string;
+}
+
+/**
+ * Validates and stamps a message.received event, or returns null if there's
+ * no recipient to notify. Split out from publishing so a caller that needs
+ * to retry delivery (see lib/pending-message-events.ts) reuses the same
+ * eventId/occurredAt across attempts instead of minting a new envelope —
+ * and therefore a new eventId — on every retry.
+ */
+export function buildMessageReceivedEvent(
+  input: MessageReceivedInput
+): MessageReceivedEvent | null {
+  if (!input.recipientId) {
+    console.warn(
+      `[message.received] Could not resolve a recipient for conversation ${input.conversationId} — skipping publish`
+    );
+    return null;
+  }
+
+  // zod's declared output type for a schema built via .extend() widens every
+  // field to optional (a known inference quirk, not a runtime concern —
+  // .parse() throws unless every required field above is actually present),
+  // so the result needs an explicit assertion back to the hand-written
+  // MessageReceivedEvent interface.
+  return messageReceivedEventSchema.parse({
+    eventId: randomUUID(),
+    occurredAt: new Date().toISOString(),
+    messageId: input.messageId,
+    conversationId: input.conversationId,
+    senderId: input.senderId,
+    recipientId: input.recipientId,
+    content: input.content,
+  }) as MessageReceivedEvent;
 }
 
 // EXCHANGES.MESSAGES ('mindora.messages') is consumed by Notification Service
@@ -16,29 +53,10 @@ interface MessageReceivedInput {
 // always asserts 'topic', which throws PRECONDITION_FAILED against an
 // existing 'fanout' exchange (same class of mismatch documented on
 // subscribeToExchange itself) — so this publishes with a raw channel instead,
-// asserting 'fanout' to match. Every payload is validated on the consumer
-// side against messageReceivedEventSchema, which requires eventId/occurredAt
-// (the shared event envelope), not just the fields used here.
+// asserting 'fanout' to match.
 export async function publishMessageReceivedEvent(
-  input: MessageReceivedInput
+  event: MessageReceivedEvent
 ): Promise<void> {
-  if (!input.recipientId) {
-    console.warn(
-      `[message.received] Could not resolve a recipient for conversation ${input.conversationId} — skipping publish`
-    );
-    return;
-  }
-
-  const event = messageReceivedEventSchema.parse({
-    eventId: randomUUID(),
-    occurredAt: new Date().toISOString(),
-    messageId: input.messageId,
-    conversationId: input.conversationId,
-    senderId: input.senderId,
-    recipientId: input.recipientId,
-    content: input.content,
-  });
-
   const connection = await connect();
   const channel = await connection.createChannel();
   // Local, one-off listener so a problem on this specific channel can't

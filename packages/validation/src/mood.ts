@@ -83,13 +83,22 @@ export const moodSummaryQuerySchema = z
 // checking in at 01:00 local is still on the previous UTC day, so defaulting
 // to UTC would report the wrong answer for the first three hours of every
 // day. Clients should send Intl.DateTimeFormat().resolvedOptions().timeZone.
+const timezoneQueryField = z
+  .string()
+  .min(1)
+  .max(64)
+  .refine(isValidTimeZone, { message: 'Unknown IANA time zone' })
+  .default('UTC');
+
 export const moodTodayQuerySchema = z.object({
-  timezone: z
-    .string()
-    .min(1)
-    .max(64)
-    .refine(isValidTimeZone, { message: 'Unknown IANA time zone' })
-    .default('UTC'),
+  timezone: timezoneQueryField,
+});
+
+// Streaks are counted in calendar days, so they need the same zone for the
+// same reason /today does — plus one of their own: whether a streak is still
+// live depends on what "today" and "yesterday" are for this user.
+export const moodStreakQuerySchema = z.object({
+  timezone: timezoneQueryField,
 });
 
 export type LogMoodDto = z.infer<typeof logMoodSchema>;
@@ -97,3 +106,4 @@ export type UpdateMoodDto = z.infer<typeof updateMoodSchema>;
 export type MoodHistoryQueryDto = z.infer<typeof moodHistoryQuerySchema>;
 export type MoodSummaryQueryDto = z.infer<typeof moodSummaryQuerySchema>;
 export type MoodTodayQueryDto = z.infer<typeof moodTodayQuerySchema>;
+export type MoodStreakQueryDto = z.infer<typeof moodStreakQuerySchema>;

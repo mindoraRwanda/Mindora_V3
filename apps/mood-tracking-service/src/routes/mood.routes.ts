@@ -9,6 +9,7 @@ import { Prisma } from '../generated/prisma/index.js';
 import {
   logMoodSchema,
   moodHistoryQuerySchema,
+  moodStreakQuerySchema,
   moodSummaryQuerySchema,
   moodTodayQuerySchema,
   updateMoodSchema,
@@ -18,7 +19,7 @@ import { averageScore, shouldPublishMoodConcern } from '../lib/concern.js';
 import { encryptJournalNote } from '../lib/journal-crypto.js';
 import { computeWeeklyInsights } from '../lib/insights.js';
 import { localDayRange } from '../lib/local-day.js';
-import { publishMoodEvent } from '../lib/publish-mood-event.js';
+import { recordAndPublishMoodEvent } from '../lib/pending-mood-events.js';
 import {
   deleteInsightsCache,
   getDailyLogCount,
@@ -63,18 +64,13 @@ async function checkForMoodConcern(userId: string): Promise<void> {
   if (!shouldPublishMoodConcern(recentScores)) {
     return;
   }
-  // RabbitMQ being down must never fail a write that's already committed.
-  try {
-    await publishMoodEvent(
-      createMoodConcernEvent({
-        userId,
-        avgMoodScore: averageScore(recentScores),
-        recentScores,
-      })
-    );
-  } catch (err) {
-    console.error('[mood.concern] Failed to publish event:', err);
-  }
+  await recordAndPublishMoodEvent(
+    createMoodConcernEvent({
+      userId,
+      avgMoodScore: averageScore(recentScores),
+      recentScores,
+    })
+  );
 }
 
 moodRouter.post(
@@ -145,6 +141,14 @@ moodRouter.post(
       select: { recordedAt: true },
       orderBy: { recordedAt: 'desc' },
     });
+    // UTC, not the user's zone: the write path has no timezone to work from
+    // (logMoodSchema carries none), and milestone events have always been
+    // counted this way. The entry just written anchors the run, so the
+    // liveness check passes for a normal check-in either way.
+    //
+    // One deliberate consequence: backfilling only old days no longer fires a
+    // milestone, because the run it belongs to is no longer live. Earning a
+    // "7-day streak" push by backdating a week of entries was never intended.
     const { streak, lastCheckedIn } = calculateStreak(allRecordedDays);
     if (
       lastCheckedIn &&
@@ -152,18 +156,14 @@ moodRouter.post(
         streak as (typeof MOOD_STREAK_MILESTONES)[number]
       )
     ) {
-      try {
-        await publishMoodEvent(
-          createMoodStreakEvent({
-            userId,
-            streak,
-            milestone: streak as 7 | 14 | 30,
-            lastCheckedIn: `${lastCheckedIn}T00:00:00.000Z`,
-          })
-        );
-      } catch (err) {
-        console.error('[mood.streak] Failed to publish event:', err);
-      }
+      await recordAndPublishMoodEvent(
+        createMoodStreakEvent({
+          userId,
+          streak,
+          milestone: streak as 7 | 14 | 30,
+          lastCheckedIn: `${lastCheckedIn}T00:00:00.000Z`,
+        })
+      );
     }
 
     res.status(201).json(serializeMoodEntry(entry, { includeJournal: true }));
@@ -276,6 +276,14 @@ moodRouter.get(
     }
 
     const patientId = routeParam(req.params.userId);
+    // Same reason as the token-subject guard: this id reaches a `uuid` column
+    // and a `::uuid` cast in computeWeeklyInsights, so a malformed value would
+    // throw inside the query and surface as an opaque 500.
+    if (!UUID_PATTERN.test(patientId)) {
+      res.status(404).json({ message: 'No mood data for patient' });
+      return;
+    }
+
     const since = new Date();
     since.setUTCDate(since.getUTCDate() - 30);
 
@@ -307,6 +315,9 @@ moodRouter.get(
       return nums.reduce((sum, v) => sum + v, 0) / nums.length;
     };
 
+    // UTC: this is a clinician reading someone else's summary, and the request
+    // carries the *viewer's* context, not the patient's zone. Guessing from
+    // the viewer would be worse than a documented, consistent UTC reading.
     const { streak, lastCheckedIn } = calculateStreak(entries);
     const insights = await computeWeeklyInsights(patientId);
 
@@ -340,13 +351,24 @@ moodRouter.get(
       return;
     }
 
+    const parsed = moodStreakQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
     const entries = await prisma.moodEntry.findMany({
       where: { userId: authReq.user.userId },
       select: { recordedAt: true },
       orderBy: { recordedAt: 'desc' },
     });
 
-    const { streak, lastCheckedIn } = calculateStreak(entries);
+    const { streak, lastCheckedIn } = calculateStreak(entries, {
+      timeZone: parsed.data.timezone,
+    });
     res.status(200).json({
       streak,
       lastCheckedIn: lastCheckedIn ? `${lastCheckedIn}T00:00:00.000Z` : null,

@@ -7,11 +7,24 @@ import {
 
 const ALGORITHM = 'aes-256-gcm';
 
+const DEV_FALLBACK_KEY = 'mindora-dev-ai-interaction-key-32bytes!!';
+
 function encryptionKey(): Buffer {
-  const secret =
-    process.env.AI_INTERACTION_ENCRYPTION_KEY ??
-    'mindora-dev-ai-interaction-key-32bytes!!';
-  return createHash('sha256').update(secret).digest();
+  const configured = process.env.AI_INTERACTION_ENCRYPTION_KEY;
+
+  // This key protects therapy chat content and the stored chatbot account
+  // password. Falling back to a value published in this repo would silently
+  // make that encryption decorative, so production must set a real one.
+  if (process.env.NODE_ENV === 'production' && !configured) {
+    throw new Error(
+      'AI_INTERACTION_ENCRYPTION_KEY must be set in production. Refusing to ' +
+        'encrypt chat content with the public development key.'
+    );
+  }
+
+  return createHash('sha256')
+    .update(configured ?? DEV_FALLBACK_KEY)
+    .digest();
 }
 
 export function encrypt(plaintext: string): string {

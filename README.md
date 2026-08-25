@@ -13,7 +13,6 @@ Mental health platform monorepo — Turborepo + npm workspaces, 9 microservices,
 
 ```bash
 node -v    # v24.x
-node -v    # v24.x
 npm -v
 docker -v
 ```
@@ -38,21 +37,21 @@ copy .env.example .env # Windows
 
 Key variables (defaults work for local Docker):
 
-| Variable                        | Description                                            |
-| ------------------------------- | ------------------------------------------------------ |
-| `DATABASE_URL`                  | PostgreSQL connection string                           |
-| `MONGODB_URI`                   | MongoDB connection string                              |
-| `REDIS_URL`                     | Redis connection string                                |
-| `RABBITMQ_URL`                  | RabbitMQ AMQP connection string                        |
-| `JWT_SECRET`                    | HS256 signing key — must match Kong config             |
-| `APP_BASE_URL`                  | Auth service base URL (password reset links)           |
-| `GOOGLE_CLIENT_ID`              | Google OAuth client ID (optional)                      |
-| `GOOGLE_CLIENT_SECRET`          | Google OAuth secret (optional)                         |
-| `RESEND_EMAIL_API_KEY`          | Resend API key for email notifications                 |
-| `AT_API_KEY`                    | Africa's Talking API key for SMS                       |
-| `AT_USERNAME`                   | Africa's Talking username                              |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | FCM service account JSON (inline or file path)         |
-| `USER_SERVICE_URL`              | Used by notification-service to fetch user preferences |
+| Variable                        | Description                                                                                                                                            |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                  | PostgreSQL connection string                                                                                                                           |
+| `MONGO_URI`                     | MongoDB connection string — community + messaging. Note the name: `MONGODB_URI` is a **different** variable read only by the messaging backfill script |
+| `REDIS_URL`                     | Redis connection string                                                                                                                                |
+| `RABBITMQ_URL`                  | RabbitMQ AMQP connection string                                                                                                                        |
+| `JWT_SECRET`                    | HS256 signing key — must match Kong config                                                                                                             |
+| `APP_BASE_URL`                  | Auth service base URL (password reset links)                                                                                                           |
+| `GOOGLE_CLIENT_ID`              | Google OAuth client ID (optional)                                                                                                                      |
+| `GOOGLE_CLIENT_SECRET`          | Google OAuth secret (optional)                                                                                                                         |
+| `RESEND_EMAIL_API_KEY`          | Resend API key for email notifications                                                                                                                 |
+| `AT_API_KEY`                    | Africa's Talking API key for SMS                                                                                                                       |
+| `AT_USERNAME`                   | Africa's Talking username                                                                                                                              |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | FCM service account JSON (inline or file path)                                                                                                         |
+| `USER_SERVICE_URL`              | Used by notification-service to fetch user preferences                                                                                                 |
 
 ### 3. Start infrastructure
 
@@ -78,14 +77,14 @@ docker compose up -d
 
 ### 4. Database setup
 
-> **⚠️ `npm run db:migrate` / `npm run db:seed` are dead ends.** Both map to
-> the `@mindora/database` workspace (`packages/database`), which no service
-> has imported since the DB-per-service split — it migrates and seeds the
-> orphaned `mindora` database, not the `mindora_auth` / `mindora_user` / etc.
-> databases the running services actually read from. Following this section
-> literally gives you zero usable accounts in the real system. See
-> [Known Issues](#known-issues--workarounds) for the current state and
-> per-service migrate/seed commands below.
+> **⚠️ There is no root-level `db:migrate` / `db:seed` command.** They used to
+> map to the `@mindora/database` workspace (`packages/database`), which no
+> service had imported since the DB-per-service split — it migrated and
+> seeded an orphaned `mindora` database, not the `mindora_auth` /
+> `mindora_user` / etc. databases the running services actually read from.
+> Both the package and the dead scripts have been removed (2026-08-25). Use
+> the per-service migrate/seed commands below instead. See
+> [Known Issues](#known-issues--workarounds) for the current state.
 
 Each PostgreSQL-backed service owns its own Prisma schema and migrates
 independently:
@@ -131,6 +130,11 @@ curl http://localhost:3001/health
 
 # Via Kong gateway
 curl http://localhost:8000/api/v1/auth/health
+
+# Every service, routed through Kong — checks the gateway wiring, not the
+# services themselves. See "Gateway smoke test" under Testing for why a
+# green `npm run test` does not cover this.
+npm run smoke:gateway
 ```
 
 ## Project structure
@@ -149,7 +153,6 @@ Mindora_V3/
 │   └── admin-service/         # Port 3009
 ├── packages/
 │   ├── auth-middleware/       # @mindora/auth-middleware — JWT verify, blacklist, requireRole
-│   ├── database/              # @mindora/database — Prisma client + schema
 │   ├── events/                # @mindora/events — shared event types + exchange names
 │   ├── queue/                 # @mindora/queue — RabbitMQ publish/subscribe helpers
 │   ├── validation/            # @mindora/validation — Zod DTOs
@@ -264,36 +267,59 @@ is encrypted at rest with AES-256-GCM.
 
 #### Socket.io events
 
-Connect to `ws://localhost:3006`. After connecting, emit `register_presence` to appear online.
+**Connections are authenticated.** Connect to `ws://localhost:3006` (directly —
+there is no `/socket.io/` route in Kong) passing the access token in the
+handshake:
+
+```js
+const socket = io('http://localhost:3006', { auth: { token: accessToken } });
+```
+
+A missing, invalid, or logout-revoked token is rejected with a `connect_error`
+carrying `Unauthorized: …`. Every handler derives the acting user from that
+token — **`userId` / `senderId` in event payloads are ignored**, and each
+conversation-scoped event verifies the caller is a participant. "Not found",
+"invalid id" and "not yours" all return `Conversation not found` so callers
+can't probe which conversation ids exist.
 
 **Client → Server**
 
-| Event                 | Payload                                 | Description                                               |
-| --------------------- | --------------------------------------- | --------------------------------------------------------- |
-| `register_presence`   | `{ userId }`                            | Mark user online (90 s Redis TTL).                        |
-| `heartbeat`           | —                                       | Refresh presence TTL every 30 s.                          |
-| `logout_presence`     | —                                       | Remove presence key immediately on tab close.             |
-| `create_conversation` | `{ participants: [id, id] }`            | Create/retrieve a conversation without HTTP.              |
-| `join_conversation`   | `{ conversationId }`                    | Join room; receives `message_history` (last 50 messages). |
-| `send_message`        | `{ conversationId, content, senderId }` | Persist and broadcast a message.                          |
-| `mark_read`           | `{ conversationId, messageId }`         | Mark message read; notifies sender.                       |
-| `typing_start`        | `{ conversationId, userId }`            | Broadcast typing indicator (5 s auto-expiry).             |
-| `typing_stop`         | `{ conversationId, userId }`            | Clear typing indicator.                                   |
+| Event                    | Payload                         | Description                                                                                      |
+| ------------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `register_presence`      | — (payload ignored)             | Mark user online (60 s Redis TTL).                                                               |
+| `heartbeat`              | —                               | Refresh presence TTL every 30 s.                                                                 |
+| `logout_presence`        | —                               | Remove presence key immediately on tab close.                                                    |
+| `create_conversation`    | `{ participants: [id, id] }`    | Create/retrieve a conversation. Caller must be one of the participants.                          |
+| `join_conversation`      | `{ conversationId }`            | Join room; receives `message_history` (last 50), then marks the other side's messages delivered. |
+| `send_message`           | `{ conversationId, content }`   | Persist and broadcast. `senderId` is taken from the token, not the payload.                      |
+| `mark_read`              | `{ conversationId, messageId }` | Mark one message read; notifies the sender.                                                      |
+| `mark_conversation_read` | `{ conversationId }`            | Mark **all** unread messages from the other participant read, in two writes and one broadcast.   |
+| `typing_start`           | `{ conversationId }`            | Broadcast typing indicator (5 s server-enforced expiry).                                         |
+| `typing_stop`            | `{ conversationId }`            | Clear typing indicator.                                                                          |
 
 **Server → Client**
 
-| Event                  | Payload                                                 | Description                                           |
-| ---------------------- | ------------------------------------------------------- | ----------------------------------------------------- |
-| `conversation_created` | `{ _id, participants }`                                 | Response to `create_conversation`.                    |
-| `joined_conversation`  | `{ conversationId }`                                    | Confirms room join.                                   |
-| `message_history`      | `{ conversationId, messages[] }`                        | Last 50 messages on join.                             |
-| `new_message`          | `{ _id, conversationId, senderId, content, createdAt }` | Broadcast to all room members.                        |
-| `message_read`         | `{ conversationId, messageId }`                         | Sent to the room (excluding original sender) on read. |
-| `user_typing`          | `{ conversationId, userId }`                            | Broadcast on `typing_start`.                          |
-| `user_stopped_typing`  | `{ conversationId, userId }`                            | Broadcast on `typing_stop`.                           |
-| `error`                | `{ message }`                                           | Emitted for any validation or server error.           |
+| Event                  | Payload                                                                      | Description                                                         |
+| ---------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `conversation_created` | `{ _id, participants }`                                                      | Response to `create_conversation`.                                  |
+| `joined_conversation`  | `{ conversationId, participant }`                                            | Confirms room join; includes the other participant's resolved name. |
+| `message_history`      | `{ conversationId, messages[] }`                                             | Last 50 messages on join (each with `deliveredAt`, `readAt`).       |
+| `new_message`          | `{ _id, conversationId, senderId, content, createdAt, deliveredAt, readAt }` | Broadcast to all room members.                                      |
+| `messages_delivered`   | `{ conversationId, messageIds[], deliveredAt, deliveredTo }`                 | Recipient received them — advances one tick to two.                 |
+| `message_read`         | `{ conversationId, messageId, readAt, readBy }`                              | Single message read.                                                |
+| `conversation_read`    | `{ conversationId, messageIds[], readAt, readBy }`                           | Response to `mark_conversation_read` — blue ticks.                  |
+| `user_typing`          | `{ conversationId, userId }`                                                 | Broadcast on `typing_start`.                                        |
+| `user_stopped_typing`  | `{ conversationId, userId }`                                                 | On `typing_stop`, on 5 s expiry, or on disconnect.                  |
+| `presence_changed`     | `{ userId, online, lastSeen }`                                               | A tracked user's presence changed.                                  |
+| `error`                | `{ message }`                                                                | Emitted for any validation or server error.                         |
 
-**Data models (MongoDB):** `Conversation` (participants[2], lastMessage), `Message` (conversationId, senderId, content, readAt)
+**Read-receipt ticks.** `deliveredAt` and `readAt` on each message give the
+three WhatsApp-style states: sent (`deliveredAt: null`), delivered
+(`deliveredAt` set → two ticks), read (`readAt` set → blue). Neither field is
+ever cleared once set, so ticks only move forwards. Delivery is recorded when
+the recipient's socket is in the room at send time, or when they next join.
+
+**Data models (MongoDB):** `Conversation` (participants[2], lastMessage), `Message` (conversationId, senderId, content, deliveredAt, readAt)
 
 ---
 
@@ -333,6 +359,49 @@ directly to `mindora.notifications.dlq`.
 
 ---
 
+## Internal service-to-service API
+
+Routes under `/internal/*` are **not part of the public API** and are omitted
+from the per-service OpenAPI specs on purpose — those are served publicly at
+`/docs`. They are reachable through Kong (`user-internal`, `auth-internal`,
+`appointment-internal`, `mood-internal`, `community-internal` routes) but
+require a **SERVICE-role JWT**, which each service checks itself after Kong
+validates the signature.
+
+Generate one with:
+
+```bash
+npm run generate:service-token --workspace=@mindora/auth-service
+```
+
+Set it as `INTERNAL_SERVICE_TOKEN`. It is **non-expiring** — see the security
+note below.
+
+| Method | Route                            | Service | Purpose                                                                    |
+| ------ | -------------------------------- | ------- | -------------------------------------------------------------------------- |
+| GET    | `/internal/auth/users/:id`       | auth    | Identity (email, role) lookup — Auth owns the `users` table                |
+| GET    | `/internal/auth/users`           | auth    | Paginated user list, backs Admin Service's list via the User Service proxy |
+| PATCH  | `/internal/auth/users/:id`       | auth    | Flip `isActive` when Admin suspends/reactivates a user                     |
+| GET    | `/internal/auth/analytics`       | auth    | User-table aggregates for platform analytics                               |
+| GET    | `/internal/users/analytics`      | user    | Proxies to `/internal/auth/analytics`                                      |
+| GET    | `/internal/users/:id`            | user    | Profile lookup for other services (e.g. notification preferences)          |
+| GET    | `/internal/users`                | user    | Proxies Auth's user list                                                   |
+| PUT    | `/internal/users/:id/suspend`    | user    | Proxies to Auth — User Service holds no `isActive` state of its own        |
+| PUT    | `/internal/users/:id/reactivate` | user    | Mirror of suspend                                                          |
+
+> **Route-order gotcha:** `/internal/users/analytics` must be registered
+> _before_ `/internal/users/:id`, or Express treats `analytics` as an `:id` and
+> returns `404 User not found`. This was found by testing
+> `GET /api/v1/admin/analytics` through Kong — `tsc` cannot catch it.
+
+> **⚠️ Security — non-expiring service token.** `INTERNAL_SERVICE_TOKEN` never
+> expires. If it leaks, anyone can read identity data for any user and suspend
+> accounts. Replace with rotating credentials before production; if
+> compromised, regenerate, update every service, and redeploy. Tracked in
+> `BACKEND_COMPLETE.md` → "Known Security Limitations".
+
+---
+
 ## Shared packages
 
 ### `@mindora/auth-middleware`
@@ -366,15 +435,15 @@ Exports: `createVerifyJwt`, `authenticate`, `requireRole`, `verifyAccessToken`,
 
 ---
 
-### `@mindora/database` — orphaned, not imported by any service
+### `@mindora/database` — removed (2026-08-25)
 
-Leftover from before the DB-per-service split. `grep`-confirmed: no `apps/*/package.json`
-depends on it anymore. Each PostgreSQL-backed service now owns its own Prisma
-schema (`apps/<service>/prisma/schema.prisma`) with no cross-service relations.
-The package still exists on disk with its own schema/migrations pointing at a
-`mindora` database that no running service reads from — the root `db:generate`
-/ `db:migrate` / `db:seed` scripts still point here, which is why they're
-flagged above. Safe to ignore; candidate for deletion.
+Leftover from before the DB-per-service split; `grep`-confirmed no
+`apps/*/package.json` depended on it. Each PostgreSQL-backed service owns its
+own Prisma schema (`apps/<service>/prisma/schema.prisma`) with no
+cross-service relations. The package (and the root `db:generate` / `db:migrate`
+/ `db:seed` scripts that pointed at it) has been deleted — it also had a
+`postinstall: prisma generate` with no `DATABASE_URL` available at Docker
+build time, which failed `Dockerfile.bundle`'s `npm install` step outright.
 
 ---
 
@@ -512,22 +581,38 @@ varies by how the spec is generated:
 
 ## Scripts
 
-| Command                        | Description                                                                                                                                                            |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                  | Start all services in watch mode (concurrency 10)                                                                                                                      |
-| `npm run dev:auth`             | Start auth-service only                                                                                                                                                |
-| `npm run dev:community`        | Start community-service + auth-service                                                                                                                                 |
-| `npm run dev:messaging`        | Start messaging-service + auth-service                                                                                                                                 |
-| `npm run build`                | Build all packages and apps                                                                                                                                            |
-| `npm run lint`                 | ESLint across all workspaces                                                                                                                                           |
-| `npm run test`                 | Vitest across all workspaces                                                                                                                                           |
-| `npm run db:migrate`           | **Orphaned** — migrates the unused `@mindora/database` package, not any real service DB. Use `cd apps/<service> && npx prisma migrate dev` instead (see Known Issues). |
-| `npm run db:seed`              | **Orphaned** — same issue, seeds the unused `mindora` database                                                                                                         |
-| `npm run db:seed:profiles`     | Seed user-service — 30 therapist profiles                                                                                                                              |
-| `npm run db:seed:appointments` | Seed appointment-service — sample bookings                                                                                                                             |
-| `npm run db:seed:mood`         | Seed mood-tracking-service                                                                                                                                             |
-| `npm run db:seed:community`    | Seed community-service MongoDB data                                                                                                                                    |
-| `npm run db:generate`          | Regenerate Prisma client for `@mindora/database` — **not** the per-service clients, run `npx prisma generate` inside each service for those                            |
+| Command                        | Description                                                                                                                                       |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                  | Start all services in watch mode (concurrency 10)                                                                                                 |
+| `npm run dev:auth`             | Start auth-service only                                                                                                                           |
+| `npm run dev:community`        | Start community-service + auth-service                                                                                                            |
+| `npm run dev:messaging`        | Start messaging-service + auth-service                                                                                                            |
+| `npm run build`                | Build all packages and apps                                                                                                                       |
+| `npm run lint`                 | ESLint across all workspaces                                                                                                                      |
+| `npm run test`                 | Vitest across all workspaces                                                                                                                      |
+| `npm run db:seed:profiles`     | Seed user-service — 30 therapist profiles                                                                                                         |
+| `npm run db:seed:appointments` | Seed appointment-service — sample bookings                                                                                                        |
+| `npm run db:seed:mood`         | Seed mood-tracking-service                                                                                                                        |
+| `npm run db:seed:community`    | Seed community-service MongoDB data                                                                                                               |
+| `npm run smoke:gateway`        | Check every service is reachable **through Kong**. Needs a running stack; not part of `npm run test`. `GATEWAY_URL=` to target a deployed gateway |
+
+There is no root-level `db:migrate` / `db:seed` / `db:generate` anymore (they
+targeted the now-deleted `@mindora/database` package — see Known Issues).
+Run Prisma commands per service instead: `cd apps/<service> && npx prisma
+migrate dev` / `npx prisma generate`.
+
+---
+
+## Documentation
+
+| Document                                                             | What it covers                                                                                              |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| [`CHANGELOG.md`](./CHANGELOG.md)                                     | Working log of notable backend changes, newest first — what changed and why                                 |
+| [`DEPLOYMENT.md`](./DEPLOYMENT.md)                                   | How to deploy, written for someone who has not worked on the codebase. **Read its Blockers section first.** |
+| [`docs/ai-safety-handoff.md`](./docs/ai-safety-handoff.md)           | Crisis detection/response gaps handed to the AI team and clinical lead. Gates launch to real users.         |
+| [`docs/ai-integration-backlog.md`](./docs/ai-integration-backlog.md) | Known engineering gaps in the chatbot integration. Non-blocking.                                            |
+| `docs/*.yaml`                                                        | OpenAPI specs, also served per-service at `/docs` and aggregated by docs-gateway                            |
+| [`BACKEND_COMPLETE.md`](./BACKEND_COMPLETE.md)                       | Sprint-by-sprint record of what was built                                                                   |
 
 ---
 
@@ -547,6 +632,33 @@ Tests use **Vitest** and run via Turborepo (`npm run test`).
 | `@mindora/validation`             | Unit                               | all Zod schema shapes                                                                                         |
 
 > Auth and user service tests mock ioredis using `vi.fn().mockImplementation(class { ... })` — the Vitest 4.x constructor-mock pattern.
+
+### Gateway smoke test — the gap `npm run test` cannot cover
+
+Every suite above drives Express directly through supertest, so **nothing in
+`npm run test` crosses Kong**. That leaves the gateway's path handling
+untested, and the same bug shipped four separate times: `community-api`,
+`ai-api`, `messaging-api` and `notification-api` each had `strip_path: true`
+while the service expected the full `/api/v1/<name>/...` path. Every route
+404s, health checks stay green, and it is only ever found by a person clicking
+through the UI.
+
+```bash
+npm run smoke:gateway                          # against local docker-compose
+GATEWAY_URL=https://api.mindora.rw npm run smoke:gateway
+```
+
+It requests one real route per service and passes on 200/401/403 — the
+question is whether the request _reached the right service_, not whether the
+caller is authorized. It fails on Express's `Cannot GET /x` (Kong forwarded a
+path the service does not serve), Kong's `no Route matched`, and 502/503.
+Exits non-zero, so CI can run it against a live stack.
+
+**When you add a service, add it to `CHECKS` in
+[`scripts/smoke-gateway.mjs`](./scripts/smoke-gateway.mjs)** — a service missing
+from that list is a service whose gateway wiring nothing verifies. Probe paths
+must not 404 on missing data, or a legitimate empty response is indistinguishable
+from a broken route.
 
 ---
 
@@ -607,16 +719,16 @@ npm run db:generate   # fine — runs prisma generate (no network)
 
 ---
 
-### Root `db:seed` doesn't produce any usable login accounts
+### No working seed path for the 4 named test-login accounts
 
-Every service README's "seed" instructions that say `npm run db:seed`
-(root-level) are pointing at the orphaned `@mindora/database` package (see
-[Shared packages](#mindoradatabase--orphaned-not-imported-by-any-service)) —
-confirmed by direct query, **the `patient@test.mindora.local` /
-`therapist@test.mindora.local` / `admin@test.mindora.local` accounts
-documented in multiple READMEs do not currently exist in either the orphaned
-`mindora` database or the real `mindora_auth` database that auth-service
-actually reads from.** `apps/auth-service/src/seed.ts` only creates the 30
+The root `db:seed` script (and the `@mindora/database` package it pointed
+at) has been deleted (2026-08-25) — it never produced usable accounts in the
+first place, since it seeded an orphaned `mindora` database, not the real
+`mindora_auth` database auth-service reads from. Removing the dead command
+doesn't fix the underlying gap: confirmed by direct query, **the
+`patient@test.mindora.local` / `therapist@test.mindora.local` /
+`admin@test.mindora.local` accounts documented in multiple READMEs do not
+exist in `mindora_auth`.** `apps/auth-service/src/seed.ts` only creates the 30
 fixed-UUID `THERAPIST` accounts with a non-login dummy password (they exist
 solely so `appointment-service`'s cross-service therapist check resolves) —
 it does not create any of the 4 named test-login accounts referenced

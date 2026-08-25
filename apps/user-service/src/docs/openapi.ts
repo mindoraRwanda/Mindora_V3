@@ -7,7 +7,8 @@ export const openApiSpec = {
       'Manages patient and therapist profiles — display name, bio, timezone, language, ' +
       'FCM push token, and per-channel notification preferences. User Service has no ' +
       '`users` table of its own; identity (email, role) lives in Auth Service and is ' +
-      'denormalized onto profile rows or fetched on demand via an internal, non-public lookup.',
+      'denormalized onto profile rows or fetched on demand via an internal, non-public lookup.' +
+      'This spec covers the public API only. The service also exposes `/internal/*` service-to-service routes that require a SERVICE-role JWT; they are deliberately omitted here rather than overlooked, since this document is served publicly at /docs. They are listed in the repository README under "Internal service-to-service API".',
   },
   servers: [
     { url: 'http://localhost:3002', description: 'Local development (direct)' },

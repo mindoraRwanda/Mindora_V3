@@ -13,7 +13,9 @@ import type {
 } from '@mindora/events';
 import { sendPushNotification } from './fcm.js';
 import { getUserName, sendEmailToUser } from './email.js';
-import { sendSms } from './sms.js';
+// sendSms is intentionally not imported here any more — see the note above
+// sessionTypeLabel(). Crisis alerts no longer message the patient, and
+// clinician delivery will need its own preference-independent path.
 import { logNotification } from './notificationLogger.js';
 import {
   getUserPreferences,
@@ -80,27 +82,14 @@ async function sendEmailIfEnabled(
   await sendEmailToUser(userId, subject, htmlBody, prefs.email, eventType);
 }
 
-async function sendSmsIfEnabled(
-  userId: string,
-  body: string,
-  eventType: string,
-  prefs: UserPreferences
-): Promise<void> {
-  if (!isChannelEnabled(prefs.notificationPreferences, 'sms')) {
-    await logNotification({
-      userId,
-      eventType,
-      channel: 'sms',
-      status: 'skipped',
-      failureReason: 'SMS notifications disabled by user',
-    });
-    return;
-  }
-  // sendSms() itself also checks SMS_ENABLED and logs its own 'skipped' entry
-  // when that feature flag is off — this gate is specifically the user's
-  // per-channel preference, checked before sendSms's own flag check runs.
-  await sendSms(userId, body, prefs.phoneNumber, eventType);
-}
+// NOTE: a sendSmsIfEnabled() helper used to live here, called only by the
+// ai.crisis handler to text the patient. It was removed with that call.
+//
+// Do not resurrect it for clinician alerting: it gated on the RECIPIENT's own
+// notification preferences, which is right for a patient reminder and wrong
+// for an on-call page — a clinician who muted SMS would silently stop
+// receiving crisis alerts. Clinician delivery needs its own path that a user
+// preference cannot switch off.
 
 function sessionTypeLabel(
   sessionType: AppointmentBookedEvent['sessionType']
@@ -108,6 +97,8 @@ function sessionTypeLabel(
   switch (sessionType) {
     case 'VIDEO':
       return 'Video';
+    case 'AUDIO':
+      return 'Audio';
     case 'IN_PERSON':
       return 'In-person';
     case 'CHAT':
@@ -271,12 +262,26 @@ async function handleAi(payload: unknown): Promise<void> {
     );
   }
   const crisis = parsed.data;
-  const prefs = await getUserPreferences(crisis.userId);
-  await sendSmsIfEnabled(
-    crisis.userId,
-    `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`,
-    'ai.crisis',
-    prefs
+
+  // This used to SMS the PATIENT saying "a counsellor will reach out shortly"
+  // — a promise nothing in the system kept, because no clinician was notified
+  // by any path. It also duplicated the safety message the chat route already
+  // shows in-app, and was gated behind SMS_ENABLED (default false), so in
+  // practice a detected crisis produced no outbound contact at all.
+  //
+  // Clinician delivery is currently the in-app alert queue in Admin Service,
+  // populated by its own consumer of this same event. Nothing is sent to the
+  // patient from here.
+  //
+  // TODO: add push/SMS/email delivery TO THE ON-CALL CLINICIAN once an
+  // escalation chain and roster exist (clinical review, Rulinda 2026-08).
+  // Both channels are blocked on provisioning, not code: Resend still sends
+  // from its shared test domain, and Africa's Talking is on a sandbox
+  // username, so neither can reach a real clinician's inbox or handset yet.
+  console.warn(
+    `[${EXCHANGES.AI}] crisis level ${crisis.crisisLevel} for user ` +
+      `${crisis.userId} — routed to the Admin alert queue. No out-of-band ` +
+      'clinician notification is configured yet.'
   );
 }
 

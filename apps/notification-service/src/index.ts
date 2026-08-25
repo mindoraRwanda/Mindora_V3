@@ -14,10 +14,23 @@ import { setupRetryInfrastructure } from './retry.js';
 import { swaggerSpec } from './docs/swagger.js';
 import { healthRouteLimiter } from './middleware/rate-limit.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
+import { prisma } from './notificationLogger.js';
 
 const SERVICE_NAME = 'notification-service';
 const PORT = Number(process.env.PORT) || 3008;
 const GATEWAY_HEALTH_PATH = '/api/v1/notifications/health';
+
+// Without these, a crash mid-request kills the process with nothing in the
+// terminal but the default stack — and from the frontend it appears only as
+// a gateway 502, since Kong sees the connection drop rather than a reply.
+process.on('uncaughtException', (error) => {
+  console.error(`✗ [${SERVICE_NAME}] uncaught exception — exiting:`, error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error(`✗ [${SERVICE_NAME}] unhandled promise rejection:`, reason);
+});
 
 const app = express();
 // Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
@@ -31,10 +44,27 @@ app.get('/docs.json', (_req, res) => {
   res.send(swaggerSpec);
 });
 
-const healthResponse = () => ({
-  status: 'ok',
+const healthResponse = (healthy: boolean) => ({
+  status: healthy ? 'ok' : 'error',
   service: SERVICE_NAME,
 });
+
+// A bare 200 can't tell an operator "up but the database is gone" from
+// "actually fine". Timeout-guarded so a hung database makes the check fail
+// fast (503) instead of hanging the probe.
+async function isDatabaseHealthy(): Promise<boolean> {
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('health check timeout')), 3000)
+      ),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * @swagger
@@ -61,12 +91,14 @@ const healthResponse = () => ({
  *             schema:
  *               $ref: '#/components/schemas/HealthResponse'
  */
-app.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse());
+app.get('/health', async (_req, res) => {
+  const healthy = await isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
 });
 
-app.get(GATEWAY_HEALTH_PATH, healthRouteLimiter, (_req, res) => {
-  res.status(200).json(healthResponse());
+app.get(GATEWAY_HEALTH_PATH, healthRouteLimiter, async (_req, res) => {
+  const healthy = await isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
 });
 
 app.use(notificationsRouter);

@@ -64,17 +64,36 @@ async function fetchAuthUser(
   }
 }
 
-const healthResponse = () => ({
-  status: 'ok',
+const healthResponse = (healthy: boolean) => ({
+  status: healthy ? 'ok' : 'error',
   service: SERVICE_NAME,
 });
 
-userRouter.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse());
+// A bare 200 can't tell an operator "up but the database is gone" from
+// "actually fine". Timeout-guarded so a hung database makes the check fail
+// fast (503) instead of hanging the probe.
+async function isDatabaseHealthy(): Promise<boolean> {
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('health check timeout')), 3000)
+      ),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+userRouter.get('/health', async (_req, res) => {
+  const healthy = await isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
 });
 
-userRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
-  res.status(200).json(healthResponse());
+userRouter.get(GATEWAY_HEALTH_PATH, async (_req, res) => {
+  const healthy = await isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
 });
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as /internal/users/:id

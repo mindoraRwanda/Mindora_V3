@@ -4,9 +4,10 @@ import express, {
   type Response,
 } from 'express';
 import cors from 'cors';
+import mongoose from 'mongoose';
 import swaggerUi from 'swagger-ui-express';
 import conversationsRouter from './routes/conversations.routes.js';
-import { authenticate } from '@mindora/auth-middleware';
+import { authenticate } from './middleware/authenticate.js';
 import type { AuthenticatedRequest } from '@mindora/auth-middleware';
 import { swaggerSpec } from './docs/swagger.js';
 import { getRedisClient } from './utils/redis.js';
@@ -39,7 +40,17 @@ app.get('/docs.json', (_req, res) => {
   res.send(swaggerSpec);
 });
 
-const healthResponse = () => ({ status: 'ok', service: SERVICE_NAME });
+const healthResponse = (healthy: boolean) => ({
+  status: healthy ? 'ok' : 'error',
+  service: SERVICE_NAME,
+});
+
+// mongoose tracks connection state in memory — readyState 1 is "connected".
+// A bare 200 can't tell an operator "up but the database is gone" from
+// "actually fine".
+function isDatabaseHealthy(): boolean {
+  return mongoose.connection.readyState === 1;
+}
 
 /**
  * @swagger
@@ -67,11 +78,13 @@ const healthResponse = () => ({ status: 'ok', service: SERVICE_NAME });
  *               $ref: '#/components/schemas/HealthResponse'
  */
 app.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse());
+  const healthy = isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
 });
 
 app.get(GATEWAY_HEALTH_PATH, healthRouteLimiter, (_req, res) => {
-  res.status(200).json(healthResponse());
+  const healthy = isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
 });
 
 app.use('/api/v1/messaging/conversations', conversationsRouter);

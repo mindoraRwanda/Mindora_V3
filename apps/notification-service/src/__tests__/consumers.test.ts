@@ -15,6 +15,9 @@ vi.mock('../retry.js', () => ({
 }));
 
 import { startConsumers, SUBSCRIBED_EXCHANGES } from '../consumers.js';
+// Namespace import so sendSms can be spied on: the guarantee under test is
+// that the crisis handler never reaches it.
+import * as sms from '../sms.js';
 
 type Handler = (payload: unknown) => Promise<void>;
 
@@ -103,6 +106,32 @@ describe('appointment handler', () => {
       '029ff388-2f20-486e-aeda-e54916f4f4cd',
       'Appointment Booked',
       'In-person appointment scheduled.',
+      null,
+      'appointment.booked'
+    );
+  });
+
+  it('notifies patient for an AUDIO appointment booked', async () => {
+    // Without an AUDIO case, sessionTypeLabel falls through to the generic
+    // 'Appointment', and the patient is told "Appointment appointment
+    // scheduled." rather than which kind of session it is.
+    await capturedHandler(EXCHANGES.APPOINTMENTS)({
+      eventId: '7b1c4f92-25a8-4a6e-93d1-6f0e2c8b4a17',
+      occurredAt: '2024-01-01T00:00:00Z',
+      schemaVersion: 1,
+      eventType: 'appointment.booked',
+      status: 'PENDING',
+      appointmentId: '5c9d1e63-8a24-4f7b-b0e2-3d81a97c6f45',
+      patientId: '029ff388-2f20-486e-aeda-e54916f4f4cd',
+      therapistId: '80a54a15-5ea8-4856-96b6-bfce49f7d668',
+      slotStart: '2024-02-02T10:00:00Z',
+      slotEnd: '2024-02-02T11:00:00Z',
+      sessionType: 'AUDIO',
+    });
+    expect(mocks.sendPushNotification).toHaveBeenCalledWith(
+      '029ff388-2f20-486e-aeda-e54916f4f4cd',
+      'Appointment Booked',
+      'Audio appointment scheduled.',
       null,
       'appointment.booked'
     );
@@ -385,16 +414,41 @@ describe('mood and AI handlers', () => {
     expect(mocks.sendPushNotification).not.toHaveBeenCalled();
   });
 
-  it('does not send push for AI events — log only', async () => {
+  it('never contacts the patient about their own crisis event', async () => {
+    // This handler used to SMS the patient "a counsellor will reach out
+    // shortly" — a promise nothing kept, since no clinician was notified by
+    // any path. The guarantee under test is that a crisis event produces NO
+    // patient-directed message: the in-app safety response and the clinician
+    // alert queue are the only outputs.
+    //
+    // The previous version of this test only asserted that push was not sent,
+    // which stayed green across that behaviour change and so proved nothing.
     vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sendSpy = vi.spyOn(sms, 'sendSms');
+
     await capturedHandler(EXCHANGES.AI)({
       eventId: '714ccdf3-af66-48be-b051-1eedfc17d1a6',
       occurredAt: '2024-01-01T00:00:00Z',
       userId: 'afdaad18-1241-47c8-a633-f912fa3f9d03',
       sessionId: null,
-      crisisLevel: 3,
+      crisisLevel: 5,
       timestamp: '2024-01-01T00:00:00Z',
     });
+
+    expect(sendSpy).not.toHaveBeenCalled();
     expect(mocks.sendPushNotification).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed crisis payload rather than dropping it silently', async () => {
+    // Consumers validate against aiCrisisEventSchema, which requires a UUID
+    // userId. A payload that fails validation must throw so the retry/DLQ
+    // path handles it — silently returning would discard a crisis alert.
+    await expect(
+      capturedHandler(EXCHANGES.AI)({
+        eventId: 'not-a-uuid',
+        crisisLevel: 5,
+      })
+    ).rejects.toThrow();
   });
 });

@@ -6,7 +6,8 @@ export const openApiSpec = {
     description:
       'Handles user registration, login, session management (access + refresh tokens), ' +
       'password reset, and Google OAuth for the Mindora V3 platform. Issues the JWTs ' +
-      'that every other service validates via the shared `@mindora/auth-middleware` package.',
+      'that every other service validates via the shared `@mindora/auth-middleware` package.' +
+      'This spec covers the public API only. The service also exposes `/internal/*` service-to-service routes that require a SERVICE-role JWT; they are deliberately omitted here rather than overlooked, since this document is served publicly at /docs. They are listed in the repository README under "Internal service-to-service API".',
   },
   servers: [
     { url: 'http://localhost:3001', description: 'Local development (direct)' },

@@ -24,6 +24,14 @@ export const listAuditLogQuerySchema = z.object({
 export const listAlertsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
+  // Triage view: `false` returns only alerts no clinician has opened yet,
+  // oldest first, since the longest-unseen crisis is the most urgent. Omitted
+  // keeps the existing behaviour (all unresolved, newest first) so this is
+  // additive for existing callers.
+  acknowledged: z
+    .union([z.literal('true'), z.literal('false')])
+    .transform((v) => v === 'true')
+    .optional(),
 });
 
 export const resolveModerationSchema = z.object({

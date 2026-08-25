@@ -34,21 +34,30 @@ export async function issueAuthSession(
   });
 
   res.cookie(config.cookieName, refreshToken, {
-    httpOnly: true,
-    secure: config.isProduction,
-    sameSite: 'lax',
+    ...refreshCookieOptions(),
     maxAge: config.refreshTokenDays * 24 * 60 * 60 * 1000,
-    path: '/',
   });
 
   return { accessToken };
 }
 
-export function clearRefreshCookie(res: Response): void {
-  res.clearCookie(config.cookieName, {
+/**
+ * Shared flags for setting and clearing the refresh cookie.
+ *
+ * clearCookie only matches a cookie whose attributes line up with how it was
+ * set, so these must stay identical — keeping them in one place means a change
+ * to sameSite/secure can't leave logout silently failing to clear anything.
+ */
+export function refreshCookieOptions() {
+  return {
     httpOnly: true,
-    secure: config.isProduction,
-    sameSite: 'lax',
+    // SameSite=None requires Secure; see config.crossSiteCookies.
+    secure: config.crossSiteCookies || config.isProduction,
+    sameSite: config.crossSiteCookies ? ('none' as const) : ('lax' as const),
     path: '/',
-  });
+  };
+}
+
+export function clearRefreshCookie(res: Response): void {
+  res.clearCookie(config.cookieName, refreshCookieOptions());
 }

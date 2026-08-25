@@ -212,6 +212,53 @@ describe('POST /', () => {
     expect(mockPublishAppointmentEvent).toHaveBeenCalledOnce();
   });
 
+  it('books an AUDIO session', async () => {
+    // Regression guard: the booking UI offers an audio option, and every such
+    // request 400'd because AUDIO was missing from the session-type enum.
+    const created = sampleAppointment({ sessionType: 'AUDIO' });
+    mockTransaction.mockImplementation(async (callback) => {
+      const tx = {
+        $executeRaw: vi.fn().mockResolvedValue(undefined),
+        $queryRaw: vi.fn().mockResolvedValue([]),
+        appointment: {
+          create: vi.fn().mockResolvedValue(created),
+        },
+      };
+      return callback(tx);
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .post('/')
+      .set('Authorization', `Bearer ${patientToken()}`)
+      .send({
+        therapistId,
+        slotStart: '2026-06-10T10:00:00.000Z',
+        slotEnd: '2026-06-10T11:00:00.000Z',
+        sessionType: 'AUDIO',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.sessionType).toBe('AUDIO');
+  });
+
+  it('rejects a session type outside the enum', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .post('/')
+      .set('Authorization', `Bearer ${patientToken()}`)
+      .send({
+        therapistId,
+        slotStart: '2026-06-10T10:00:00.000Z',
+        slotEnd: '2026-06-10T11:00:00.000Z',
+        sessionType: 'TELEPATHY',
+      });
+
+    expect(response.status).toBe(400);
+    // The field-level detail is what makes a 400 actionable for the client.
+    expect(response.body.errors.sessionType).toBeDefined();
+  });
+
   it('returns 409 when slot is already booked', async () => {
     mockTransaction.mockImplementation(async (callback) => {
       const tx = {

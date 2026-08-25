@@ -28,13 +28,19 @@ import {
 import { asyncHandler } from '../middleware/async-handler.js';
 import { configureGoogleOAuth } from '../lib/google-oauth.js';
 import { getRequestCookie } from '../lib/cookies.js';
+import { errorFields, logger, redactEmail } from '../lib/logger.js';
+import { getRequestId } from '../middleware/request-log.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import {
   deletePasswordResetToken,
   getPasswordResetUserId,
   storePasswordResetToken,
 } from '../lib/redis.js';
-import { clearRefreshCookie, issueAuthSession } from '../lib/session.js';
+import {
+  clearRefreshCookie,
+  issueAuthSession,
+  refreshCookieOptions,
+} from '../lib/session.js';
 import {
   createRefreshToken,
   getRefreshTokenExpiry,
@@ -49,17 +55,37 @@ const GATEWAY_HEALTH_PATH = '/api/v1/auth/health';
 
 configureGoogleOAuth();
 
-const healthResponse = () => ({
-  status: 'ok',
+const healthResponse = (healthy: boolean) => ({
+  status: healthy ? 'ok' : 'error',
   service: SERVICE_NAME,
 });
 
-authRouter.get('/health', (_req, res) => {
-  res.status(200).json(healthResponse());
+// A bare 200 can't tell an operator "up but the database is gone" from
+// "actually fine" — this is what DEPLOYMENT.md's verification curls and any
+// orchestrator liveness probe actually rely on. Timeout-guarded so a hung
+// database makes the check fail fast (503) instead of hanging the probe.
+async function isDatabaseHealthy(): Promise<boolean> {
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('health check timeout')), 3000)
+      ),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+authRouter.get('/health', async (_req, res) => {
+  const healthy = await isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
 });
 
-authRouter.get(GATEWAY_HEALTH_PATH, (_req, res) => {
-  res.status(200).json(healthResponse());
+authRouter.get(GATEWAY_HEALTH_PATH, async (_req, res) => {
+  const healthy = await isDatabaseHealthy();
+  res.status(healthy ? 200 : 503).json(healthResponse(healthy));
 });
 
 authRouter.post(
@@ -97,12 +123,20 @@ authRouter.post(
         userName,
         registeredAt: new Date().toISOString(),
       });
-      console.log(`Published user.registered event for userId=${user.id}`);
+      logger.info('auth.register', 'published user.registered', {
+        req: getRequestId(req),
+        userId: user.id,
+        role,
+      });
     } catch (queueError) {
       // Don't fail the request if RabbitMQ is down — the user record is
       // already saved. Profile creation is eventually consistent, not
       // synchronous with registration; the backfill script covers the gap.
-      console.error('Failed to publish user.registered event:', queueError);
+      logger.error('auth.register', 'failed to publish user.registered', {
+        req: getRequestId(req),
+        userId: user.id,
+        ...errorFields(queueError),
+      });
     }
 
     res.status(201).json({ userId: user.id });
@@ -122,20 +156,46 @@ authRouter.post(
       return;
     }
 
+    const req0 = getRequestId(req);
     const { email, password } = parsed.data;
     const user = await prisma.user.findUnique({ where: { email } });
 
-    if (!user || !(await verifyPassword(user.passwordHash, password))) {
+    // The response stays a single generic 'Invalid credentials' either way —
+    // telling a caller which half failed is an account-enumeration oracle. The
+    // distinction is only ever drawn here, in the server's own log.
+    if (!user) {
+      logger.warn('auth.login', 'rejected: no account for that email', {
+        req: req0,
+        email: redactEmail(email),
+      });
+      res.status(401).json({ message: 'Invalid credentials' });
+      return;
+    }
+
+    if (!(await verifyPassword(user.passwordHash, password))) {
+      logger.warn('auth.login', 'rejected: password mismatch', {
+        req: req0,
+        userId: user.id,
+      });
       res.status(401).json({ message: 'Invalid credentials' });
       return;
     }
 
     if (user.isActive === false) {
+      logger.warn('auth.login', 'rejected: account suspended', {
+        req: req0,
+        userId: user.id,
+      });
       res.status(403).json({ message: 'Account suspended' });
       return;
     }
 
     const { accessToken } = await issueAuthSession(res, user);
+    logger.info('auth.login', 'session issued', {
+      req: req0,
+      userId: user.id,
+      role: user.role,
+    });
     res.status(200).json({ accessToken });
   })
 );
@@ -165,27 +225,135 @@ authRouter.post(
     }
 
     const refreshToken = getRequestCookie(req, config.cookieName);
+    let revokedCount = 0;
     if (refreshToken) {
-      await prisma.refreshToken.updateMany({
+      const result = await prisma.refreshToken.updateMany({
         where: {
           tokenHash: hashToken(refreshToken),
           revoked: false,
         },
         data: { revoked: true },
       });
+      revokedCount = result.count ?? 0;
     }
+
+    // An unexplained sign-out is sometimes a logout the user didn't mean to
+    // trigger; without this there's no record that one happened at all.
+    logger.info('auth.logout', 'session closed', {
+      req: getRequestId(req),
+      userId: (req as AuthenticatedRequest).user?.userId,
+      hadRefreshCookie: Boolean(refreshToken),
+      revokedCount,
+    });
 
     clearRefreshCookie(res);
     res.status(200).json({ message: 'Logged out' });
   })
 );
 
+/**
+ * Explains a rejected refresh, after the fact.
+ *
+ * The lookup in POST /refresh folds four different failures — token unknown,
+ * revoked, already rotated, expired — into one `!stored`, and the client is
+ * told only "Unauthorized". That is right for the response and useless for
+ * debugging: "user was signed out early" looks identical to "user's cookie was
+ * replaced by a concurrent refresh".
+ *
+ * So on the failure path only, re-read the row without the validity filters
+ * and report which condition actually failed. Costs one extra query on a
+ * request that has already failed, and nothing at all on the happy path.
+ */
+async function logRefreshRejection(
+  tokenHash: string,
+  requestId: string | undefined
+): Promise<void> {
+  // A prefix of the *hash*, never the token: enough to correlate this
+  // rejection with the rotation that issued the token, useless if leaked.
+  const fingerprint = tokenHash.slice(0, 8);
+
+  const row = await prisma.refreshToken.findFirst({
+    where: { tokenHash },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!row) {
+    logger.warn('auth.refresh', 'rejected: token not in database', {
+      req: requestId,
+      token: fingerprint,
+      detail:
+        'cookie survived a database reset/redeploy, or the row was pruned — the browser will hold it until maxAge regardless',
+    });
+    return;
+  }
+
+  const ageHours =
+    Math.round((Date.now() - row.createdAt.getTime()) / 36e4) / 10;
+
+  if (row.replacedByTokenId) {
+    logger.warn('auth.refresh', 'rejected: token already rotated', {
+      req: requestId,
+      token: fingerprint,
+      userId: row.userId,
+      replacedBy: row.replacedByTokenId,
+      ageHours,
+      detail:
+        'a later refresh already consumed this token — two refreshes racing, or a stale tab replaying an old cookie',
+    });
+    return;
+  }
+
+  if (row.revoked) {
+    logger.warn('auth.refresh', 'rejected: token revoked', {
+      req: requestId,
+      token: fingerprint,
+      userId: row.userId,
+      ageHours,
+      detail: 'logout, password reset, or account suspension revoked it',
+    });
+    return;
+  }
+
+  if (row.expiresAt.getTime() <= Date.now()) {
+    logger.warn('auth.refresh', 'rejected: token expired', {
+      req: requestId,
+      token: fingerprint,
+      userId: row.userId,
+      ageHours,
+      expiredAt: row.expiresAt.toISOString(),
+      detail: `issued ${ageHours}h ago against a ${config.refreshTokenDays}-day lifetime`,
+    });
+    return;
+  }
+
+  // The filtered query missed but every condition above says the row is
+  // usable — meaning the two reads disagree. Worth knowing about.
+  logger.error('auth.refresh', 'rejected: no reason found', {
+    req: requestId,
+    token: fingerprint,
+    userId: row.userId,
+    detail:
+      'row looks valid on re-read; check for clock skew between app and database',
+  });
+}
+
 authRouter.post(
   '/refresh',
   publicAuthRouteLimiter,
   asyncHandler(async (req, res) => {
+    const requestId = getRequestId(req);
     const refreshToken = getRequestCookie(req, config.cookieName);
     if (!refreshToken) {
+      // Distinguishing "no cookie arrived" from "cookie arrived but is dead"
+      // is the first fork in every early-logout investigation: no cookie at
+      // all points at SameSite/CORS/domain, not at token lifetime.
+      logger.warn('auth.refresh', 'rejected: no refresh cookie on request', {
+        req: requestId,
+        origin: req.headers.origin,
+        hasCookieHeader: Boolean(req.headers.cookie),
+        detail:
+          'browser sent no refreshToken cookie — check SameSite/Secure, the CORS allowlist, and that the client sent credentials',
+      });
       res.status(401).json({ message: 'Unauthorized' });
       return;
     }
@@ -202,21 +370,29 @@ authRouter.post(
     });
 
     if (!stored) {
+      await logRefreshRejection(tokenHash, requestId);
       res.status(401).json({ message: 'Unauthorized' });
       return;
     }
 
     if (stored.user.isActive === false) {
+      logger.warn('auth.refresh', 'rejected: account suspended', {
+        req: requestId,
+        userId: stored.userId,
+      });
       res.status(403).json({ message: 'Account suspended' });
       return;
     }
 
     const newRefreshToken = createRefreshToken();
+    // Held in a local so the row, the cookie below, and the log line all state
+    // the same instant rather than three separate calls to `new Date()`.
+    const newExpiresAt = getRefreshTokenExpiry();
     const newRecord = await prisma.refreshToken.create({
       data: {
         userId: stored.userId,
         tokenHash: hashToken(newRefreshToken),
-        expiresAt: getRefreshTokenExpiry(),
+        expiresAt: newExpiresAt,
       },
     });
 
@@ -235,11 +411,18 @@ authRouter.post(
     });
 
     res.cookie(config.cookieName, newRefreshToken, {
-      httpOnly: true,
-      secure: config.isProduction,
-      sameSite: 'lax',
+      ...refreshCookieOptions(),
       maxAge: config.refreshTokenDays * 24 * 60 * 60 * 1000,
-      path: '/',
+    });
+
+    logger.info('auth.refresh', 'rotated', {
+      req: requestId,
+      userId: stored.userId,
+      from: tokenHash.slice(0, 8),
+      to: hashToken(newRefreshToken).slice(0, 8),
+      // Both the row and the cookie are re-stamped to a full lifetime here, so
+      // this is the moment the 7-day clock restarts.
+      expiresAt: newExpiresAt.toISOString(),
     });
 
     res.status(200).json({ accessToken });

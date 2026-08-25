@@ -1,0 +1,12 @@
+-- Adds AUDIO to SessionType.
+--
+-- The booking UI has offered an "Audio call" option that every request failed
+-- validation on, because the value existed nowhere in the backend. Added after
+-- VIDEO so the enum's sort order matches the order declared in schema.prisma.
+--
+-- Purely additive: no existing row changes, and no column default references
+-- SessionType, so this is safe to run against a populated table. Postgres 12+
+-- permits ALTER TYPE ... ADD VALUE inside the transaction Prisma wraps
+-- migrations in, provided the new value is not also *used* in that same
+-- transaction — it isn't here.
+ALTER TYPE "SessionType" ADD VALUE IF NOT EXISTS 'AUDIO' AFTER 'VIDEO';

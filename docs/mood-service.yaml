@@ -122,10 +122,29 @@ paths:
   /streak:
     get:
       summary: Current check-in streak
-      description: Patient only.
+      description: |
+        Patient only. Counts the run of consecutive calendar days ending at the
+        user's most recent check-in — but only while that run is still live.
+
+        A streak is live if the last check-in was today (it is counting) or
+        yesterday (it can still be saved today). Otherwise `streak` is 0 and
+        the run is over. `lastCheckedIn` is still returned either way, so the
+        date of the last entry can be shown after a streak lapses.
+
+        `timezone` decides what "today" and "yesterday" mean, and which entries
+        share a calendar day, so send
+        `Intl.DateTimeFormat().resolvedOptions().timeZone`. The UTC default
+        will misreport for users whose local day differs from the UTC one.
+      parameters:
+        - name: timezone
+          in: query
+          description: IANA time zone name. Defaults to UTC.
+          schema: { type: string, default: UTC, example: Africa/Kigali }
       responses:
         '200':
           description: Streak count
+        '400':
+          description: Unknown IANA time zone
         '401':
           description: Unauthorized
         '403':

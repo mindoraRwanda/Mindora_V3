@@ -42,8 +42,8 @@ Publish typed events from `@mindora/events` via `src/lib/publish-appointment-eve
 ## Development
 
 ```bash
-# Apply migration (once) — NOT `npm run db:migrate`, that targets the
-# orphaned @mindora/database package, not this service's own DB
+# Apply migration (once) — there is no root-level db:migrate, migrate this
+# service's own DB directly
 cd apps/appointment-service && npx prisma migrate dev
 
 # Seed auth users, profiles, then appointments — no root shortcut for the
