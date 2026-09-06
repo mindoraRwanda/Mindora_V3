@@ -75,13 +75,20 @@ authRouter.post(
       return;
     }
 
-    const { email, password, role, userName } = parsed.data;
+    const { email, password, userName } = parsed.data;
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
       res.status(409).json({ message: 'Email already exists' });
       return;
     }
 
+    // This endpoint is public and unauthenticated — self-registration must
+    // never be able to grant THERAPIST or ADMIN. registerSchema still
+    // accepts a `role` field for backward compatibility with any existing
+    // caller, but it is intentionally ignored: every self-registered account
+    // is a PATIENT, full stop. THERAPIST accounts are provisioned by
+    // seed.ts; there is no self-service path to ADMIN at all.
+    const role = 'PATIENT';
     const passwordHash = await hashPassword(password);
     const user = await prisma.user.create({
       data: { email, passwordHash, role },

@@ -157,6 +157,20 @@ function serviceToken() {
   );
 }
 
+const therapistId = '22222222-2222-4222-8222-222222222222';
+
+function therapistToken() {
+  return jwt.sign(
+    { sub: therapistId, email: 'therapist@example.com', role: 'THERAPIST' },
+    process.env.JWT_SECRET!,
+    {
+      expiresIn: '15m',
+      issuer: process.env.JWT_ISSUER,
+      jwtid: randomUUID(),
+    }
+  );
+}
+
 function sampleEntry(overrides: Record<string, unknown> = {}) {
   const recordedAt = new Date('2026-06-10T12:00:00.000Z');
   return {
@@ -434,5 +448,74 @@ describe('GET /internal/mood/analytics', () => {
     const response = await request(app).get('/internal/mood/analytics');
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe('GET /report/:userId', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+    mockGetInsightsCache.mockResolvedValue(null);
+    mockSetInsightsCache.mockResolvedValue(undefined);
+  });
+
+  it('rejects a PATIENT token with 403 before ever checking the relationship', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const app = createApp();
+    const response = await request(app)
+      .get(`/report/${patientId}`)
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a THERAPIST with no appointment history with this patient with 403, without leaking any mood data", async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ hasRelationship: false }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    const app = createApp();
+    const response = await request(app)
+      .get(`/report/${patientId}`)
+      .set('Authorization', `Bearer ${therapistToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(response.body.message).toMatch(/not this patient/i);
+    expect(mockMoodFindMany).not.toHaveBeenCalled();
+  });
+
+  it('allows a THERAPIST who has an appointment history with this patient', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ hasRelationship: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+    mockMoodFindMany.mockResolvedValue([sampleEntry()]);
+
+    const app = createApp();
+    const response = await request(app)
+      .get(`/report/${patientId}`)
+      .set('Authorization', `Bearer ${therapistToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.userId).toBe(patientId);
+  });
+
+  it('fails closed (403) if the cross-service relationship check itself fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+
+    const app = createApp();
+    const response = await request(app)
+      .get(`/report/${patientId}`)
+      .set('Authorization', `Bearer ${therapistToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockMoodFindMany).not.toHaveBeenCalled();
   });
 });

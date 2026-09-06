@@ -45,6 +45,36 @@ function routeParam(value: string | string[]): string {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Mood Tracking Service has no local view of appointments — verifying a
+// therapist actually has a treatment relationship with a patient (rather
+// than just holding a THERAPIST-role token) goes through Kong to
+// Appointment Service's internal endpoint instead of a direct database
+// join. Same pattern as Appointment Service's own isTherapist() helper,
+// which does the same kind of cross-service check against Auth Service.
+async function hasTherapistRelationship(
+  therapistId: string,
+  patientId: string
+): Promise<boolean> {
+  try {
+    // encodeURIComponent — both ids are caller-supplied (one from the JWT,
+    // one from the route param) and must not be able to reshape the request
+    // path sent to another service.
+    const res = await fetch(
+      `${config.kongUrl}/internal/appointments/relationship/${encodeURIComponent(therapistId)}/${encodeURIComponent(patientId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${config.internalServiceToken}`,
+        },
+      }
+    );
+    if (!res.ok) return false;
+    const body = (await res.json()) as { hasRelationship: boolean };
+    return body.hasRelationship === true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Re-evaluates the rolling mood-concern signal and publishes if it trips.
  *
@@ -276,6 +306,16 @@ moodRouter.get(
     }
 
     const patientId = routeParam(req.params.userId);
+
+    // A THERAPIST-role token alone isn't enough — without this, any
+    // therapist could pull any patient's mental-health data by guessing or
+    // enumerating userIds. Only a therapist who actually has (or has had) an
+    // appointment with this patient may see their report.
+    if (!(await hasTherapistRelationship(authReq.user.userId, patientId))) {
+      res.status(403).json({ message: 'Not this patient\'s therapist' });
+      return;
+    }
+
     const since = new Date();
     since.setUTCDate(since.getUTCDate() - 30);
 

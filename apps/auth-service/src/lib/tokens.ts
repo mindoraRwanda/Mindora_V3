@@ -32,25 +32,6 @@ export function signAccessToken(payload: AccessTokenPayload): string {
   );
 }
 
-export function verifyAccessToken(
-  token: string
-): AccessTokenPayload & { jti?: string } {
-  const decoded = jwt.verify(token, config.jwtSecret, {
-    issuer: config.jwtIssuer,
-  });
-
-  if (typeof decoded === 'string' || !decoded.sub) {
-    throw new jwt.JsonWebTokenError('Invalid token payload');
-  }
-
-  return {
-    userId: decoded.sub,
-    email: String(decoded.email ?? ''),
-    role: String(decoded.role ?? ''),
-    jti: typeof decoded.jti === 'string' ? decoded.jti : undefined,
-  };
-}
-
 export function getRefreshTokenExpiry(): Date {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + config.refreshTokenDays);

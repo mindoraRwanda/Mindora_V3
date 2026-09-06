@@ -535,3 +535,34 @@ appointmentRouter.get(
     res.status(200).json({ totalAppointments, completedAppointments });
   })
 );
+
+// INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
+// Lets another service (currently: mood-tracking-service's therapist mood
+// report) verify that a therapist actually has a treatment relationship with
+// a given patient before handing over that patient's data, the same way
+// isTherapist() above lets this service verify a role it has no local copy
+// of. Existence of any appointment row between the two, any status —
+// including a cancelled one — is treated as evidence the therapist has
+// legitimately been in contact with this patient.
+appointmentRouter.get(
+  '/internal/appointments/relationship/:therapistId/:patientId',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const therapistId = routeParam(req.params.therapistId);
+    const patientId = routeParam(req.params.patientId);
+
+    const appointment = await prisma.appointment.findFirst({
+      where: { therapistId, patientId },
+      select: { id: true },
+    });
+
+    res.status(200).json({ hasRelationship: appointment !== null });
+  })
+);
