@@ -10,10 +10,7 @@ import { prisma } from '../database.js';
 import { chatWithBot, deleteRemoteConversation } from '../chatbotClient.js';
 import { decrypt, encrypt } from '../lib/crypto.js';
 import { asyncHandler } from '../middleware/async-handler.js';
-import {
-  authenticatedRouteLimiter,
-  chatRouteLimiter,
-} from '../middleware/rate-limit.js';
+import { chatRouteLimiter } from '../middleware/rate-limit.js';
 
 const router = Router();
 
@@ -144,7 +141,6 @@ router.post(
 // GET /api/v1/ai/history — retrieve session interaction history (PATIENT only)
 router.get(
   '/history',
-  authenticatedRouteLimiter,
   requireRole('PATIENT'),
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user?.userId;
@@ -200,7 +196,6 @@ router.get(
 // DELETE /api/v1/ai/history — delete all interaction history (PATIENT only)
 router.delete(
   '/history',
-  authenticatedRouteLimiter,
   requireRole('PATIENT'),
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user?.userId;
@@ -228,7 +223,6 @@ router.delete(
 // GET /api/v1/ai/usage — aggregate token usage report (ADMIN only)
 router.get(
   '/usage',
-  authenticatedRouteLimiter,
   requireRole('ADMIN'),
   asyncHandler(async (_req, res) => {
     type DailyRow = { date: Date; count: bigint | number };
