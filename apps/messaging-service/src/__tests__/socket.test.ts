@@ -38,7 +38,11 @@ function tokenFor(userId: string): string {
   return jwt.sign(
     { sub: userId, email: `${userId}@example.com`, role: 'PATIENT' },
     TEST_SECRET,
-    { expiresIn: '15m', issuer: 'mindora-auth', jwtid: `socket-test-${jtiCounter}` }
+    {
+      expiresIn: '15m',
+      issuer: 'mindora-auth',
+      jwtid: `socket-test-${jtiCounter}`,
+    }
   );
 }
 
@@ -307,7 +311,7 @@ describe('join_conversation', () => {
 });
 
 describe('send_message', () => {
-  it('broadcasts new_message to all sockets in the room, using the sender\'s verified identity', async () => {
+  it("broadcasts new_message to all sockets in the room, using the sender's verified identity", async () => {
     const conv = await Conversation.create({
       participants: ['user-a', 'user-b'],
     });

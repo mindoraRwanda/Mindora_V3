@@ -312,7 +312,7 @@ moodRouter.get(
     // enumerating userIds. Only a therapist who actually has (or has had) an
     // appointment with this patient may see their report.
     if (!(await hasTherapistRelationship(authReq.user.userId, patientId))) {
-      res.status(403).json({ message: 'Not this patient\'s therapist' });
+      res.status(403).json({ message: "Not this patient's therapist" });
       return;
     }
 

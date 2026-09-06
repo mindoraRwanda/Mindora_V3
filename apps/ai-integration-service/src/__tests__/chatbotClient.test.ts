@@ -42,9 +42,9 @@ describe('chatWithBot', () => {
       .mockImplementationOnce(async (url, init) => {
         expect(url).toBe('https://chatbot.example.test/integration/session');
         expect(init?.method).toBe('POST');
-        expect((init?.headers as Record<string, string>)['X-Integration-Key']).toBe(
-          'test-integration-key'
-        );
+        expect(
+          (init?.headers as Record<string, string>)['X-Integration-Key']
+        ).toBe('test-integration-key');
         expect(JSON.parse(init?.body as string)).toEqual({
           external_id: 'patient-1',
           email: 'patient@example.com',
@@ -77,7 +77,11 @@ describe('chatWithBot', () => {
         });
       });
 
-    const result = await chatWithBot('patient-1', 'patient@example.com', 'hello');
+    const result = await chatWithBot(
+      'patient-1',
+      'patient@example.com',
+      'hello'
+    );
 
     expect(result.content).toBe('hi there');
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -116,7 +120,11 @@ describe('chatWithBot', () => {
         });
       });
 
-    const result = await chatWithBot('patient-1', 'patient@example.com', 'hi again');
+    const result = await chatWithBot(
+      'patient-1',
+      'patient@example.com',
+      'hi again'
+    );
 
     expect(result.content).toBe('still here');
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -154,7 +162,11 @@ describe('chatWithBot', () => {
         });
       });
 
-    const result = await chatWithBot('patient-1', 'patient@example.com', 'again');
+    const result = await chatWithBot(
+      'patient-1',
+      'patient@example.com',
+      'again'
+    );
 
     expect(result.content).toBe('renewed');
     // Existing conversation id is reused rather than creating a new one.
@@ -178,7 +190,9 @@ describe('chatWithBot', () => {
     mockUpsert.mockResolvedValueOnce({});
 
     vi.spyOn(globalThis, 'fetch')
-      .mockImplementationOnce(async () => jsonResponse({ message: 'expired' }, 401))
+      .mockImplementationOnce(async () =>
+        jsonResponse({ message: 'expired' }, 401)
+      )
       .mockImplementationOnce(async (url) => {
         expect(url).toBe('https://chatbot.example.test/integration/session');
         return jsonResponse({
@@ -200,7 +214,11 @@ describe('chatWithBot', () => {
         });
       });
 
-    const result = await chatWithBot('patient-1', 'patient@example.com', 'retry me');
+    const result = await chatWithBot(
+      'patient-1',
+      'patient@example.com',
+      'retry me'
+    );
 
     expect(result.content).toBe('recovered');
   });

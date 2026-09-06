@@ -55,6 +55,7 @@ failure block deleting our own audit rows.
 ### Fixed — the same strip_path/CORS bugs found and fixed in kong.yml were still live in kong.railway.yml (production)
 
 Never propagated across after the local-dev pass earlier in this file:
+
 - `messaging-api` and `notification-api` had the same `strip_path: true`
   mismatch (both routes' target service mounts its router at the full
   path, not the stripped remainder) — same 404-through-the-gateway bug,
@@ -171,7 +172,7 @@ no self-service path to ADMIN at all now. Two regression tests added
 ### Fixed — critical: any THERAPIST could pull any patient's mood/mental-health report
 
 `GET /report/:userId` in mood-tracking-service checked only that the caller's
-JWT *role* was THERAPIST — never that the caller was *this patient's*
+JWT _role_ was THERAPIST — never that the caller was _this patient's_
 therapist. Any THERAPIST-role token could enumerate `userId`s and read 30
 days of anyone's mood scores, sleep, stress and energy levels. Fixed by
 adding `GET /internal/appointments/relationship/:therapistId/:patientId` to
@@ -222,6 +223,7 @@ a host machine, silently wrong inside a container. None of the four had
 `RABBITMQ_URL` set in `docker-compose.yml`; `admin-service` and
 `community-service` were additionally missing `REDIS_URL`. Live impact,
 confirmed by reproducing each one:
+
 - **auth-service → user-service, `user.registered` event:** never delivered.
   New registrations got no `PatientProfile` row at all — `GET /users/me`
   404'd forever for every new signup. Fixed and re-verified end-to-end
@@ -240,16 +242,17 @@ confirmed by reproducing each one:
 `community-api`/`ai-api` (routes that mount their Express router at the full
 `/api/v1/...` path, not the stripped remainder) — the same bug existed,
 unfixed, on two more routes:
+
 - `messaging-api`: `GET /api/v1/messaging/conversations` 404'd
   (`Cannot GET /conversations`) through Kong; worked only when called
   directly against the service, which is how it evaded detection.
 - `notification-api`: `GET /api/v1/notifications/logs` 404'd the same way
   (`Cannot GET /logs`).
-Both now `strip_path: false`, matching the existing fixed routes.
+  Both now `strip_path: false`, matching the existing fixed routes.
 
 ### Fixed — ai-integration-service's own health check couldn't pass — no Docker healthcheck at all as a result
 
-`GET /health` was registered *after* `app.use(authenticate)`, so an
+`GET /health` was registered _after_ `app.use(authenticate)`, so an
 unauthenticated request (which is what both Kong's health route and a Docker
 healthcheck send) always got 401. `docker-compose.yml` had a comment
 explaining why this service was the only one with **no** `healthcheck:`
@@ -266,7 +269,7 @@ YAML doesn't error on a repeated map key — it just keeps one. `kong.yml` had
 comment explicitly explaining "must never be `*` when credentials is true").
 Confirmed via Kong's own `/plugins` admin API that only the wildcard block
 was ever actually loaded — the origin-restricted policy the comment
-describes had never been in effect. Net effect: Kong was reflecting *any*
+describes had never been in effect. Net effect: Kong was reflecting _any_
 request's `Origin` header with `Access-Control-Allow-Credentials: true`,
 not enforcing the intended allowlist. Merged into one block (kept the
 restrictive policy, merged in the first block's extra headers); verified via
@@ -277,7 +280,7 @@ that a disallowed origin no longer gets reflected.
 
 Unrelated to the above: `docker compose restart kong` failed outright
 (`mount ... not a directory`) because the running container's bind mount for
-`kong.yml` still pointed at this repo's *previous* path (it was moved to a
+`kong.yml` still pointed at this repo's _previous_ path (it was moved to a
 new parent directory earlier in this working session). `docker compose up -d
 --force-recreate kong` re-resolves the mount from the compose file's current
 location and fixed it. Only `postgres` and `kong` bind-mount a host path in

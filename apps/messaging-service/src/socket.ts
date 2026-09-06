@@ -626,7 +626,9 @@ export const initializeSocket = async (
           'EX',
           5
         );
-        socket.to(conversationId).emit('user_typing', { conversationId, userId });
+        socket
+          .to(conversationId)
+          .emit('user_typing', { conversationId, userId });
       } catch (err) {
         console.error('typing_start error:', err);
       }

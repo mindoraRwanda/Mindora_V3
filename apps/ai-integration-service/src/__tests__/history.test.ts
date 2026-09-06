@@ -55,7 +55,10 @@ const app = (await import('../app.js')).default;
 
 const JWT_SECRET = 'mindora-dev-jwt-secret-change-in-production';
 
-function makeToken(role: 'ADMIN' | 'PATIENT', sub = `${role.toLowerCase()}-id`) {
+function makeToken(
+  role: 'ADMIN' | 'PATIENT',
+  sub = `${role.toLowerCase()}-id`
+) {
   return jwt.sign(
     { sub, email: `${role.toLowerCase()}@test.com`, role },
     JWT_SECRET,

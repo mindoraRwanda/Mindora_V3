@@ -66,7 +66,7 @@ exists, the call just silently no-ops.
    `strip_path: false` because those services mount at the full `/api/v1/...` prefix
    internally, not the stripped remainder. Getting this wrong is a real, previously-hit
    footgun (see the comments in `infrastructure/kong/kong.yml`) — a route that 404s
-   only when called *through Kong* but works fine when tested directly against the
+   only when called _through Kong_ but works fine when tested directly against the
    service is almost always a `strip_path` mismatch, not a routing bug in the service.
 3. **Service-to-service calls.** When one service needs data it doesn't own (e.g.
    appointment-service needs to confirm a user is really a therapist, or admin-service
@@ -83,18 +83,18 @@ exists, the call just silently no-ops.
 
 ## The services
 
-| Service | Port | Database | Owns |
-|---|---|---|---|
-| auth-service | 3001 | Postgres `mindora_auth` | Registration, login, JWT issue/refresh/rotation, Google OAuth, password reset |
-| user-service | 3002 | Postgres `mindora_user` | Patient/therapist profile data |
-| appointment-service | 3003 | Postgres `mindora_appointment` | Booking lifecycle (pending → confirmed → completed/cancelled), ratings |
-| mood-tracking-service | 3004 | Postgres `mindora_mood` (TimescaleDB hypertable) | Mood/journal logging, streaks, insights |
-| community-service | 3005 | MongoDB `mindora_community` | Groups, posts, comments, reactions, moderation reports |
-| messaging-service | 3006 | MongoDB `mindora_messaging` | 1-to-1 chat over Socket.io, presence, typing indicators |
-| ai-integration-service | 3007 | Postgres `mindora_ai` | Proxies chat to an external AI chatbot, crisis pre-filtering, encrypted audit log |
-| notification-service | 3008 | Postgres `mindora_notifications` | Pure RabbitMQ consumer — push (FCM) / email (Resend) / SMS (Africa's Talking) |
-| admin-service | 3009 | Postgres `mindora_admin` | Admin console: suspend/reactivate users, moderation, audit log, cross-service analytics rollup, system alerts |
-| docs-gateway | 3010 | — | Aggregates every other service's OpenAPI spec into one Swagger UI (only relevant in the production bundle deploy) |
+| Service                | Port | Database                                         | Owns                                                                                                              |
+| ---------------------- | ---- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| auth-service           | 3001 | Postgres `mindora_auth`                          | Registration, login, JWT issue/refresh/rotation, Google OAuth, password reset                                     |
+| user-service           | 3002 | Postgres `mindora_user`                          | Patient/therapist profile data                                                                                    |
+| appointment-service    | 3003 | Postgres `mindora_appointment`                   | Booking lifecycle (pending → confirmed → completed/cancelled), ratings                                            |
+| mood-tracking-service  | 3004 | Postgres `mindora_mood` (TimescaleDB hypertable) | Mood/journal logging, streaks, insights                                                                           |
+| community-service      | 3005 | MongoDB `mindora_community`                      | Groups, posts, comments, reactions, moderation reports                                                            |
+| messaging-service      | 3006 | MongoDB `mindora_messaging`                      | 1-to-1 chat over Socket.io, presence, typing indicators                                                           |
+| ai-integration-service | 3007 | Postgres `mindora_ai`                            | Proxies chat to an external AI chatbot, crisis pre-filtering, encrypted audit log                                 |
+| notification-service   | 3008 | Postgres `mindora_notifications`                 | Pure RabbitMQ consumer — push (FCM) / email (Resend) / SMS (Africa's Talking)                                     |
+| admin-service          | 3009 | Postgres `mindora_admin`                         | Admin console: suspend/reactivate users, moderation, audit log, cross-service analytics rollup, system alerts     |
+| docs-gateway           | 3010 | —                                                | Aggregates every other service's OpenAPI spec into one Swagger UI (only relevant in the production bundle deploy) |
 
 `auth-service`, `user-service`, `community-service`, `messaging-service`, and
 `notification-service` are documented in detail (full route tables, Prisma models,
@@ -108,17 +108,17 @@ Books and manages appointment slots. Has no local copy of user/therapist data �
 verifies a `therapistId` really belongs to a therapist by calling auth-service through
 Kong at request time, rather than joining across databases.
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `GET` | `/availability/:therapistId` | JWT | Computed open slots for a therapist in a date range |
-| `POST` | `/` | JWT, `PATIENT` | Book an appointment (Postgres advisory lock keyed on `therapistId`, guards against double-booking) |
-| `GET` | `/mine` | JWT, `PATIENT` | Paginated list of caller's own appointments |
-| `GET` | `/schedule` | JWT, `THERAPIST` | Paginated schedule for the caller |
-| `PUT` | `/:id/confirm` | JWT, assigned `THERAPIST` | PENDING → CONFIRMED; publishes `appointment.confirmed` |
-| `PUT` | `/:id/cancel` | JWT, owner patient or assigned therapist | → CANCELLED; publishes `appointment.cancelled` |
-| `PUT` | `/:id/complete` | JWT, assigned `THERAPIST` | CONFIRMED → COMPLETED; publishes `appointment.completed` |
-| `POST` | `/:id/rate` | JWT, owner `PATIENT` | Rate a COMPLETED appointment |
-| `GET` | `/internal/appointments/analytics` | JWT, `SERVICE` | Aggregate counts, used by admin-service |
+| Method | Path                               | Auth                                     | Description                                                                                        |
+| ------ | ---------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET`  | `/availability/:therapistId`       | JWT                                      | Computed open slots for a therapist in a date range                                                |
+| `POST` | `/`                                | JWT, `PATIENT`                           | Book an appointment (Postgres advisory lock keyed on `therapistId`, guards against double-booking) |
+| `GET`  | `/mine`                            | JWT, `PATIENT`                           | Paginated list of caller's own appointments                                                        |
+| `GET`  | `/schedule`                        | JWT, `THERAPIST`                         | Paginated schedule for the caller                                                                  |
+| `PUT`  | `/:id/confirm`                     | JWT, assigned `THERAPIST`                | PENDING → CONFIRMED; publishes `appointment.confirmed`                                             |
+| `PUT`  | `/:id/cancel`                      | JWT, owner patient or assigned therapist | → CANCELLED; publishes `appointment.cancelled`                                                     |
+| `PUT`  | `/:id/complete`                    | JWT, assigned `THERAPIST`                | CONFIRMED → COMPLETED; publishes `appointment.completed`                                           |
+| `POST` | `/:id/rate`                        | JWT, owner `PATIENT`                     | Rate a COMPLETED appointment                                                                       |
+| `GET`  | `/internal/appointments/analytics` | JWT, `SERVICE`                           | Aggregate counts, used by admin-service                                                            |
 
 **Data model:** single `Appointment` table — `patientId`, `therapistId`, `slotStart`/
 `slotEnd`, `sessionType` (VIDEO/IN_PERSON/CHAT), `status`
@@ -134,14 +134,14 @@ can't span databases the way a row lock inside one transaction could.
 Patient mood/journal logging with streaks, weekly insights, and therapist-facing
 reports. Journal notes are encrypted at rest (`MOOD_JOURNAL_ENCRYPTION_KEY`).
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `POST` | `/log` | JWT, `PATIENT` | Log a mood entry; rate-limited to 10/day via Redis; may publish `mood.concern`/`mood.streak` |
-| `GET` | `/history` | JWT, `PATIENT` | Paginated entries, optional date range |
-| `GET` | `/insights` | JWT, `PATIENT` | Weekly trend insights, Redis-cached 1h |
-| `GET` | `/report/:userId` | JWT, `THERAPIST` | 30-day averages + streak + trend for a patient |
-| `GET` | `/streak` | JWT, `PATIENT` | Current check-in streak |
-| `GET` | `/internal/mood/analytics` | JWT, `SERVICE` | Platform-wide mood stats, used by admin-service |
+| Method | Path                       | Auth             | Description                                                                                  |
+| ------ | -------------------------- | ---------------- | -------------------------------------------------------------------------------------------- |
+| `POST` | `/log`                     | JWT, `PATIENT`   | Log a mood entry; rate-limited to 10/day via Redis; may publish `mood.concern`/`mood.streak` |
+| `GET`  | `/history`                 | JWT, `PATIENT`   | Paginated entries, optional date range                                                       |
+| `GET`  | `/insights`                | JWT, `PATIENT`   | Weekly trend insights, Redis-cached 1h                                                       |
+| `GET`  | `/report/:userId`          | JWT, `THERAPIST` | 30-day averages + streak + trend for a patient                                               |
+| `GET`  | `/streak`                  | JWT, `PATIENT`   | Current check-in streak                                                                      |
+| `GET`  | `/internal/mood/analytics` | JWT, `SERVICE`   | Platform-wide mood stats, used by admin-service                                              |
 
 **Data model:** single `MoodEntry` table with a **composite primary key
 `(id, recordedAt)`** — required because `mood_entries` is a TimescaleDB hypertable
@@ -160,11 +160,11 @@ keyword-based crisis pre-filter (levels 0–5) on
 every message first. The entire service requires JWT except the Swagger docs routes —
 there are no public endpoints by design.
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/ai/chat` | JWT, `PATIENT` | Runs the crisis pre-filter first; level 5 short-circuits to a hard-coded safety response and never reaches the bot; otherwise calls the external chatbot and stores an encrypted audit row |
-| `GET` / `DELETE` | `/api/v1/ai/history` | JWT, `PATIENT` | Not implemented (`501`) |
-| `GET` | `/api/v1/ai/usage` | JWT, `ADMIN` | Token usage / crisis events / top users, consumed by admin-service |
+| Method           | Path                 | Auth           | Description                                                                                                                                                                                |
+| ---------------- | -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST`           | `/api/v1/ai/chat`    | JWT, `PATIENT` | Runs the crisis pre-filter first; level 5 short-circuits to a hard-coded safety response and never reaches the bot; otherwise calls the external chatbot and stores an encrypted audit row |
+| `GET` / `DELETE` | `/api/v1/ai/history` | JWT, `PATIENT` | Not implemented (`501`)                                                                                                                                                                    |
+| `GET`            | `/api/v1/ai/usage`   | JWT, `ADMIN`   | Token usage / crisis events / top users, consumed by admin-service                                                                                                                         |
 
 **Data model:** `AiInteraction` (encrypted `user_message`/`ai_response`, `crisis_level`
 0–5, `tokens_used`, `response_ms`) is Mindora's own audit trail — **not** the chat
@@ -198,20 +198,20 @@ data owner for users/community/mood/AI, it's an orchestration + audit layer on t
 > **Correction to `BACKEND_COMPLETE.md`:** that doc lists admin-service as
 > "not database-backed." That's out of date — it has a real Postgres schema
 > (`mindora_admin`) with three actively-written tables (below). It just has no
-> *domain* data of its own (no users/appointments/mood rows) — everything domain-shaped
+> _domain_ data of its own (no users/appointments/mood rows) — everything domain-shaped
 > is fetched live from the owning service.
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/users` | Proxies to auth/user-service's `/internal/users` |
-| `PUT` | `/users/:id/suspend` / `/reactivate` | Proxies the action, then writes `audit_logs` only after the downstream confirms |
-| `GET` | `/moderation/queue` | Proxies pending reports from community-service (pull-based — not driven by any event) |
-| `PUT` | `/moderation/:id/resolve` | Resolves via community-service, writes local `moderation_decisions` + `audit_logs` |
-| `POST` | `/moderation/decrypt/:postId` | Reveals the real author of an anonymous post; writes `audit_logs` |
-| `GET` | `/analytics` | Fans out to appointment/mood/AI/user analytics endpoints in parallel; each failure degrades independently (nulls) rather than failing the whole response |
-| `GET` | `/audit-log` | Read-only over local `audit_logs` (no update/delete routes exist, by design — it's meant to be immutable) |
-| `GET` | `/alerts` / `PUT /alerts/:id/resolve` | RabbitMQ-sourced system alerts |
-| `GET` | `/ai/usage` | Proxies ai-integration-service, forwarding the *caller's own* JWT (not the service token) since that route specifically requires `ADMIN` role there |
+| Method | Path                                  | Description                                                                                                                                              |
+| ------ | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/users`                              | Proxies to auth/user-service's `/internal/users`                                                                                                         |
+| `PUT`  | `/users/:id/suspend` / `/reactivate`  | Proxies the action, then writes `audit_logs` only after the downstream confirms                                                                          |
+| `GET`  | `/moderation/queue`                   | Proxies pending reports from community-service (pull-based — not driven by any event)                                                                    |
+| `PUT`  | `/moderation/:id/resolve`             | Resolves via community-service, writes local `moderation_decisions` + `audit_logs`                                                                       |
+| `POST` | `/moderation/decrypt/:postId`         | Reveals the real author of an anonymous post; writes `audit_logs`                                                                                        |
+| `GET`  | `/analytics`                          | Fans out to appointment/mood/AI/user analytics endpoints in parallel; each failure degrades independently (nulls) rather than failing the whole response |
+| `GET`  | `/audit-log`                          | Read-only over local `audit_logs` (no update/delete routes exist, by design — it's meant to be immutable)                                                |
+| `GET`  | `/alerts` / `PUT /alerts/:id/resolve` | RabbitMQ-sourced system alerts                                                                                                                           |
+| `GET`  | `/ai/usage`                           | Proxies ai-integration-service, forwarding the _caller's own_ JWT (not the service token) since that route specifically requires `ADMIN` role there      |
 
 **Events consumed:** `ai.crisis` (from `mindora.ai`) → `system_alerts` row, `HIGH`
 severity. `mood.concern` only (from `mindora.mood`, ignores `mood.streak` on the same
@@ -233,14 +233,14 @@ which one per service.
 
 All async messaging goes through RabbitMQ. Exchanges and the events on them:
 
-| Exchange | Type | Events | Published by | Consumed by |
-|---|---|---|---|---|
-| `mindora.appointments` | topic | `appointment.booked`, `.confirmed`, `.cancelled`, `.completed` | appointment-service | notification-service |
-| `mindora.mood` | topic | `mood.concern`, `mood.streak` | mood-tracking-service | admin-service (`mood.concern` only), notification-service |
-| `mindora.messages` | topic | `MessageReceivedEvent` | messaging-service | notification-service |
-| `mindora.community` | topic | `CommunityReportedEvent`, `CommunityReplyEvent` | community-service | notification-service (reply only — nothing currently consumes `.reported` to drive the moderation queue; that's pulled on-demand instead) |
-| `mindora.ai` | fanout | `ai.crisis` | ai-integration-service (fire-and-forget) | admin-service, notification-service (SMS crisis alert) |
-| `mindora.notifications.retry` / `.dlq` | — | retry/dead-letter routing internal to notification-service | notification-service | notification-service |
+| Exchange                               | Type   | Events                                                         | Published by                             | Consumed by                                                                                                                               |
+| -------------------------------------- | ------ | -------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `mindora.appointments`                 | topic  | `appointment.booked`, `.confirmed`, `.cancelled`, `.completed` | appointment-service                      | notification-service                                                                                                                      |
+| `mindora.mood`                         | topic  | `mood.concern`, `mood.streak`                                  | mood-tracking-service                    | admin-service (`mood.concern` only), notification-service                                                                                 |
+| `mindora.messages`                     | topic  | `MessageReceivedEvent`                                         | messaging-service                        | notification-service                                                                                                                      |
+| `mindora.community`                    | topic  | `CommunityReportedEvent`, `CommunityReplyEvent`                | community-service                        | notification-service (reply only — nothing currently consumes `.reported` to drive the moderation queue; that's pulled on-demand instead) |
+| `mindora.ai`                           | fanout | `ai.crisis`                                                    | ai-integration-service (fire-and-forget) | admin-service, notification-service (SMS crisis alert)                                                                                    |
+| `mindora.notifications.retry` / `.dlq` | —      | retry/dead-letter routing internal to notification-service     | notification-service                     | notification-service                                                                                                                      |
 
 Exchange/queue name constants and event TypeScript types live in `@mindora/events`, so
 "what events exist and what shape are they" is a code search away rather than tribal
@@ -248,14 +248,14 @@ knowledge — start there before publishing or consuming anything new.
 
 ## Shared packages (`packages/*`)
 
-| Package | Purpose |
-|---|---|
-| `@mindora/auth-middleware` | JWT verification (`createVerifyJwt`, `authenticate`, `requireRole`), Redis-backed blacklist checks |
-| `@mindora/events` | Event type definitions + `EXCHANGES`/`QUEUES` constants |
-| `@mindora/queue` | RabbitMQ connect/publish/subscribe helpers wrapping `amqplib` |
-| `@mindora/validation` | Zod request-validation schemas, one file per domain |
-| `@mindora/http-client` | Fetch wrapper for internal service-to-service HTTP calls, with a per-baseUrl circuit breaker (Opossum) and a uniform `{data, status, ok, error}` response shape |
-| `@mindora/shared-types` | Just the canonical `UserRole` union type today — deliberately minimal so services don't need to pull in a full package just for a type |
+| Package                    | Purpose                                                                                                                                                         |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@mindora/auth-middleware` | JWT verification (`createVerifyJwt`, `authenticate`, `requireRole`), Redis-backed blacklist checks                                                              |
+| `@mindora/events`          | Event type definitions + `EXCHANGES`/`QUEUES` constants                                                                                                         |
+| `@mindora/queue`           | RabbitMQ connect/publish/subscribe helpers wrapping `amqplib`                                                                                                   |
+| `@mindora/validation`      | Zod request-validation schemas, one file per domain                                                                                                             |
+| `@mindora/http-client`     | Fetch wrapper for internal service-to-service HTTP calls, with a per-baseUrl circuit breaker (Opossum) and a uniform `{data, status, ok, error}` response shape |
+| `@mindora/shared-types`    | Just the canonical `UserRole` union type today — deliberately minimal so services don't need to pull in a full package just for a type                          |
 
 There is **no** `@mindora/database` package — see the note in "Architecture at a
 glance" above.
@@ -330,13 +330,12 @@ audit.
 
 ## Where to find more
 
-| Topic | Source |
-|---|---|
-| Full endpoint reference for auth/user/community/messaging/notification | `README.md` |
-| Live interactive API docs per service | `http://localhost:<port>/docs` (Swagger UI), aggregated at `:3010` in the production bundle |
-| Known security limitations, deferred features, and "why is this weird" notes | `BACKEND_COMPLETE.md` |
-| Railway deployment, one step at a time | `DP.md` |
-| Event/exchange constants and types | `packages/events/src` |
-| Kong routing rules | `infrastructure/kong/kong.yml` (local), `infrastructure/kong/kong.railway.yml` (prod) |
-| Git branching + code ownership | `README.md`'s "Git workflow" section |
- 
+| Topic                                                                        | Source                                                                                      |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Full endpoint reference for auth/user/community/messaging/notification       | `README.md`                                                                                 |
+| Live interactive API docs per service                                        | `http://localhost:<port>/docs` (Swagger UI), aggregated at `:3010` in the production bundle |
+| Known security limitations, deferred features, and "why is this weird" notes | `BACKEND_COMPLETE.md`                                                                       |
+| Railway deployment, one step at a time                                       | `DP.md`                                                                                     |
+| Event/exchange constants and types                                           | `packages/events/src`                                                                       |
+| Kong routing rules                                                           | `infrastructure/kong/kong.yml` (local), `infrastructure/kong/kong.railway.yml` (prod)       |
+| Git branching + code ownership                                               | `README.md`'s "Git workflow" section                                                        |

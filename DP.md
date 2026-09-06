@@ -197,8 +197,7 @@ building.
    the file at build time — setting a `JWT_SECRET` env var on the Kong
    service itself does nothing (Kong only consumes `KONG_*`-prefixed vars).
 2. Deploy Kong: "New" → "Empty Service" → "Deploy from Dockerfile". Leave
-   **Root Directory** as `/` (repo root, same as the bundle service in step
-   3) and set **Dockerfile Path** to `infrastructure/kong/Dockerfile` — the
+   **Root Directory** as `/` (repo root, same as the bundle service in step 3) and set **Dockerfile Path** to `infrastructure/kong/Dockerfile` — the
    build context needs to be the repo root since the Dockerfile's `COPY`
    references `infrastructure/kong/kong.railway.yml`. Setting Root Directory
    to `infrastructure/kong` instead (with the same Dockerfile Path) double-
@@ -217,7 +216,7 @@ building.
      entirely.
    - `KONG_NGINX_WORKER_PROCESSES=1` overrides Kong's default
      (`worker_processes auto`), which sizes itself off the number of CPU
-     cores the container can *see* — on Railway that's the host's full core
+     cores the container can _see_ — on Railway that's the host's full core
      count, not what's actually allocated to this service. Left on `auto`,
      Kong spawns dozens of workers, blows past the service's memory limit,
      and they get SIGKILL'd in a loop (visible in logs as repeated

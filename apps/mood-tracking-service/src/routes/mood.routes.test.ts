@@ -471,7 +471,7 @@ describe('GET /report/:userId', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("rejects a THERAPIST with no appointment history with this patient with 403, without leaking any mood data", async () => {
+  it('rejects a THERAPIST with no appointment history with this patient with 403, without leaking any mood data', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ hasRelationship: false }), {
         status: 200,
