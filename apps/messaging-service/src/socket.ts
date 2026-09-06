@@ -1,16 +1,64 @@
 import { Server as HttpServer } from 'http';
-import { Server as SocketIOServer } from 'socket.io';
+import { Server as SocketIOServer, type Socket } from 'socket.io';
 import { createClient } from 'redis';
 import { createAdapter } from '@socket.io/redis-adapter';
 import mongoose from 'mongoose';
+import {
+  isTokenBlacklisted,
+  isUserSuspended,
+  verifyAccessToken,
+} from '@mindora/auth-middleware';
 import { Conversation, Message } from './models/index.js';
 import { isMongoConnected } from './database.js';
 import { getRedisClient } from './utils/redis.js';
 import { publishMessageReceivedEvent } from './lib/publish-message-event.js';
 import { resolveUserName } from './lib/resolve-username.js';
+import { encryptContent, decryptContent } from './utils/encryption.js';
 import { corsOriginCallback } from './lib/cors-origin.js';
 
 export let io: SocketIOServer;
+
+const DEFAULT_JWT_SECRET = 'mindora-dev-jwt-secret-change-in-production';
+
+// Every real-time action below trusts socket.data.userId, set here from a
+// verified token — never from a client-supplied payload field. Without this,
+// any client could join any conversation by ID, send messages under any
+// other user's identity, or spoof anyone's presence/typing state; see the
+// per-handler checks below for what each of those looks like.
+async function authenticateHandshake(
+  socket: Socket,
+  next: (err?: Error) => void
+): Promise<void> {
+  const token = socket.handshake.auth?.token;
+  if (typeof token !== 'string' || token.length === 0) {
+    next(new Error('Unauthorized'));
+    return;
+  }
+
+  const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
+
+  try {
+    const payload = verifyAccessToken(
+      token,
+      process.env.JWT_SECRET ?? DEFAULT_JWT_SECRET,
+      process.env.JWT_ISSUER
+    );
+
+    if (payload.jti && (await isTokenBlacklisted(redisUrl, payload.jti))) {
+      next(new Error('Unauthorized'));
+      return;
+    }
+    if (await isUserSuspended(redisUrl, payload.userId)) {
+      next(new Error('Unauthorized'));
+      return;
+    }
+
+    socket.data.userId = payload.userId;
+    next();
+  } catch {
+    next(new Error('Unauthorized'));
+  }
+}
 
 export const initializeSocket = async (
   httpServer: HttpServer,
@@ -35,6 +83,8 @@ export const initializeSocket = async (
 
     io.adapter(createAdapter(pubClient, subClient));
   }
+
+  io.use(authenticateHandshake);
 
   console.log('✓ Socket.io initialised with Redis adapter');
 
@@ -84,6 +134,16 @@ export const initializeSocket = async (
             socket.emit('error', {
               message:
                 'participants must be an array of exactly 2 non-empty user ID strings',
+            });
+            return;
+          }
+
+          // The caller must be one of the two participants — otherwise any
+          // authenticated client could create (and thus learn the id of)
+          // a conversation between two arbitrary strangers.
+          if (!participants.includes(socket.data.userId as string)) {
+            socket.emit('error', {
+              message: 'You must be one of the conversation participants',
             });
             return;
           }
@@ -209,6 +269,19 @@ export const initializeSocket = async (
           return;
         }
 
+        // Without this, any authenticated client could join any
+        // conversation by ID and read two strangers' private messages \u2014
+        // conversationId is a MongoDB ObjectId, guessable/enumerable, not a
+        // secret.
+        const currentUserId = socket.data.userId as string | undefined;
+        if (
+          !currentUserId ||
+          !conversation.participants.includes(currentUserId)
+        ) {
+          socket.emit('error', { message: 'Conversation not found' });
+          return;
+        }
+
         // Join the room named after the conversationId
         socket.join(conversationId);
         console.log(
@@ -220,7 +293,6 @@ export const initializeSocket = async (
         // should show instead of a hardcoded/placeholder name. Resolved via
         // User Service (through Kong), not stored locally, so it's always
         // current even if the user changes their name later.
-        const currentUserId = socket.data.userId as string | undefined;
         const otherParticipantId = conversation.participants.find(
           (p) => p !== currentUserId
         );
@@ -246,11 +318,36 @@ export const initializeSocket = async (
           messages: recentMessages.map((m) => ({
             _id: String(m._id),
             senderId: m.senderId,
-            content: m.content,
+            content: decryptContent(m.content),
             createdAt: m.createdAt,
+            deliveredAt: m.deliveredAt ?? null,
             readAt: m.readAt ?? null,
           })),
         });
+
+        // True persisted delivery — set once the recipient actually opens the
+        // conversation, never reset once set (see MessagesView.tsx's
+        // MessageTicks comment for why: it must not regress if they go
+        // offline again). Only the other participant's messages to me count.
+        const undelivered = await Message.find({
+          conversationId,
+          senderId: { $ne: currentUserId },
+          deliveredAt: null,
+        }).select('_id');
+        if (undelivered.length > 0) {
+          const deliveredAt = new Date();
+          const deliveredIds = undelivered.map((m) => m._id.toString());
+          await Message.updateMany(
+            { _id: { $in: deliveredIds } },
+            { $set: { deliveredAt } }
+          );
+          io.to(conversationId).emit('messages_delivered', {
+            conversationId,
+            messageIds: deliveredIds,
+            deliveredAt: deliveredAt.toISOString(),
+            deliveredTo: currentUserId,
+          });
+        }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error ? error.stack : '';
@@ -277,14 +374,19 @@ export const initializeSocket = async (
     // Client emits this when they type and send a message
     socket.on(
       'send_message',
-      async (data: {
-        conversationId: string;
-        content: string;
-        senderId: string;
-      }) => {
-        const { conversationId, content, senderId } = data;
+      async (data: { conversationId: string; content: string }) => {
+        const { conversationId, content } = data;
+        // Never trust a client-supplied senderId — otherwise any
+        // authenticated client could send a message that appears to come
+        // from an arbitrary other user.
+        const senderId = socket.data.userId as string | undefined;
 
         try {
+          if (!senderId) {
+            socket.emit('error', { message: 'Unauthorized' });
+            return;
+          }
+
           // Check if MongoDB connection is active before querying
           if (!isMongoConnected()) {
             console.warn(
@@ -318,14 +420,27 @@ export const initializeSocket = async (
             return;
           }
 
-          // Save message to MongoDB
+          // Same reasoning as join_conversation: without this, an
+          // authenticated client could send a message into a conversation
+          // it isn't part of, even without ever joining that room.
+          if (!conversation.participants.includes(senderId)) {
+            socket.emit('error', { message: 'Conversation not found' });
+            return;
+          }
+
+          // Save message to MongoDB \u2014 encrypted at rest (AES-256-GCM). The
+          // trimmed plaintext stays in `trimmedContent` for the broadcast,
+          // the queued event, and the lastMessage preview below; nothing
+          // past this point should read `message.content` directly, since
+          // that's now ciphertext.
+          const trimmedContent = content.trim();
           console.log(
             `[${socket.id}] Creating message for conversation ${conversationId}...`
           );
           const message = await Message.create({
             conversationId,
             senderId,
-            content: content.trim(),
+            content: encryptContent(trimmedContent),
           });
           console.log(`[${socket.id}] Message created with ID: ${message._id}`);
 
@@ -337,7 +452,7 @@ export const initializeSocket = async (
           );
           await Conversation.findByIdAndUpdate(conversationId, {
             lastMessage: {
-              content: content.trim(),
+              content: encryptContent(trimmedContent),
               senderId,
               sentAt: message.createdAt,
             },
@@ -349,7 +464,7 @@ export const initializeSocket = async (
             _id: message._id.toString(),
             conversationId: message.conversationId,
             senderId: message.senderId,
-            content: message.content,
+            content: trimmedContent,
             createdAt: message.createdAt,
           };
 
@@ -369,7 +484,7 @@ export const initializeSocket = async (
             conversationId,
             senderId,
             recipientId: recipientId ?? null,
-            content: message.content,
+            content: trimmedContent,
           }).catch((err) => {
             console.error(
               `[${socket.id}] Failed to publish message.received event:`,
@@ -407,8 +522,15 @@ export const initializeSocket = async (
       async (data: { conversationId: string; messageId: string }) => {
         const { conversationId, messageId } = data;
         const userId = socket.data.userId as string | undefined;
-        if (!mongoose.Types.ObjectId.isValid(messageId)) return;
+        if (!userId || !mongoose.Types.ObjectId.isValid(messageId)) return;
         try {
+          // Without this, an authenticated client could mark any message in
+          // any conversation as read, decrementing a stranger's unread count.
+          const conversation = await Conversation.findById(conversationId);
+          if (!conversation || !conversation.participants.includes(userId)) {
+            return;
+          }
+
           const readAt = new Date();
           const updated = await Message.findByIdAndUpdate(
             messageId,
@@ -437,46 +559,96 @@ export const initializeSocket = async (
       }
     );
 
-    // Event 4: typing_start
-    // Client emits while composing. Server sets a 5 s Redis TTL and broadcasts to room.
+    // Event 3b: mark_conversation_read
+    // Batched version of mark_read — the client emits this once when the
+    // conversation is opened, rather than one mark_read per unread message.
+    // Marks every message not sent by the caller as read in a single write
+    // and zeroes the unread counter, then broadcasts one conversation_read
+    // event (not one message_read per message) so the sender's UI can
+    // update every bubble's tick/read state and the reader's unread badge
+    // in one pass.
     socket.on(
-      'typing_start',
-      async (data: { conversationId: string; userId: string }) => {
-        const { conversationId, userId } = data;
-        if (!conversationId || !userId) return;
+      'mark_conversation_read',
+      async (data: { conversationId: string }) => {
+        const { conversationId } = data;
+        const userId = socket.data.userId as string | undefined;
+        if (!userId || !mongoose.Types.ObjectId.isValid(conversationId)) {
+          return;
+        }
         try {
-          await getRedisClient().set(
-            `typing:${conversationId}:${userId}`,
-            '1',
-            'EX',
-            5
+          const conversation = await Conversation.findById(conversationId);
+          if (!conversation || !conversation.participants.includes(userId)) {
+            return;
+          }
+
+          const unread = await Message.find({
+            conversationId,
+            senderId: { $ne: userId },
+            readAt: null,
+          }).select('_id');
+          if (unread.length === 0) return;
+
+          const readAt = new Date();
+          const messageIds = unread.map((m) => m._id.toString());
+          await Message.updateMany(
+            { _id: { $in: messageIds } },
+            { $set: { readAt } }
           );
-          socket
-            .to(conversationId)
-            .emit('user_typing', { conversationId, userId });
+          await Conversation.updateOne(
+            { _id: conversationId },
+            { $set: { unreadCount: 0 } }
+          );
+
+          socket.to(conversationId).emit('conversation_read', {
+            conversationId,
+            messageIds,
+            readAt: readAt.toISOString(),
+            readBy: userId,
+          });
         } catch (err) {
-          console.error('typing_start error:', err);
+          console.error('mark_conversation_read error:', err);
         }
       }
     );
 
+    // Event 4: typing_start
+    // Client emits while composing. Server sets a 5 s Redis TTL and broadcasts to room.
+    socket.on('typing_start', async (data: { conversationId: string }) => {
+      const { conversationId } = data;
+      // Never trust a client-supplied userId here — otherwise any
+      // authenticated client could spoof another user's typing indicator.
+      const userId = socket.data.userId as string | undefined;
+      if (!conversationId || !userId) return;
+      try {
+        await getRedisClient().set(
+          `typing:${conversationId}:${userId}`,
+          '1',
+          'EX',
+          5
+        );
+        socket
+          .to(conversationId)
+          .emit('user_typing', { conversationId, userId });
+      } catch (err) {
+        console.error('typing_start error:', err);
+      }
+    });
+
     // Event 5: typing_stop
     // Client emits when done composing. Server deletes the key and broadcasts to room.
-    socket.on(
-      'typing_stop',
-      async (data: { conversationId: string; userId: string }) => {
-        const { conversationId, userId } = data;
-        if (!conversationId || !userId) return;
-        try {
-          await getRedisClient().del(`typing:${conversationId}:${userId}`);
-          socket
-            .to(conversationId)
-            .emit('user_stopped_typing', { conversationId, userId });
-        } catch (err) {
-          console.error('typing_stop error:', err);
-        }
+    socket.on('typing_stop', async (data: { conversationId: string }) => {
+      const { conversationId } = data;
+      const userId = socket.data.userId as string | undefined;
+      if (!conversationId || !userId) return;
+      try {
+        await getRedisClient().del(`typing:${conversationId}:${userId}`);
+        socket
+          .to(conversationId)
+          .emit('user_stopped_typing', { conversationId, userId });
+      } catch (err) {
+        console.error('typing_stop error:', err);
       }
-    );
+    });
 
     // Presence value shape: JSON { online: boolean, lastSeen: ISO string }.
     // lastSeen is written on every register/heartbeat while online, and again
@@ -523,14 +695,14 @@ export const initializeSocket = async (
     }
 
     // Event 6: register_presence
-    // Client emits immediately after connect with their userId. There is no
-    // socket-level JWT handshake yet, so the server only learns which user
-    // this connection belongs to once the client tells it — this is the
-    // earliest practical point to start tracking presence.
-    socket.on('register_presence', async (data: { userId: string }) => {
-      const { userId } = data;
+    // Client emits immediately after connect to start presence tracking.
+    // The handshake auth middleware has already set socket.data.userId from
+    // a verified token by this point — any userId in the client's payload is
+    // ignored, otherwise any authenticated client could broadcast an
+    // arbitrary other user as online/offline.
+    socket.on('register_presence', async () => {
+      const userId = socket.data.userId as string | undefined;
       if (!userId) return;
-      socket.data.userId = userId;
       try {
         const { lastSeen } = await writePresence(userId, true, 60);
         console.log(`✓ Presence registered for ${userId}`);

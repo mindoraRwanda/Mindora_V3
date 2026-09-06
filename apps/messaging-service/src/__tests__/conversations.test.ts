@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import app from '../app.js';
 import { Conversation } from '../models/Conversation.js';
+import { encryptContent } from '../utils/encryption.js';
 
 const request = supertest(app);
 
@@ -144,6 +145,24 @@ describe('GET /api/v1/messaging/conversations', () => {
     expect(res.status).toBe(200);
     expect(res.body.conversations).toHaveLength(0);
     expect(res.body.total).toBe(0);
+  });
+
+  it('decrypts lastMessage.content back to plaintext in the response', async () => {
+    await Conversation.create({
+      participants: ['patient-123', 'therapist-456'],
+      lastMessage: {
+        content: encryptContent('see you at 3pm'),
+        senderId: 'therapist-456',
+        sentAt: new Date(),
+      },
+    });
+
+    const res = await request
+      .get('/api/v1/messaging/conversations')
+      .set('Authorization', patientHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.conversations[0].lastMessage).toBe('see you at 3pm');
   });
 
   it('returns 401 when no auth token is provided', async () => {

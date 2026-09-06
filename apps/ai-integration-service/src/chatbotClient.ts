@@ -1,13 +1,17 @@
-import { randomBytes } from 'node:crypto';
 import { prisma } from './database.js';
-import { decrypt, encrypt } from './lib/crypto.js';
 
 // Client for the external Therapy Chatbot API (separate service, own
-// signup/login + conversation model — see docs at
-// <THERAPY_CHATBOT_BASE_URL>/docs). Each Mindora patient gets one lazily
-// provisioned chatbot account + one long-lived conversation, tracked in the
-// chatbot_accounts table; message history itself lives on the chatbot's
-// side, not ours (this service's own AiInteraction rows are our audit copy).
+// conversation model — see docs at <THERAPY_CHATBOT_BASE_URL>/docs). Each
+// Mindora patient gets one chatbot session + one long-lived conversation,
+// tracked in the chatbot_accounts table; message history itself lives on the
+// chatbot's side, not ours (this service's own AiInteraction rows are our
+// audit copy).
+//
+// Auth model: the vendor exchanges our patient's id/email for a short-lived
+// access token via POST /integration/session (server-to-server, proven by
+// MINDORA_INTEGRATION_KEY — never sent to a browser). There is no per-patient
+// password: calling /integration/session repeatedly is cheap, safe and
+// idempotent, so a cached token is simply re-requested once it's stale.
 
 export class ChatbotApiError extends Error {
   constructor(
@@ -31,6 +35,13 @@ interface ChatbotMessage {
   timestamp: string;
 }
 
+interface IntegrationSessionResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user_id: string;
+}
+
 function baseUrl(): string {
   const url = process.env.THERAPY_CHATBOT_BASE_URL;
   if (!url) {
@@ -41,22 +52,14 @@ function baseUrl(): string {
   return url.replace(/\/+$/, '');
 }
 
-// The chatbot issues a JWT access token but exposes no refresh endpoint —
-// re-authenticating with the stored password is the only way to renew one.
-// Decoding exp locally avoids a second round-trip just to learn expiry.
-function decodeTokenExpiry(accessToken: string): Date {
-  const payload = accessToken.split('.')[1];
-  if (!payload) {
-    throw new ChatbotApiError('Chatbot access token was not a valid JWT');
+function integrationKey(): string {
+  const key = process.env.MINDORA_INTEGRATION_KEY;
+  if (!key) {
+    throw new Error(
+      'Missing required environment variable: MINDORA_INTEGRATION_KEY'
+    );
   }
-  const padded = payload.padEnd(
-    payload.length + ((4 - (payload.length % 4)) % 4),
-    '='
-  );
-  const decoded = JSON.parse(
-    Buffer.from(padded, 'base64url').toString('utf8')
-  ) as { exp: number };
-  return new Date(decoded.exp * 1000);
+  return key;
 }
 
 async function chatbotFetch(
@@ -84,42 +87,26 @@ async function chatbotFetch(
   return response;
 }
 
-async function signup(
-  email: string,
-  password: string
-): Promise<{ accessToken: string; userId: string }> {
+// external_id is Mindora's own (stable, never-changing) user id — the
+// chatbot keys all conversation/crisis history to it, so this must always be
+// the same value for the same patient.
+async function requestSession(
+  externalId: string,
+  email: string
+): Promise<IntegrationSessionResponse> {
   const res = await chatbotFetch(
-    '/auth/signup',
+    '/integration/session',
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: email.split('@')[0],
-        email,
-        password,
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Integration-Key': integrationKey(),
+      },
+      body: JSON.stringify({ external_id: externalId, email }),
     },
     15_000
   );
-  const body = (await res.json()) as { access_token: string; user_id: string };
-  return { accessToken: body.access_token, userId: body.user_id };
-}
-
-async function login(
-  email: string,
-  password: string
-): Promise<{ accessToken: string }> {
-  const res = await chatbotFetch(
-    '/auth/login',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    },
-    15_000
-  );
-  const body = (await res.json()) as { access_token: string };
-  return { accessToken: body.access_token };
+  return (await res.json()) as IntegrationSessionResponse;
 }
 
 async function createConversation(accessToken: string): Promise<string> {
@@ -132,83 +119,93 @@ async function createConversation(accessToken: string): Promise<string> {
   return body.id;
 }
 
-async function provisionAccount(mindoraUserId: string) {
-  const email = `${mindoraUserId}@mindora-patients.internal`;
-  const password = randomBytes(24).toString('hex');
+async function provisionOrRefreshSession(
+  mindoraUserId: string,
+  email: string,
+  existingConversationId: string | null
+): Promise<{
+  chatbotUserId: string;
+  accessToken: string;
+  tokenExpiresAt: Date;
+  conversationId: string;
+}> {
+  const session = await requestSession(mindoraUserId, email);
+  const conversationId =
+    existingConversationId ?? (await createConversation(session.access_token));
 
-  const { accessToken } = await signup(email, password);
-  const conversationId = await createConversation(accessToken);
-
-  return prisma.chatbotAccount.create({
-    data: {
-      mindora_user_id: mindoraUserId,
-      chatbot_user_id: mindoraUserId,
-      chatbot_email: email,
-      chatbot_password: encrypt(password),
-      access_token: accessToken,
-      token_expires_at: decodeTokenExpiry(accessToken),
-      conversation_id: conversationId,
-    },
-  });
+  return {
+    chatbotUserId: session.user_id,
+    accessToken: session.access_token,
+    tokenExpiresAt: new Date(Date.now() + session.expires_in * 1000),
+    conversationId,
+  };
 }
 
 // 60s buffer so a token doesn't expire mid-request.
 const EXPIRY_BUFFER_MS = 60_000;
 
-async function refreshSession(
-  account: NonNullable<
-    Awaited<ReturnType<typeof prisma.chatbotAccount.findUnique>>
-  >
+async function refreshAndPersistSession(
+  mindoraUserId: string,
+  email: string,
+  existingConversationId: string | null
 ): Promise<ChatbotSession> {
-  const password = decrypt(account.chatbot_password);
-  const { accessToken } = await login(account.chatbot_email, password);
+  const refreshed = await provisionOrRefreshSession(
+    mindoraUserId,
+    email,
+    existingConversationId
+  );
 
-  let conversationId = account.conversation_id;
-  if (!conversationId) {
-    conversationId = await createConversation(accessToken);
-  }
-
-  await prisma.chatbotAccount.update({
-    where: { id: account.id },
-    data: {
-      access_token: accessToken,
-      token_expires_at: decodeTokenExpiry(accessToken),
-      conversation_id: conversationId,
+  await prisma.chatbotAccount.upsert({
+    where: { mindora_user_id: mindoraUserId },
+    create: {
+      mindora_user_id: mindoraUserId,
+      chatbot_user_id: refreshed.chatbotUserId,
+      chatbot_email: email,
+      access_token: refreshed.accessToken,
+      token_expires_at: refreshed.tokenExpiresAt,
+      conversation_id: refreshed.conversationId,
+    },
+    update: {
+      chatbot_user_id: refreshed.chatbotUserId,
+      chatbot_email: email,
+      access_token: refreshed.accessToken,
+      token_expires_at: refreshed.tokenExpiresAt,
+      conversation_id: refreshed.conversationId,
     },
   });
 
-  return { accessToken, conversationId };
+  return {
+    accessToken: refreshed.accessToken,
+    conversationId: refreshed.conversationId,
+  };
 }
 
 async function getOrCreateSession(
-  mindoraUserId: string
+  mindoraUserId: string,
+  email: string
 ): Promise<ChatbotSession> {
   const existing = await prisma.chatbotAccount.findUnique({
     where: { mindora_user_id: mindoraUserId },
   });
 
-  if (!existing) {
-    const created = await provisionAccount(mindoraUserId);
-    return {
-      accessToken: created.access_token!,
-      conversationId: created.conversation_id!,
-    };
-  }
-
   const tokenIsFresh =
-    existing.access_token &&
+    existing?.access_token &&
     existing.conversation_id &&
     existing.token_expires_at &&
     existing.token_expires_at.getTime() - EXPIRY_BUFFER_MS > Date.now();
 
-  if (tokenIsFresh) {
+  if (existing && tokenIsFresh) {
     return {
       accessToken: existing.access_token!,
       conversationId: existing.conversation_id!,
     };
   }
 
-  return refreshSession(existing);
+  return refreshAndPersistSession(
+    mindoraUserId,
+    email,
+    existing?.conversation_id ?? null
+  );
 }
 
 async function sendMessage(
@@ -234,15 +231,56 @@ async function sendMessage(
   return (await res.json()) as ChatbotMessage;
 }
 
+// Entry point used by DELETE /history. Best-effort: the vendor conversation
+// (and its transcript) is the vendor's data, not ours, so a failure here
+// must not block deleting our own AiInteraction audit rows — it only
+// affects what the caller reports as `remoteConversationDeleted`. Clears
+// conversation_id on success so the next chat starts a fresh conversation
+// rather than reusing one the vendor no longer has.
+export async function deleteRemoteConversation(
+  mindoraUserId: string
+): Promise<boolean> {
+  const account = await prisma.chatbotAccount.findUnique({
+    where: { mindora_user_id: mindoraUserId },
+  });
+  if (!account?.conversation_id || !account.access_token) {
+    return true; // nothing remote exists to delete
+  }
+
+  try {
+    await chatbotFetch(
+      `/auth/conversations/${encodeURIComponent(account.conversation_id)}`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${account.access_token}` },
+      },
+      15_000
+    );
+  } catch (err) {
+    console.error(
+      `[chatbotClient] Failed to delete remote conversation for user ${mindoraUserId}:`,
+      err
+    );
+    return false;
+  }
+
+  await prisma.chatbotAccount.update({
+    where: { mindora_user_id: mindoraUserId },
+    data: { conversation_id: null },
+  });
+  return true;
+}
+
 // Entry point used by the /chat route. Provisions/refreshes the patient's
 // chatbot session as needed, then sends the message — retrying once with a
-// forced re-login if the cached token was rejected (clock skew, revoked
-// session, etc.) rather than only trusting our own expiry bookkeeping.
+// forced session refresh if the cached token was rejected (clock skew,
+// revoked session, etc.) rather than only trusting our own expiry bookkeeping.
 export async function chatWithBot(
   mindoraUserId: string,
+  email: string,
   content: string
 ): Promise<ChatbotMessage> {
-  const session = await getOrCreateSession(mindoraUserId);
+  const session = await getOrCreateSession(mindoraUserId, email);
   try {
     return await sendMessage(session, content);
   } catch (err) {
@@ -250,10 +288,12 @@ export async function chatWithBot(
       const account = await prisma.chatbotAccount.findUnique({
         where: { mindora_user_id: mindoraUserId },
       });
-      if (account) {
-        const refreshed = await refreshSession(account);
-        return sendMessage(refreshed, content);
-      }
+      const refreshed = await refreshAndPersistSession(
+        mindoraUserId,
+        email,
+        account?.conversation_id ?? null
+      );
+      return sendMessage(refreshed, content);
     }
     throw err;
   }

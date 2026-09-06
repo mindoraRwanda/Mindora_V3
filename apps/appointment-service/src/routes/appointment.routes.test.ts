@@ -26,6 +26,7 @@ vi.mock('ioredis', () => {
 
 const mockAppointmentFindMany = vi.fn();
 const mockAppointmentFindUnique = vi.fn();
+const mockAppointmentFindFirst = vi.fn();
 const mockAppointmentCount = vi.fn();
 const mockAppointmentCreate = vi.fn();
 const mockAppointmentUpdate = vi.fn();
@@ -39,6 +40,7 @@ vi.mock('../lib/prisma.js', () => ({
     appointment: {
       findMany: (...args: unknown[]) => mockAppointmentFindMany(...args),
       findUnique: (...args: unknown[]) => mockAppointmentFindUnique(...args),
+      findFirst: (...args: unknown[]) => mockAppointmentFindFirst(...args),
       count: (...args: unknown[]) => mockAppointmentCount(...args),
       create: (...args: unknown[]) => mockAppointmentCreate(...args),
       update: (...args: unknown[]) => mockAppointmentUpdate(...args),
@@ -402,6 +404,60 @@ describe('GET /internal/appointments/analytics', () => {
   it('rejects a request with no token with 401', async () => {
     const app = createApp();
     const response = await request(app).get('/internal/appointments/analytics');
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe('GET /internal/appointments/relationship/:therapistId/:patientId', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  it('returns hasRelationship: true when an appointment exists between the two', async () => {
+    mockAppointmentFindFirst.mockResolvedValueOnce({ id: 'appt-1' });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/appointments/relationship/therapist-1/patient-1')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ hasRelationship: true });
+    expect(mockAppointmentFindFirst).toHaveBeenCalledWith({
+      where: { therapistId: 'therapist-1', patientId: 'patient-1' },
+      select: { id: true },
+    });
+  });
+
+  it('returns hasRelationship: false when no appointment exists between the two', async () => {
+    mockAppointmentFindFirst.mockResolvedValueOnce(null);
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/appointments/relationship/therapist-1/patient-1')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ hasRelationship: false });
+  });
+
+  it('rejects a non-SERVICE (PATIENT) token with 403', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/appointments/relationship/therapist-1/patient-1')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockAppointmentFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('rejects a request with no token with 401', async () => {
+    const app = createApp();
+    const response = await request(app).get(
+      '/internal/appointments/relationship/therapist-1/patient-1'
+    );
 
     expect(response.status).toBe(401);
   });

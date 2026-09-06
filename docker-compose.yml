@@ -137,6 +137,7 @@ services:
       PORT: 3001
       AUTH_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_auth
       REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
       APP_BASE_URL: http://localhost:3001
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
@@ -147,6 +148,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test:
@@ -174,12 +177,15 @@ services:
       PORT: 3002
       USER_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_user
       REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
     ports:
       - '3002:3002'
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test:
@@ -246,6 +252,7 @@ services:
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
       MOOD_JOURNAL_ENCRYPTION_KEY: ${MOOD_JOURNAL_ENCRYPTION_KEY:-mindora-dev-mood-journal-key-32bytes!!}
+      KONG_URL: http://kong:8000
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
     ports:
       - '3004:3004'
@@ -281,13 +288,19 @@ services:
       <<: *app-env
       PORT: 3005
       MONGO_URI: mongodb://mongodb:27017/mindora_community
+      REDIS_URL: redis://redis:6379
       KONG_URL: http://kong:8000
+      RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       COMMUNITY_ENCRYPTION_KEY: ${COMMUNITY_ENCRYPTION_KEY:-mindora-dev-community-key-32bytes!!}
     ports:
       - '3005:3005'
     depends_on:
       mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test:
@@ -315,8 +328,17 @@ services:
       PORT: 3006
       MONGO_URI: mongodb://mongodb:27017/mindora_messaging
       REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
       KONG_URL: http://kong:8000
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      # Only enforced because the image sets NODE_ENV=production — with no
+      # default here, the Socket.io connection this env is meant to allow
+      # was silently CORS-blocked for every frontend origin (confirmed
+      # during a local QA pass: 'blocked by CORS policy' on socket.io's own
+      # polling handshake, not just for one specific dev port). Kong's own
+      # allowlist (infrastructure/kong/kong.yml) is the source of truth for
+      # what a real deployment should list here; these are just the local
+      # dev origins that showed up while testing.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3010}
       MESSAGE_ENCRYPTION_KEY: ${MESSAGE_ENCRYPTION_KEY:-mindora-dev-message-key-32bytes!!}
     ports:
       - '3006:3006'
@@ -324,6 +346,8 @@ services:
       mongodb:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test:
@@ -351,7 +375,8 @@ services:
       AI_SERVICE_PORT: 3007
       AI_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_ai
       REDIS_URL: redis://redis:6379
-      THERAPY_CHATBOT_BASE_URL: ${THERAPY_CHATBOT_BASE_URL:-https://mindoraversiontwo-production.up.railway.app}
+      THERAPY_CHATBOT_BASE_URL: ${THERAPY_CHATBOT_BASE_URL:-https://chatbot.mindora.rw}
+      MINDORA_INTEGRATION_KEY: ${MINDORA_INTEGRATION_KEY:-}
       AI_INTERACTION_ENCRYPTION_KEY: ${AI_INTERACTION_ENCRYPTION_KEY:-mindora-dev-ai-interaction-key-32bytes!!}
     ports:
       - '3007:3007'
@@ -360,9 +385,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # No healthcheck: /health sits behind the auth middleware in this service
-    # (app.ts registers it after app.use(authenticate)), so an unauthenticated
-    # request always returns 401 and would falsely report unhealthy.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'wget',
+          '--no-verbose',
+          '--tries=1',
+          '--spider',
+          'http://localhost:3007/health',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   notification-service:
     build:
@@ -417,6 +453,7 @@ services:
       <<: *app-env
       ADMIN_SERVICE_PORT: 3009
       ADMIN_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_admin
+      REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
       KONG_URL: http://kong:8000
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
@@ -424,6 +461,8 @@ services:
       - '3009:3009'
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy

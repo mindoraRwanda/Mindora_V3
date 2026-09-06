@@ -155,6 +155,51 @@ describe('POST /register', () => {
     expect(response.status).toBe(400);
     expect(mockUserCreate).not.toHaveBeenCalled();
   });
+
+  // Regression test for a real vulnerability: this endpoint is public and
+  // unauthenticated, so a client-supplied `role` must never be trusted —
+  // self-registration must always create a PATIENT, no matter what role the
+  // caller asks for. THERAPIST accounts are provisioned by seed.ts; there is
+  // no self-service path to ADMIN at all.
+  it('ignores a client-supplied ADMIN role and creates a PATIENT instead', async () => {
+    mockFindUnique.mockResolvedValue(null);
+    mockUserCreate.mockResolvedValue({ id: 'user-123' });
+
+    const app = createApp();
+    const response = await request(app).post('/register').send({
+      email: 'attacker@example.com',
+      password: 'securePass1',
+      role: 'ADMIN',
+      userName: 'Attacker',
+    });
+
+    expect(response.status).toBe(201);
+    expect(mockUserCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ role: 'PATIENT' }),
+      })
+    );
+  });
+
+  it('ignores a client-supplied THERAPIST role and creates a PATIENT instead', async () => {
+    mockFindUnique.mockResolvedValue(null);
+    mockUserCreate.mockResolvedValue({ id: 'user-123' });
+
+    const app = createApp();
+    const response = await request(app).post('/register').send({
+      email: 'aspiring-therapist@example.com',
+      password: 'securePass1',
+      role: 'THERAPIST',
+      userName: 'Aspiring Therapist',
+    });
+
+    expect(response.status).toBe(201);
+    expect(mockUserCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ role: 'PATIENT' }),
+      })
+    );
+  });
 });
 
 describe('POST /login', () => {

@@ -11,4 +11,6 @@ export const config = {
     'mindora-dev-mood-journal-key-32bytes!!',
   insightsCacheTtlSeconds: 3600,
   dailyLogLimit: 10,
+  kongUrl: process.env.KONG_URL ?? 'http://localhost:8000',
+  internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
 };

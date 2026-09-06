@@ -10,6 +10,8 @@
     "lint": "eslint src/",
     "test": "vitest run",
     "seed": "tsx src/seed.ts",
+    "generate": "prisma generate",
+    "postinstall": "prisma generate",
     "backfill:profiles": "tsx scripts/backfill-profiles.ts",
     "docs:generate": "tsx src/docs/generate.ts"
   },
