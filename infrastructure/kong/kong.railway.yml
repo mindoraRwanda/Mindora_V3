@@ -11,19 +11,21 @@ _format_version: '3.0'
 # (Railway auto-injects it) if you rename the service or DNS still fails to
 # resolve, and update every `url:` below to match.
 
-# Global CORS so the web build of the mobile app (served from a different
-# origin than Kong's public domain) can call the API at all — browsers
-# block cross-origin requests without this (mobile apps aren't affected,
-# CORS is a browser-only mechanism). credentials: true is needed so the
-# httpOnly refreshToken cookie set by auth-service's /login can ride along
-# on fetch(..., { credentials: 'include' }); Kong reflects the actual
-# request Origin instead of a literal "*" whenever credentials is true, so
-# this stays spec-valid.
+# Global CORS. credentials: true is required because the frontend's
+# apiFetch() uses credentials: 'include' (the httpOnly refreshToken cookie
+# set by auth-service's /login rides along on it) — that means origins MUST
+# be an explicit allowlist, never '*' (the CORS spec forbids a wildcard
+# origin when credentials are allowed; same bug found and fixed in the local
+# kong.yml, where it was live-confirmed via Kong's own /plugins admin API
+# that '*' + credentials:true meant Kong reflected ANY request's Origin
+# header — i.e. no real restriction at all). Add any other real frontend
+# origins (a mobile app's web build, a staging domain) explicitly here as
+# they come up — never reintroduce a wildcard alongside credentials: true.
 plugins:
   - name: cors
     config:
       origins:
-        - '*'
+        - https://app.mindora.rw
       methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
       headers:
         [
@@ -327,10 +329,37 @@ routes:
 
   - name: messaging-api
     service: messaging-service
+    # strip_path: false — messaging-service mounts its router at
+    # app.use('/api/v1/messaging/conversations', conversationsRouter), so it
+    # expects the full path, not the stripped remainder. strip_path: true
+    # here 404s every route through the gateway (same bug found and fixed
+    # in the local kong.yml — confirmed live there via 'Cannot GET
+    # /conversations').
     paths: [/api/v1/messaging]
-    strip_path: true
+    strip_path: false
     plugins:
       - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 500
+          policy: local
+
+  # Proxies messaging-service's Socket.io endpoint. Deploying this bundle
+  # (step 3 of DP.md) gives only Kong a public domain — without this route,
+  # the frontend's real-time chat has no way to reach messaging-service at
+  # all in production (confirmed: no public messaging domain exists, and
+  # this route was simply never added). No jwt plugin here, unlike every
+  # other route above: Socket.io's own handshake auth (see
+  # authenticateHandshake in apps/messaging-service/src/socket.ts) carries
+  # the token inside the Engine.io connect payload, not as a discoverable
+  # Authorization header or query param Kong's jwt plugin could check —
+  # the socket layer verifies it itself, the same way the REST layer's own
+  # `authenticate` middleware does for the jwt-plugin'd routes above.
+  - name: messaging-socket
+    service: messaging-service
+    paths: [/socket.io]
+    strip_path: false
+    plugins:
       - name: rate-limiting
         config:
           minute: 500
@@ -354,8 +383,12 @@ routes:
 
   - name: notification-api
     service: notification-service
+    # strip_path: false — notifications.routes.ts registers its one route at
+    # the full literal path (GET /api/v1/notifications/logs) even though the
+    # router is mounted at app root. strip_path: true here 404s it through
+    # the gateway (same bug found and fixed in the local kong.yml).
     paths: [/api/v1/notifications]
-    strip_path: true
+    strip_path: false
     plugins:
       - name: jwt
       - name: rate-limiting
