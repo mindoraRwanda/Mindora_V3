@@ -7,8 +7,8 @@ import { connect } from '@mindora/queue';
 import { EXCHANGES } from '@mindora/events';
 import { runPreFilter } from '../preFilter.js';
 import { prisma } from '../database.js';
-import { chatWithBot } from '../chatbotClient.js';
-import { encrypt } from '../lib/crypto.js';
+import { chatWithBot, deleteRemoteConversation } from '../chatbotClient.js';
+import { decrypt, encrypt } from '../lib/crypto.js';
 import { asyncHandler } from '../middleware/async-handler.js';
 
 const router = Router();
@@ -56,6 +56,7 @@ router.post(
     }
 
     const userId = req.user?.userId;
+    const email = req.user?.email;
     const resolvedSessionId = typeof sessionId === 'string' ? sessionId : null;
 
     const crisisLevel = await runPreFilter(message, userId);
@@ -96,7 +97,7 @@ router.post(
     // See: AFSP Safe Messaging Guidelines, Columbia Suicide Severity Rating Scale (C-SSRS).
     const inputFlagged = crisisLevel >= 1;
 
-    if (!userId) {
+    if (!userId || !email) {
       res.status(401).json({ message: 'Unauthorized' });
       return;
     }
@@ -104,7 +105,7 @@ router.post(
     const start = Date.now();
     let botMessage;
     try {
-      botMessage = await chatWithBot(userId, message);
+      botMessage = await chatWithBot(userId, email, message);
     } catch (err) {
       console.error('[chat] Therapy chatbot call failed:', err);
       res
@@ -136,14 +137,86 @@ router.post(
 );
 
 // GET /api/v1/ai/history — retrieve session interaction history (PATIENT only)
-router.get('/history', requireRole('PATIENT'), (_req, res) => {
-  res.status(501).json({ message: 'Not implemented yet' });
-});
+router.get(
+  '/history',
+  requireRole('PATIENT'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const [rows, total] = await Promise.all([
+      prisma.aiInteraction.findMany({
+        where: { user_id: userId },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.aiInteraction.count({ where: { user_id: userId } }),
+    ]);
+
+    // message/response are independently nullable — a row that can't be
+    // decrypted (wrong/rotated AI_INTERACTION_ENCRYPTION_KEY, corruption)
+    // must not take down the whole page of history.
+    const interactions = rows.map((row) => {
+      let message: string | null;
+      try {
+        message = decrypt(row.user_message);
+      } catch {
+        message = null;
+      }
+      let response: string | null;
+      try {
+        response = decrypt(row.ai_response);
+      } catch {
+        response = null;
+      }
+      return {
+        id: row.id,
+        sessionId: row.session_id,
+        message,
+        response,
+        crisisLevel: row.crisis_level,
+        createdAt: row.created_at.toISOString(),
+      };
+    });
+
+    res.status(200).json({ interactions, total, page, limit });
+  })
+);
 
 // DELETE /api/v1/ai/history — delete all interaction history (PATIENT only)
-router.delete('/history', requireRole('PATIENT'), (_req, res) => {
-  res.status(501).json({ message: 'Not implemented yet' });
-});
+router.delete(
+  '/history',
+  requireRole('PATIENT'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+
+    const { count } = await prisma.aiInteraction.deleteMany({
+      where: { user_id: userId },
+    });
+    // Best-effort — the vendor's own conversation/transcript is separate
+    // from our audit rows just deleted above; a failure there must not
+    // undo (or block reporting) the deletion of what we actually own.
+    const remoteConversationDeleted = await deleteRemoteConversation(userId);
+
+    res.status(200).json({
+      message: 'History deleted',
+      localInteractionsDeleted: count,
+      remoteConversationDeleted,
+    });
+  })
+);
 
 // GET /api/v1/ai/usage — aggregate token usage report (ADMIN only)
 router.get(

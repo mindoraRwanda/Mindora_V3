@@ -31,16 +31,16 @@ model AiInteraction {
 }
 
 // Links a Mindora patient to their account on the external Therapy Chatbot
-// API (a separate service with its own signup/login and conversation
-// history — see src/chatbotClient.ts). One row per patient; the chatbot
-// account's credentials are provisioned lazily on that patient's first chat.
+// API (a separate service with its own conversation history — see
+// src/chatbotClient.ts). One row per patient; the chatbot access token is
+// obtained lazily on that patient's first chat via POST /integration/session
+// (server-to-server, shared MINDORA_INTEGRATION_KEY) and cached here until it
+// expires — there is no password to store, the vendor no longer requires one.
 model ChatbotAccount {
   id               String    @id @default(uuid())
   mindora_user_id  String    @unique
   chatbot_user_id  String
   chatbot_email    String
-  // AES-256-GCM encryption is applied at the application layer before writing this field
-  chatbot_password String
   access_token     String?
   token_expires_at DateTime? @db.Timestamptz
   conversation_id  String?
