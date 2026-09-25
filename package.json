@@ -24,6 +24,7 @@
     "db:seed:appointments": "npm run seed -w @mindora/appointment-service",
     "db:seed:mood": "npm run seed -w @mindora/mood-tracking-service",
     "db:seed:community": "npm run seed -w @mindora/community-service",
+    "seed": "node scripts/seed-platform/index.mjs",
     "postinstall": "node -e \"const{rmSync,existsSync}=require('fs');const p='node_modules/africastalking/node_modules/axios';if(existsSync(p))rmSync(p,{recursive:true,force:true});\""
   },
   "repository": {
