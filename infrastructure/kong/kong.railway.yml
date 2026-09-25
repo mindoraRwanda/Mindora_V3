@@ -222,7 +222,12 @@ routes:
     service: user-service
     paths: [/internal/users]
     strip_path: false
-    methods: [GET, PUT]
+    # POST/PATCH added for the therapist-application review endpoints
+    # (list/detail/status-transition/notes/suspension-flag) — this drifted
+    # out of sync with the local kong.yml's identical fix when it was made;
+    # left at [GET, PUT] here would 405 every admin review action in
+    # production while working fine locally.
+    methods: [GET, POST, PUT, PATCH]
     plugins:
       - name: jwt
       - name: rate-limiting

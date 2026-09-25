@@ -3,6 +3,121 @@
 Notable backend changes, newest first. This is a working log for the team, not
 a public release changelog — entries describe what changed and why.
 
+## 2026-09-25 (latest — Testing + deployment review, Milestone 7 of the production build-out)
+
+### Fixed — `kong.railway.yml` (production Kong config) had drifted out of sync with `kong.yml` (local dev), silently reverting a Milestone 1 fix
+
+These are two separate declarative-config files — `kong.yml` for the local
+Docker Compose stack, `kong.railway.yml` for the actual Railway production
+deploy (see `DP.md` section 8) — and nothing keeps them in sync
+automatically. Milestone 1 expanded the local `user-internal` route's
+`methods` from `[GET, PUT]` to include `POST`/`PATCH`, to unblock the new
+therapist-application internal endpoints (list/detail/status-transition/
+notes/suspension-flag) that admin-service calls on user-service. That
+change was only ever made in `kong.yml` — `kong.railway.yml` still had the
+old `[GET, PUT]` restriction. Deployed as-is, every admin review action
+(approve/reject/request-info/notes, and the therapist suspend/reactivate
+flag update) would have 405'd in production while working perfectly in
+local dev and passing every test, since none of this session's testing
+ever touched the Railway config. Found during this milestone's deployment
+review, specifically prompted by checking whether local-dev-only fixes
+made across Milestones 1-6 had a production-config counterpart. Fixed the
+one real drift; audited every other route block between the two files —
+the remaining differences (`kong.railway.yml` omits `OPTIONS` from nearly
+every route's `methods` list, where present at all) are a pre-existing,
+systemic pattern across the whole file predating this build-out, not
+something this session touched or regressed — left alone rather than
+"fixed" without understanding why it's shaped that way.
+
+### Added — test coverage for previously-untested logic from Milestones 1-6
+
+Every route added or extended in Milestones 1-6 already had tests written
+as part of that milestone's own build loop (confirmed by re-running all
+five touched services' full suites this pass: 255 tests, all green). The
+gap this milestone closes is two library modules that sit underneath
+those routes and had no direct coverage of their own:
+
+- `apps/user-service/src/lib/profile-provisioning.test.ts` (new, 7 tests)
+  — `ensureProfileForUser`'s per-role branching (PATIENT/THERAPIST/ADMIN),
+  idempotency on an existing profile, and swallowing a
+  `P2002` unique-constraint race vs. rethrowing any other error; and
+  `upsertTherapistProfileFromApplication`'s specialisations-array→
+  single-string join, the exact transformation this session's Milestone 1
+  plan flagged as worth getting right since `GET /therapists`' existing
+  `specialisation: { contains }` filter depends on it.
+- `apps/user-service/src/lib/object-storage.test.ts` (new, 2 tests) —
+  `buildDocumentStorageKey`'s path shape and per-call uniqueness (the
+  presigned-URL/PII document flow's one pure, deterministic piece; the
+  actual S3 calls are thin SDK wrappers not worth mocking here).
+
+### Reviewed — deployment docs and CI
+
+`DP.md`'s migration list (7 Postgres schemas) and `.github/workflows/
+ci.yml`'s database-creation/migration loop both already cover every
+service touched across this build-out (including notification-service's
+Milestone 6 `readAt` migration) — these loop over a fixed service list
+rather than a fixed migration count, so no update was needed there.
+`DP.md`'s object-storage env var section (added in Milestone 1) already
+documents `OBJECT_STORAGE_*`. `deploy.yml`'s migration steps are currently
+commented out (manual Railway-dashboard deploy is this project's actual
+process per `DP.md`), so there was no automation there to check for drift
+beyond the Kong config fix above.
+
+## 2026-09-25 (later — Patient/mobile polish, Milestone 6 of the production build-out)
+
+### Added — in-app notifications: `GET/PUT /api/v1/notifications*`
+
+`notification-service` had a `notification_logs` table (delivery audit
+trail: push/email/sms attempts, admin-only via `GET
+/api/v1/notifications/logs`) but no user-facing read path at all — every
+notification a user ever received existed only as a push/email/SMS that
+already came and went, with nothing to look back at in-app. Reused the
+same table (this is a filtered, display-mapped view of it, not a second
+notifications system) and added three routes, all JWT-authenticated,
+scoped to the caller's own `userId`:
+
+- `GET /api/v1/notifications` — paginated, newest first, with an
+  `unreadCount` for a bell-icon badge and human-readable `title`/`body`
+  per row (`EVENT_DISPLAY_TEXT` maps the known event types this service
+  already consumes in `consumers.ts`; anything not explicitly listed
+  falls back to a humanized version of the raw `eventType` string rather
+  than rendering blank).
+- `PUT /api/v1/notifications/read-all` — marks every one of the caller's
+  unread notifications read.
+- `PUT /api/v1/notifications/:id/read` — marks one read; 404s if it
+  doesn't exist or isn't owned by the caller. Idempotent — re-marking an
+  already-read notification keeps its original `readAt` rather than
+  bumping it.
+
+New `readAt DateTime?` column + `@@index([userId, readAt])` on
+`notification_logs` (migration
+`20260925133124_add_notification_read_state`). This service was the only
+one in the monorepo still doing all its Express setup directly in
+`index.ts` — extracted `createApp()` into a new `app.ts` (same split every
+other service already has) so the new routes could actually be tested with
+`supertest` instead of only reachable via a running process. 9 new tests;
+full suite 58/58 passing. Live-verified all three routes through Kong
+(port 8000) with a real registered+logged-in account — no `kong.yml`
+change needed, the existing `notification-api` route (`strip_path: false`,
+no `methods:` restriction) already forwards full literal paths, matching
+the convention this service's routes have always used.
+
+### Fixed — `notification-service` had Rwanda's UTC offset wrong: UTC+3 instead of the correct UTC+2
+
+`KIGALI_OFFSET_MS` in `notifications.routes.ts` was `3 * 60 * 60 * 1000`
+— Rwanda (Africa/Kigali) is Central Africa Time, a fixed UTC+2 with no
+DST; UTC+3 is East Africa Time (Kenya/Tanzania/Uganda's zone, not
+Rwanda's). Every `createdAtKigali`/`deliveredAtKigali` value this
+service's admin-only `GET /api/v1/notifications/logs` has ever returned
+was an hour off. Found incidentally while reading this file for the new
+routes above, cross-checked against `appointment-service`'s
+`generateCandidateSlotsFromWorkingHours` (Milestone 2), which
+independently verified UTC+2 against real booking-hour math. Fixed the
+offset, the `+03:00`/`+02:00` string suffix, and two stale doc
+comments/Swagger descriptions that still said UTC+3 after an earlier pass
+at this same fix; added a regression-style test asserting the corrected
+`+02:00` offset on a known timestamp.
+
 ## 2026-09-25 (Security hardening — Milestone 5 of the production build-out)
 
 ### Added — `helmet` security headers on all 10 services
