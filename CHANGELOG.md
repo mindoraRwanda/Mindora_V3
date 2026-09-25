@@ -3,6 +3,65 @@
 Notable backend changes, newest first. This is a working log for the team, not
 a public release changelog — entries describe what changed and why.
 
+## 2026-09-25 (Security hardening — Milestone 5 of the production build-out)
+
+### Added — `helmet` security headers on all 10 services
+
+Every service (`auth`, `user`, `appointment`, `mood-tracking`, `community`,
+`messaging`, `ai-integration`, `notification`, `admin`, `docs-gateway`) now
+sets `X-Content-Type-Options`, `X-Frame-Options`, `Strict-Transport-
+Security`, `Referrer-Policy`, and the rest of helmet's defaults. CSP is
+explicitly off everywhere, documented inline: every one of these is a JSON
+API with an internal Swagger UI at `/docs` (or, for `docs-gateway`, *is*
+one) — CSP is an HTML-content-serving concern, and helmet's default would
+just break `swagger-ui-express`'s inline scripts. Live-verified: headers
+present on a direct request, `/docs` still renders.
+
+While adding this, found `ai-integration-service` and `admin-service` were
+both missing `app.set('trust proxy', 1)` — present on every other
+service, needed for `req.ip`/`express-rate-limit` to read the real client
+IP from `X-Forwarded-For` instead of Kong's own container IP. Fixed both;
+these services' rate limiters had been keying off the wrong IP.
+
+### Fixed — `POST /login` shared a 60-req/min-per-IP limiter with registration and password-reset
+
+Too permissive for the one endpoint that's an actual credential-guessing
+target on a platform holding mental-health data. New `loginRouteLimiter`
+(10/min/IP) applied to `/login` only; `/register`, `/forgot-password`,
+`/reset-password` keep the existing shared limiter — their abuse profile
+is different (spam signups / doesn't leak whether an email exists /
+requires a token, respectively), not credential-stuffing risk. Still
+IP-keyed, not account-keyed — slows a single-source brute force, not a
+distributed one; true account lockout/backoff is a bigger change than this
+pass's scope. Live-verified: 10 rapid login attempts return 401 (bad
+credentials), the 11th+ return 429.
+
+### Reviewed, no change needed
+- **CORS**: already centralized correctly at Kong (explicit origin
+  allowlist, `credentials: true`, no wildcard — required together per the
+  CORS spec since the refresh-token cookie needs `credentials: 'include'`).
+  Adding per-service CORS would be redundant for the actual public entry
+  point and isn't worth the duplication.
+- **Refresh-token cookie**: already `httpOnly`, `secure` in production,
+  `sameSite: 'lax'`, scoped `path: '/'`. No change.
+- **SQL injection**: audited every `$queryRaw` call added in Milestones 3-4
+  — all use Prisma's tagged-template form (auto-parameterized), never
+  `$queryRawUnsafe` or string concatenation.
+- **`front-end-test-files/`**: flagged in the original Phase 1 audit as
+  containing a real dev Firebase config that needed deleting before
+  production. Turned out to be gitignored and not present in this
+  checkout at all — already a non-issue, nothing to delete.
+
+### Not done in this pass
+Normalizing the ad hoc `SERVICE` role check (`role !== 'SERVICE'` string
+comparison, repeated across every internal endpoint) into the shared
+`UserRole` type — every check is already correct, this would be a
+readability cleanup, not a security fix, and lower value than the items
+above. Account-level login lockout/backoff (vs. the IP-level limiter added
+here) — a real defense-in-depth improvement, but a bigger design decision
+(what triggers it, how it's cleared, UX for a legitimate user who trips it)
+than this pass's scope.
+
 ## 2026-09-25 (10,000-user platform seed — Milestone 4 of the production build-out)
 
 ### Added — `npm run seed`, a configurable-scale, interconnected synthetic dataset across every database this build-out has touched
