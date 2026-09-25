@@ -178,6 +178,15 @@ services:
       USER_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_user
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
+      # Pre-existing gap, not previously noticed: without these, every
+      # internal call this service makes (fetchAuthUser, the existing
+      # /internal/users/:id/suspend|reactivate proxy, and the new therapist-
+      # application approve/suspend flows) silently falls back to
+      # http://localhost:8000, which inside this container doesn't reach
+      # Kong — found live via a 503 on PUT /admin/therapists/:id/suspend
+      # tracing back to ECONNREFUSED, not a fault in the new code itself.
+      KONG_URL: http://kong:8000
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
     ports:
       - '3002:3002'
     depends_on:
@@ -215,6 +224,13 @@ services:
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
+      # Same pre-existing gap as user-service had (see its comment above):
+      # isTherapist() and the new GET /patients name-resolution both default
+      # to http://localhost:8000 without this, which doesn't reach Kong from
+      # inside this container — meaning appointment booking's therapist
+      # validation has likely never actually succeeded in this local
+      # docker-compose setup before now.
+      KONG_URL: http://kong:8000
     ports:
       - '3003:3003'
     depends_on:
