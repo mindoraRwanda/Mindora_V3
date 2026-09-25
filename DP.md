@@ -119,6 +119,18 @@ THERAPY_CHATBOT_BASE_URL=https://chatbot.mindora.rw
 # Shared secret proving ai-integration-service is the caller of /integration/session.
 # Get the real value from the chatbot vendor via a password manager — never commit it.
 MINDORA_INTEGRATION_KEY=<get from the chatbot vendor, never commit>
+
+# user-service — object storage for therapist application documents
+# (credential PDFs/images). Any S3-compatible provider; leave
+# OBJECT_STORAGE_ENDPOINT unset for real AWS S3. Without these, document
+# upload/download on a therapist application 500s — everything else in
+# that feature (the application itself, review, approval, RBAC) works fine
+# without them, so this can be added after initial deploy like KONG_URL above.
+OBJECT_STORAGE_BUCKET=<bucket name>
+OBJECT_STORAGE_ENDPOINT=<leave unset for AWS S3, else your provider's S3-compatible endpoint>
+OBJECT_STORAGE_REGION=auto
+OBJECT_STORAGE_ACCESS_KEY_ID=<from your object storage provider, never commit>
+OBJECT_STORAGE_SECRET_ACCESS_KEY=<from your object storage provider, never commit>
 ```
 
 `USER_SERVICE_URL` and `THERAPY_CHATBOT_BASE_URL` are the only two values
