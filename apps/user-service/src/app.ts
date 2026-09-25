@@ -5,6 +5,7 @@ import express, {
 } from 'express';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import helmet from 'helmet';
 import multer from 'multer';
 import swaggerUi from 'swagger-ui-express';
 import { userRouter } from './routes/user.routes.js';
@@ -19,6 +20,11 @@ export function createApp() {
   // Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
   // real client IP from X-Forwarded-For instead of Kong's own container IP.
   app.set('trust proxy', 1);
+  // CSP off: JSON API plus an internal Swagger UI at /docs, not a page
+  // serving third-party content — helmet's default CSP would just break
+  // swagger-ui-express's inline scripts/styles. Every other helmet default
+  // stays on.
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   // Public, unauthenticated — mounted before any other middleware. The JSON
   // route must come before the /docs mount below — swaggerUi.setup()'s

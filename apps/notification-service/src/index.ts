@@ -4,6 +4,7 @@ import express, {
   type Request,
   type Response,
 } from 'express';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import { connect } from '@mindora/queue';
 import { startConsumers, SUBSCRIBED_EXCHANGES } from './consumers.js';
@@ -23,6 +24,10 @@ const app = express();
 // Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
 // real client IP from X-Forwarded-For instead of Kong's own container IP.
 app.set('trust proxy', 1);
+// CSP off: JSON API plus an internal Swagger UI, not a page serving
+// third-party content — the default CSP would just break the docs UI's
+// inline scripts/styles. Every other helmet default stays on.
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json());
 
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));

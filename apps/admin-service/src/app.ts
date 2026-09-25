@@ -3,6 +3,7 @@ import express, {
   type Response,
   type NextFunction,
 } from 'express';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import { authenticate } from '@mindora/auth-middleware';
 import { adminRouter } from './routes/admin.routes.js';
@@ -14,6 +15,16 @@ const GATEWAY_HEALTH_PATH = '/api/v1/admin/health';
 
 export function createApp() {
   const app = express();
+
+  // Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
+  // real client IP from X-Forwarded-For instead of Kong's own container IP
+  // — this service was missing this (every other service already has it).
+  app.set('trust proxy', 1);
+
+  // CSP off: JSON API plus an internal Swagger UI, not a page serving
+  // third-party content — the default CSP would just break the docs UI's
+  // inline scripts/styles. Every other helmet default stays on.
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   app.use(express.json());
 
