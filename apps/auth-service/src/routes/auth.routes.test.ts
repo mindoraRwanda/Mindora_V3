@@ -31,6 +31,8 @@ const mockRefreshUpdate = vi.fn();
 const mockRefreshUpdateMany = vi.fn();
 const mockUserUpdate = vi.fn();
 const mockUserCount = vi.fn();
+const mockUserGroupBy = vi.fn();
+const mockQueryRaw = vi.fn();
 const mockIsBlacklisted = vi.fn();
 const mockBlacklistToken = vi.fn();
 const mockStoreReset = vi.fn();
@@ -45,7 +47,9 @@ vi.mock('../lib/prisma.js', () => ({
       create: (...args: unknown[]) => mockUserCreate(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
       count: (...args: unknown[]) => mockUserCount(...args),
+      groupBy: (...args: unknown[]) => mockUserGroupBy(...args),
     },
+    $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
     refreshToken: {
       findFirst: (...args: unknown[]) => mockFindFirst(...args),
       create: (...args: unknown[]) => mockRefreshCreate(...args),
@@ -447,8 +451,24 @@ describe('GET /internal/auth/analytics', () => {
     });
   }
 
-  it('returns totalUsers and activeUsersLast30Days', async () => {
-    mockUserCount.mockResolvedValueOnce(50).mockResolvedValueOnce(12);
+  it('returns totalUsers and activeUsersLast30Days, plus the new breakdown/trend fields', async () => {
+    // Call order: totalUsers, activeUsersLast30Days (mau), newUsersInRange,
+    // suspendedUsers, dau, wau — see the Promise.all in the handler.
+    mockUserCount
+      .mockResolvedValueOnce(50) // totalUsers
+      .mockResolvedValueOnce(12) // activeUsersLast30Days / mau
+      .mockResolvedValueOnce(3) // newUsersInRange
+      .mockResolvedValueOnce(2) // suspendedUsers
+      .mockResolvedValueOnce(1) // dau
+      .mockResolvedValueOnce(5); // wau
+    mockUserGroupBy.mockResolvedValueOnce([
+      { role: 'PATIENT', _count: { _all: 40 } },
+      { role: 'THERAPIST', _count: { _all: 9 } },
+      { role: 'ADMIN', _count: { _all: 1 } },
+    ]);
+    mockQueryRaw.mockResolvedValueOnce([
+      { bucket: new Date('2026-06-10T00:00:00.000Z'), count: 3n },
+    ]);
 
     const app = createApp();
     const response = await request(app)
@@ -456,12 +476,20 @@ describe('GET /internal/auth/analytics', () => {
       .set('Authorization', `Bearer ${serviceToken()}`);
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({
+    expect(response.body).toMatchObject({
       totalUsers: 50,
       activeUsersLast30Days: 12,
+      usersByRole: { PATIENT: 40, THERAPIST: 9, ADMIN: 1 },
+      newUsersInRange: 3,
+      suspendedUsers: 2,
+      dau: 1,
+      wau: 5,
+      mau: 12,
+      registrationTrend: [{ date: '2026-06-10', count: 3 }],
     });
-    expect(mockUserCount).toHaveBeenCalledTimes(2);
-    // Second call is the "active" filter — createdAt OR refreshTokens.some within 30 days
+    // Second call (activeUsersLast30Days) is the "active" filter —
+    // createdAt OR refreshTokens.some within the window. dau/wau (5th/6th
+    // calls) reuse the exact same OR shape at 1-day/7-day windows.
     expect(mockUserCount.mock.calls[1]?.[0]).toEqual(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -495,5 +523,109 @@ describe('GET /internal/auth/analytics', () => {
     const response = await request(app).get('/internal/auth/analytics');
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe('PATCH /internal/auth/users/:id', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  function serviceToken(): string {
+    return signAccessToken({
+      userId: 'user-service',
+      email: 'service@mindora.internal',
+      role: 'SERVICE',
+    });
+  }
+
+  it('flips role when called with { role } — the therapist-application approval path', async () => {
+    mockUserUpdate.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      role: 'THERAPIST',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .patch('/internal/auth/users/user-1')
+      .set('Authorization', `Bearer ${serviceToken()}`)
+      .send({ role: 'THERAPIST' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.role).toBe('THERAPIST');
+    expect(mockUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'user-1' },
+        data: { role: 'THERAPIST' },
+      })
+    );
+    // role-only update must not touch the isActive/suspension machinery
+    expect(mockRefreshUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('still accepts { isActive } alone, unchanged from before role support was added', async () => {
+    mockUserUpdate.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      role: 'PATIENT',
+      isActive: false,
+      createdAt: new Date().toISOString(),
+    });
+    mockRefreshUpdateMany.mockResolvedValue({ count: 1 });
+
+    const app = createApp();
+    const response = await request(app)
+      .patch('/internal/auth/users/user-1')
+      .set('Authorization', `Bearer ${serviceToken()}`)
+      .send({ isActive: false });
+
+    expect(response.status).toBe(200);
+    expect(mockUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { isActive: false } })
+    );
+    expect(mockRefreshUpdateMany).toHaveBeenCalled();
+  });
+
+  it('rejects an invalid role value with 400 and never calls update', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .patch('/internal/auth/users/user-1')
+      .set('Authorization', `Bearer ${serviceToken()}`)
+      .send({ role: 'SUPERADMIN' });
+
+    expect(response.status).toBe(400);
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty body with 400', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .patch('/internal/auth/users/user-1')
+      .set('Authorization', `Bearer ${serviceToken()}`)
+      .send({});
+
+    expect(response.status).toBe(400);
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-SERVICE caller with 403', async () => {
+    const adminToken = signAccessToken({
+      userId: 'admin-1',
+      email: 'admin@example.com',
+      role: 'ADMIN',
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .patch('/internal/auth/users/user-1')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ role: 'THERAPIST' });
+
+    expect(response.status).toBe(403);
+    expect(mockUserUpdate).not.toHaveBeenCalled();
   });
 });
