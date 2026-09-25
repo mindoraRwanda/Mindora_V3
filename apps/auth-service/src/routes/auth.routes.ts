@@ -26,6 +26,7 @@ import {
 } from '../middleware/authenticate.js';
 import {
   authenticatedRouteLimiter,
+  loginRouteLimiter,
   publicAuthRouteLimiter,
 } from '../middleware/rate-limit.js';
 import { asyncHandler } from '../middleware/async-handler.js';
@@ -121,7 +122,7 @@ authRouter.post(
 
 authRouter.post(
   '/login',
-  publicAuthRouteLimiter,
+  loginRouteLimiter,
   asyncHandler(async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
