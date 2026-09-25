@@ -3,6 +3,266 @@
 Notable backend changes, newest first. This is a working log for the team, not
 a public release changelog — entries describe what changed and why.
 
+## 2026-09-25 (10,000-user platform seed — Milestone 4 of the production build-out)
+
+### Added — `npm run seed`, a configurable-scale, interconnected synthetic dataset across every database this build-out has touched
+
+New `scripts/seed-platform/` (plain ESM, no build step — matches
+`scripts/create-service-stub.mjs`'s existing convention). One orchestrating
+script generates the data in memory, then writes it into each service's own
+database through that service's own generated Prisma Client, in dependency
+order: `auth-service` (users, refresh-token activity history) ->
+`user-service` (patient/therapist profiles, therapist applications) ->
+`admin-service` (audit log of every seeded review decision and suspension)
+-> `appointment-service` (availability, ~12 months of appointments) ->
+`notification-service` (delivery log for the events actually seeded).
+
+Configurable via `TOTAL_USERS`/`PATIENT_RATIO`/`THERAPIST_RATIO`/
+`ADMIN_COUNT`/`SEED`/`SEED_PASSWORD` (documented in `.env.example`) —
+`SEED=<n>` makes a run fully reproducible (mulberry32 PRNG, no external
+randomness). Refuses to run unless every target `*_DATABASE_URL` looks like
+localhost/127.0.0.1, overridable only with an explicit
+`SEED_CONFIRM_NON_LOCAL=yes-i-am-sure` — this generates data at scale and
+must never touch a real deployment by accident (spec hard requirement).
+
+Notable design choices:
+- Therapist role only flips to THERAPIST on approval — same rule Milestone
+  1 built into the real application flow, so the seed doesn't create a
+  state the real system couldn't. A smaller pool of PATIENT-role users get
+  a non-approved application instead (DRAFT/SUBMITTED/UNDER_REVIEW/
+  REJECTED/MORE_INFORMATION_REQUIRED), populating the admin review queue
+  and funnel analytics without inflating the therapist count.
+  "No-show" is modeled as `CANCELLED` with a distinct cancellationReason —
+  `AppointmentStatus` has no separate value for it, and adding one wasn't
+  this milestone's job.
+- Four activity levels (highly active/regular/occasional/inactive) drive
+  how many `RefreshToken` rows each user gets and when — the exact signal
+  Milestone 3's DAU/WAU/MAU already reads, so seeded data exercises those
+  numbers with real texture instead of flat/fake ones. Same logic gates
+  who gets any appointments at all: most inactive users get none.
+- Rwanda data pools (names, phone format, Kigali districts + all four
+  provinces weighted so Kigali is concentrated but not exclusive,
+  Kinyarwanda/English/French weighted with Kinyarwanda dominant, every
+  applicant speaks at least Kinyarwanda) in `rwanda-data.mjs` — synthetic
+  names chosen for plausibility, not real individuals.
+- Deliberately out of scope: mood-tracking-service, community-service,
+  messaging-service, ai-integration-service — no milestone here has
+  touched those schemas, and mood/AI entries are app-layer-encrypted
+  (faking that safely wasn't worth it for this pass). No `TherapistDocument`
+  rows either — there's no real object-storage file behind a fake one,
+  and a broken "view document" link is worse than no seeded documents.
+
+### Fixed — therapist-applications list buried every real SUBMITTED application under DRAFT rows
+
+Found live once the seed produced a realistic volume of DRAFT applications
+(never actually submitted, so `submittedAt` is null) — the default sort
+(`submittedAt desc`) put every null-`submittedAt` row *first* (Postgres's
+default `NULLS FIRST` on `DESC`), so the admin queue's default view was
+mostly-drafts with real pending applications buried below. Fixed with
+Prisma's `nulls: 'last'` sort modifier. Not a seed-script bug — a
+pre-existing sort-default characteristic that was invisible with the 1-2
+manually-created applications used in earlier milestones' testing and only
+surfaced at realistic volume, which is exactly what this milestone's
+100-user and 10,000-user scale tests were for.
+
+### Performance at 10,000 users (spec requirement, actually measured, not assumed)
+
+Full 10,000-user seed (~85,000 total rows across 5 databases) completes in
+~18s. Post-seed, with ~10,150 real users, 1,500 real therapist applications,
+1,357 real audit log entries, and 6,000+ real appointments in the database:
+`GET /admin/analytics/detailed` (full-range aggregation across three
+services) ~120ms; paginated `GET /admin/users`, `GET /admin/therapist-
+applications` (including search), `GET /users/therapists` (including
+specialisation filter), `GET /admin/audit-log` all under 50ms; a 20-row
+page response is ~3.6KB, confirming pagination is actually bounding payload
+size, not just decorating a full 10k-row response. No rollup/materialized-
+view tables were needed to hit this — validates the call made in Milestone
+3 to defer that infrastructure until it was actually shown to be necessary.
+
+## 2026-09-25 (Real admin analytics, database-driven — Milestone 3 of the production build-out)
+
+### Added — date-ranged, database-backed analytics across auth/user/appointment services, aggregated into a new admin-service endpoint
+
+The existing `GET /admin/analytics` (backing the Overview page's flat stat
+cards) is untouched — its response shape and semantics are byte-for-byte
+identical to before, verified live. This adds a second, richer endpoint,
+`GET /admin/analytics/detailed`, for a new charts-driven Analytics page,
+built by extending each service's *existing* internal analytics endpoint
+additively rather than inventing a parallel analytics system:
+
+- `auth-service`'s `GET /internal/auth/analytics` gains `usersByRole`,
+  `newUsersInRange`, `suspendedUsers`, `dau`/`wau`/`mau`, and a daily
+  `registrationTrend` (`date_trunc('day', created_at)`, plain `$queryRaw` —
+  not TimescaleDB's `time_bucket()`, since the extension is only actually
+  `CREATE EXTENSION`'d in `mindora_mood`, not this database). "Active"
+  keeps its original definition exactly (registered in the window OR had a
+  `RefreshToken` row created in the window) for `dau`/`wau`/`mau` too, not
+  a narrower one — caught this in review before it shipped: an early draft
+  silently dropped the `createdAt` half of that OR, which would have
+  quietly changed what `activeUsersLast30Days` already means to any
+  existing consumer.
+- `appointment-service`'s `GET /internal/appointments/analytics` gains
+  `statusBreakdown`, `completionRate`, `cancellationRate`, and a daily
+  `sessionTrend` (completed/cancelled/pending/confirmed per day, bucketed
+  by `slot_start`).
+- `user-service`'s `GET /internal/users/analytics` gains the therapist
+  application funnel — `byStatus`, `approvalRate`, `rejectionRate`, a daily
+  `applicationTrend` (bucketed by `submitted_at`) — plus `totalTherapists`
+  (approved + not suspended) and `suspendedTherapists`, computed locally
+  from `TherapistApplication`/`TherapistProfile` rather than round-tripping
+  to another service, since this data already lives here.
+- New shared `analyticsRangeQuerySchema` (`from`/`to`, both optional) in
+  `packages/validation`, reused by all four endpoints so one date-range
+  picker on the frontend drives every section consistently.
+- `admin-service`'s new endpoint follows the exact same null-safe-per-
+  section convention the original `/analytics` already established — one
+  service being down degrades only that section of the response, never
+  the whole request.
+
+Live-verified against real seeded test data (not just unit tests): default
+30-day range correctly excluded a future-dated appointment outside the
+window; widening the range to cover it showed the real `CONFIRMED` count
+and session-trend entry; the original `/analytics` endpoint's response was
+confirmed unchanged; RBAC confirmed (PATIENT gets 403 on the new endpoint).
+
+29 new/updated backend tests across all four services — several existing
+analytics tests had to be updated, not just extended, since their mocks
+only covered the pre-existing Prisma calls and broke (correctly) the
+moment the handlers gained new ones.
+
+Not done in this pass: rollup/materialized-view tables for the trend
+queries. Deliberately deferred — live `date_trunc` aggregation is fast at
+current data volumes, and building rollup infrastructure before Milestone
+4's 10,000-user seed can show whether it's actually needed would be
+speculative. Revisit if that seed's load testing says otherwise.
+
+## 2026-09-25 (Therapist workspace: availability, patients, dashboard — Milestone 2 of the production build-out)
+
+### Added — therapist-configurable availability, replacing the fixed 9-5 default
+
+`appointment-service` gains `TherapistSchedule`/`TherapistWorkingHours`/`TherapistTimeOff`
+models (own migration) and a full CRUD surface: `GET`/`PUT /appointments/availability`
+(own weekly schedule), `GET`/`POST`/`DELETE /appointments/time-off`. The
+pre-existing `GET /appointments/availability/:therapistId` (patient-facing
+bookable-slots computation) now uses a therapist's configured working hours
+when they have any, and falls back to the original fixed 9am-5pm-UTC
+candidate-slot generator otherwise — so approving a therapist doesn't leave
+them unbookable until they configure this. Working-hours minutes are stored
+as Africa/Kigali local time (fixed UTC+2, no DST) — `lib/availability.ts`'s
+`generateCandidateSlotsFromWorkingHours` does the +2h shift directly, no
+timezone library needed for this platform's fixed target market. Time-off
+blocks the same slots an existing booked appointment would.
+
+### Added — `GET /appointments/patients` and `GET /appointments/dashboard`
+
+Therapist-only. Patients list is grouped/paginated from `Appointment` rows
+(`groupBy` on `patientId`, ordered by most recent session) — Appointment
+Service has no local patient table, so names are resolved via the same
+per-id internal User Service lookup pattern `isTherapist()` already used
+(N parallel calls, bounded by the existing max-50 page size, not a new
+batch endpoint). A therapist only ever sees patients they have an actual
+appointment relationship with, any status, same rule as the existing
+internal relationship-check endpoint. Dashboard aggregates today's
+CONFIRMED sessions, pending count, upcoming count, and distinct patient
+count — appointment-data-only, no cross-service calls, kept fast.
+
+### Fixed — `appointment-service` never had `KONG_URL` in `docker-compose.yml`
+
+Same latent gap as `user-service` had (see the Milestone 1 entry below) —
+`isTherapist()` (used by every booking attempt) and the new patient
+name-resolution both silently defaulted to `http://localhost:8000`, which
+doesn't reach Kong from inside this container. Live-verified this was a
+real, pre-existing bug, not just a theoretical one: before this fix, every
+`POST /appointments` in this local docker-compose environment 404'd with
+"Therapist not found" — confirmed by testing a booking end-to-end
+immediately after the fix, which succeeded. Not something this milestone's
+own new code caused; it was already broken for the existing booking flow.
+
+29 new backend tests (15 route tests covering the new endpoints + RBAC, 4
+direct unit tests for the Kigali-offset slot-generation math against the
+existing `appointment.routes.test.ts` and a new `availability.test.ts`).
+Live-verified end-to-end: configured a real weekly schedule, confirmed
+computed slots matched exactly, booked and confirmed a real appointment
+against them, confirmed dashboard/patient-list counts updated correctly
+through the appointment lifecycle, confirmed time-off blocks and un-blocks
+slots correctly, confirmed RBAC (PATIENT role gets 403 on all new routes).
+
+Not done in this pass: frontend pages (dashboard/availability/patients UI)
+were being built in parallel by a delegated agent as this entry was
+written — see the next entry once that lands. Multi-window-per-day editing
+in the UI, if the delegated agent scoped it down to one window per day for
+V1, is a known simplification, not a backend limitation (the API already
+supports multiple windows per day).
+
+## 2026-09-25 (Therapist application/onboarding system — Milestone 1 of the production build-out)
+
+### Added — end-to-end therapist application, review, and activation
+
+There was no self-service path to becoming a therapist at all: `POST
+/auth/register` has always hardcoded `role = 'PATIENT'` regardless of what's
+sent, and THERAPIST accounts only ever existed via `auth-service/src/seed.ts`'s
+30 fixed dev fixtures. This adds the real thing:
+
+- `user-service` gains `TherapistApplication`/`TherapistDocument`/
+  `TherapistApplicationNote` models (own migration, `mindora_user` DB) and a
+  new router (`therapist-application.routes.ts`, mounted **before**
+  `userRouter` in `app.ts` — same route-shadowing fix already applied to
+  `/internal/users/analytics`) covering the applicant's own
+  create/update/submit/document-upload flow plus SERVICE-role internal
+  endpoints for listing, review, notes, and status transitions.
+- Account lifecycle: an applicant stays PATIENT-role for the entire review —
+  role only flips to THERAPIST on approval, via a new `{ role }` case on the
+  existing `PATCH /internal/auth/users/:id` (previously `isActive`-only).
+  This means `requireRole('THERAPIST')` needed zero changes to correctly gate
+  pending/rejected applicants — a THERAPIST JWT now simply can't exist for
+  anyone who wasn't approved.
+- `TherapistProfile` gets two new denormalized fields, `applicationStatus`
+  and `isSuspended`, and `GET /therapists` (patient-facing discovery) now
+  filters on both. `admin-service` gets new `/therapists/:id/suspend|reactivate`
+  routes, distinct from the generic `/users/:id/suspend`, that call the
+  existing user-suspend proxy (the real access revocation) **then** a new
+  `PATCH /internal/users/:userId/therapist-suspension` (discovery-flag only)
+  — strictly in that order, so a failure never leaves a therapist hidden from
+  search but still usable via a live token, or the reverse.
+- Document upload (credential PDFs/images) goes to S3-compatible object
+  storage (`user-service/src/lib/object-storage.ts`, new
+  `OBJECT_STORAGE_*` env vars) via short-TTL presigned URLs — deliberately
+  not the existing `express.static` pattern already used for profile photos,
+  which writes to local container disk and doesn't belong on PII-bearing
+  documents on Railway's ephemeral filesystem.
+- New `mindora.therapist-applications` RabbitMQ exchange
+  (`packages/events/src/therapist-application/`) and a
+  `notification-service` consumer/email templates for each status
+  transition, mirroring the existing mood/appointment domains exactly.
+- Every admin decision (approve/reject/request-info/note/suspend/reactivate)
+  writes to the existing immutable `audit_logs` table — no new audit system.
+
+Live-verified end-to-end against a rebuilt stack (register → fill → submit →
+admin approve → role flip confirmed on re-login → appears in `GET
+/therapists` → suspend → login blocked (403) + drops out of discovery →
+reactivate → both restored; separately verified reject→reapply and
+request-info→edit→resubmit). Two real bugs only surfaced this way, both
+fixed: `submitTherapistApplicationSchema`/`updateTherapistApplicationSchema`
+rejected Prisma's `null` on optional fields (only `.optional()`, needed
+`.nullish()`); and `user-service` never had `KONG_URL`/
+`INTERNAL_SERVICE_TOKEN` set in `docker-compose.yml`, so its internal calls —
+including the **pre-existing** generic suspend/reactivate proxy, not just
+the new therapist one — silently hit `ECONNREFUSED` against
+`localhost:8000` from inside the container. Both fixed; the compose gap was
+latent before this change, not introduced by it.
+
+36 new backend tests added (`therapist-application.routes.test.ts` in
+user-service, plus new `describe` blocks in admin-service's and
+auth-service's existing route test files) covering the status state
+machine, RBAC on the internal SERVICE-only routes, and the fail-closed
+suspend/reactivate ordering.
+
+Not done in this pass (left for later milestones, see the plan): therapist
+dashboard UI beyond the existing single schedule page, admin analytics
+charts, and the 10,000-user seed — this milestone was scoped to the
+application/review/activation vertical slice specifically because
+everything else was blocked on it.
+
 ## 2026-09-06 (QA pass, part 3 — remaining findings closed out, production wiring)
 
 ### Fixed — chat messages were never actually encrypted at rest
