@@ -59,6 +59,14 @@ vi.mock('../lib/prisma.js', () => ({
   },
 }));
 
+const { MockInvalidDownloadTokenError, mockStreamDocumentForToken } = vi.hoisted(() => {
+  class MockInvalidDownloadTokenError extends Error {}
+  return {
+    MockInvalidDownloadTokenError,
+    mockStreamDocumentForToken: vi.fn(),
+  };
+});
+
 vi.mock('../lib/object-storage.js', () => ({
   buildDocumentStorageKey: vi.fn(
     (applicationId: string, fileName: string) =>
@@ -68,6 +76,9 @@ vi.mock('../lib/object-storage.js', () => ({
   getDocumentDownloadUrl: vi
     .fn()
     .mockResolvedValue('https://storage.example.com/presigned-url'),
+  InvalidDownloadTokenError: MockInvalidDownloadTokenError,
+  streamDocumentForToken: (...args: unknown[]) =>
+    mockStreamDocumentForToken(...args),
 }));
 
 const mockPublishEvent = vi.fn().mockResolvedValue(undefined);
@@ -452,5 +463,49 @@ describe('PATCH /internal/users/:userId/therapist-suspension', () => {
       .send({ isSuspended: true });
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe('GET /api/v1/users/therapist-documents/download', () => {
+  // Full literal path, not relative — see the route registration comment;
+  // Kong forwards this one unstripped.
+  const path = '/api/v1/users/therapist-documents/download';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('requires a token query param', async () => {
+    const app = createApp();
+    const response = await request(app).get(path);
+
+    expect(response.status).toBe(401);
+    expect(mockStreamDocumentForToken).not.toHaveBeenCalled();
+  });
+
+  it('401s when streamDocumentForToken rejects with InvalidDownloadTokenError (bad/expired token)', async () => {
+    mockStreamDocumentForToken.mockRejectedValueOnce(
+      new MockInvalidDownloadTokenError('Invalid or expired download link')
+    );
+
+    const app = createApp();
+    const response = await request(app).get(path).query({ token: 'bad-token' });
+
+    expect(response.status).toBe(401);
+    expect(mockStreamDocumentForToken).toHaveBeenCalledWith(
+      'bad-token',
+      expect.anything()
+    );
+  });
+
+  it('is not gated by verifyJwt - no Authorization header needed for a valid token', async () => {
+    mockStreamDocumentForToken.mockImplementationOnce(async (_token, res) => {
+      res.status(200).end('file bytes');
+    });
+
+    const app = createApp();
+    const response = await request(app).get(path).query({ token: 'good-token' });
+
+    expect(response.status).toBe(200);
   });
 });

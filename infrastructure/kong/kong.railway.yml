@@ -152,6 +152,24 @@ routes:
     paths: [/api/v1/users/health]
     strip_path: false
     methods: [GET]
+  # Was missing from this file entirely (present in the local kong.yml) —
+  # without it, therapist profile photos 404 in production. An <img> tag
+  # can't send an Authorization header, so this can't sit behind the
+  # jwt-protected user-api route below.
+  - name: user-photos
+    service: user-service
+    paths: [/api/v1/users/photos]
+    strip_path: false
+    methods: [GET]
+  # Therapist application documents (GridFS) — same jwt-free carve-out as
+  # user-photos above, same reason: a window.open()/<a href> download can't
+  # attach an Authorization header. Authorized instead by the short-lived
+  # signed token object-storage.ts puts in the URL's query string.
+  - name: user-documents
+    service: user-service
+    paths: [/api/v1/users/therapist-documents]
+    strip_path: false
+    methods: [GET]
   - name: appointment-health
     service: appointment-service
     paths: [/api/v1/appointments/health]

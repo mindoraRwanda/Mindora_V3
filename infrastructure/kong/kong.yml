@@ -120,6 +120,15 @@ routes:
     paths: [/api/v1/users/photos]
     strip_path: false
     methods: [GET, OPTIONS]
+  # Therapist application documents (GridFS) — same jwt-free carve-out as
+  # user-photos above, same reason: a window.open()/<a href> download can't
+  # attach an Authorization header. Authorized instead by the short-lived
+  # signed token object-storage.ts puts in the URL's query string.
+  - name: user-documents
+    service: user-service
+    paths: [/api/v1/users/therapist-documents]
+    strip_path: false
+    methods: [GET, OPTIONS]
   - name: appointment-health
     service: appointment-service
     paths: [/api/v1/appointments/health]

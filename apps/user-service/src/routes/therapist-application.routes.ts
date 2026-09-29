@@ -21,6 +21,8 @@ import { prisma } from '../lib/prisma.js';
 import {
   buildDocumentStorageKey,
   getDocumentDownloadUrl,
+  InvalidDownloadTokenError,
+  streamDocumentForToken,
   uploadDocument,
 } from '../lib/object-storage.js';
 import { publishTherapistApplicationEvent } from '../lib/publish-therapist-application-event.js';
@@ -30,7 +32,10 @@ import {
   verifyJwt,
   type AuthenticatedRequest,
 } from '../middleware/authenticate.js';
-import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
+import {
+  authenticatedRouteLimiter,
+  documentDownloadRouteLimiter,
+} from '../middleware/rate-limit.js';
 import {
   Prisma,
   type TherapistApplicationStatus,
@@ -358,13 +363,70 @@ therapistApplicationRouter.get(
       return;
     }
 
-    const url = await getDocumentDownloadUrl(document.storageKey);
+    const url = await getDocumentDownloadUrl(
+      document.storageKey,
+      document.fileName,
+      document.mimeType
+    );
     res.status(200).json({
       url,
       fileName: document.fileName,
       mimeType: document.mimeType,
       expiresIn: 300,
     });
+  })
+);
+
+/**
+ * @swagger
+ * /api/v1/users/therapist-documents/download:
+ *   get:
+ *     summary: Stream a therapist application document (GridFS)
+ *     description: >
+ *       Not behind Kong's jwt plugin and not gated by verifyJwt - a
+ *       window.open()/<a href> download can't attach an Authorization
+ *       header. Authorized instead by the short-lived signed `token` query
+ *       param, minted only by the JSON endpoints above after they've
+ *       already checked ownership/SERVICE-role. Same tradeoff user-photos
+ *       already makes for the same reason.
+ *     tags: [Therapist Applications]
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: File content, streamed
+ *       401:
+ *         description: Missing, invalid, or expired token
+ */
+// Full literal path, not relative like this router's other routes — Kong's
+// user-documents route (infrastructure/kong/kong.yml) uses strip_path:
+// false, same as user-photos, so the full /api/v1/users/... path arrives
+// here unstripped (confirmed live: strip_path: true 404'd this exact
+// route — "Cannot GET /api/v1/users/therapist-documents/download" — same
+// class of bug already hit and fixed for community-api/ai-api/messaging-
+// api/notification-api elsewhere in this stack).
+therapistApplicationRouter.get(
+  '/api/v1/users/therapist-documents/download',
+  documentDownloadRouteLimiter,
+  asyncHandler(async (req, res) => {
+    const token = req.query.token;
+    if (typeof token !== 'string' || !token) {
+      res.status(401).json({ message: 'Invalid or expired download link' });
+      return;
+    }
+
+    try {
+      await streamDocumentForToken(token, res);
+    } catch (error) {
+      if (error instanceof InvalidDownloadTokenError) {
+        res.status(401).json({ message: error.message });
+        return;
+      }
+      throw error;
+    }
   })
 );
 
@@ -458,7 +520,7 @@ therapistApplicationRouter.get(
     const documentsWithUrls = await Promise.all(
       application.documents.map(async (doc) => ({
         ...doc,
-        url: await getDocumentDownloadUrl(doc.storageKey),
+        url: await getDocumentDownloadUrl(doc.storageKey, doc.fileName, doc.mimeType),
       }))
     );
 

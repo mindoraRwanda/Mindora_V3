@@ -176,6 +176,10 @@ services:
       <<: *app-env
       PORT: 3002
       USER_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_user
+      # Therapist application documents (license PDFs/IDs) - GridFS on the
+      # same shared Mongo instance messaging-service/community-service
+      # already use, own database.
+      MONGO_URI: mongodb://mongodb:27017/mindora_user_documents
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
       # Pre-existing gap, not previously noticed: without these, every
@@ -186,6 +190,14 @@ services:
       # Kong — found live via a 503 on PUT /admin/therapists/:id/suspend
       # tracing back to ECONNREFUSED, not a fault in the new code itself.
       KONG_URL: http://kong:8000
+      # Distinct from KONG_URL above - this one is handed to a *browser*
+      # (the therapist-document download link, since window.open() can't
+      # reach the container-internal http://kong:8000 host). Found live:
+      # a generated download link pointed at an unreachable host from
+      # outside Docker until this was set explicitly, even though the
+      # internal KONG_URL was already correct for this container's own
+      # outgoing calls.
+      PUBLIC_KONG_URL: http://localhost:8000
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
     ports:
       - '3002:3002'
@@ -195,6 +207,8 @@ services:
       redis:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      mongodb:
         condition: service_healthy
     healthcheck:
       test:

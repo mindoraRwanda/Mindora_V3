@@ -9,9 +9,11 @@
 // those as separate Railway services and point the DATABASE_URL / REDIS_URL /
 // RABBITMQ_URL variables below at them via the container's env.
 //
-// community-service and messaging-service both read process.env.MONGO_URI
-// (see apps/community-service/src/database.ts and
-// apps/messaging-service/src/database.ts) but need different database names
+// community-service, messaging-service, and user-service (therapist
+// application documents, GridFS) all read process.env.MONGO_URI (see
+// apps/community-service/src/database.ts,
+// apps/messaging-service/src/database.ts, and
+// apps/user-service/src/lib/mongo.ts) but need different database names
 // on the same Mongo instance — a plain container-level MONGO_URI would only
 // satisfy one of them. Set MONGO_BASE_URL (e.g.
 // mongodb://<mongo-service>.railway.internal:27017) once on the container
@@ -21,7 +23,11 @@ const MONGO_BASE_URL = process.env.MONGO_BASE_URL || '';
 module.exports = {
   apps: [
     { name: 'auth-service', script: 'apps/auth-service/dist/index.js', env: { PORT: 3001 } },
-    { name: 'user-service', script: 'apps/user-service/dist/index.js', env: { PORT: 3002 } },
+    {
+      name: 'user-service',
+      script: 'apps/user-service/dist/index.js',
+      env: { PORT: 3002, ...(MONGO_BASE_URL && { MONGO_URI: `${MONGO_BASE_URL}/mindora_user_documents?authSource=admin` }) },
+    },
     { name: 'appointment-service', script: 'apps/appointment-service/dist/index.js', env: { PORT: 3003 } },
     { name: 'mood-tracking-service', script: 'apps/mood-tracking-service/dist/index.js', env: { PORT: 3004 } },
     {
