@@ -3,6 +3,75 @@
 Notable backend changes, newest first. This is a working log for the team, not
 a public release changelog — entries describe what changed and why.
 
+## 2026-09-29 — Therapist application documents: S3 → MongoDB GridFS
+
+### Changed — document storage backend
+
+`user-service`'s therapist application documents (license PDFs/IDs)
+previously lived in S3-compatible object storage (`@aws-sdk/client-s3`,
+presigned URLs). Moved to MongoDB GridFS instead, on the same shared Mongo
+instance messaging-service/community-service already use in this stack
+(own database, `mindora_user_documents`) — this feature no longer needs
+its own object-storage bucket/credentials, just the Mongo connection every
+deploy of this stack already has. `apps/user-service/src/lib/mongo.ts`
+(new) follows the exact `mongoose.connect(MONGO_URI)` pattern already
+established by the two sibling services.
+
+GridFS has no equivalent of an S3 presigned URL (no public HTTP surface of
+its own), so `object-storage.ts`'s `getDocumentDownloadUrl` now mints a
+short-lived (5 min), self-contained signed JWT instead and points the
+caller at a new route on this service
+(`GET /api/v1/users/therapist-documents/download?token=...`) that streams
+the GridFS file directly. That route is deliberately outside Kong's jwt
+plugin and not gated by `verifyJwt` — the token itself, not Kong or a
+Bearer header, is what authorizes the request, since the two callers of
+this URL (`window.open()` on the admin detail page, and the applicant's
+own document-view flow) can't attach an Authorization header. Same
+tradeoff `user-photos` already makes for the same reason; the new
+`user-documents` Kong route mirrors it exactly. `getDocumentDownloadUrl`'s
+signature grew two params (`fileName`, `mimeType` — previously read back
+from an S3 object's own stored metadata, now carried in the token since
+GridFS lookups here don't need a DB round-trip to serve the file).
+
+### Fixed — three real bugs found via live end-to-end verification of the above
+
+This migration was verified with an actual upload → generate-download-
+link → fetch-with-no-Authorization-header → byte-diff-against-original
+round trip through the real Kong gateway, not just unit tests. That live
+pass caught three real bugs the test suite alone would have missed:
+
+1. **Internal vs. public Kong URL confusion.** The download URL was built
+   from `config.kongUrl` — correct for this service's own outgoing
+   container-to-container calls (`http://kong:8000`), useless for a URL
+   handed to a browser, which can't resolve that hostname. Added a
+   separate `PUBLIC_KONG_URL` config (defaults to `http://localhost:8000`
+   for local dev, must be set explicitly in production — see `DP.md`) and
+   pointed the download-link builder at that instead.
+2. **`strip_path` route-registration mismatch.** The new Express route was
+   registered at a path relative to the router's mount point
+   (`/therapist-documents/download`), but Kong's new `user-documents`
+   route uses `strip_path: false` (matching `user-photos`, on purpose —
+   see above), which forwards the *full* `/api/v1/users/...` path
+   unstripped. Confirmed live: `Cannot GET /api/v1/users/therapist-
+   documents/download` — the same class of bug already hit and fixed for
+   community-api/ai-api/messaging-api/notification-api elsewhere in this
+   stack. Fixed by registering the route at its full literal path,
+   matching `user-photos`'s existing convention.
+3. **`kong.railway.yml` was missing the `user-photos` route entirely** —
+   found while adding the new `user-documents` route beside it and
+   double-checking both Kong config files stayed in sync this time (a
+   real drift bug in this exact file was found and fixed in the Milestone
+   7 pass above). Without it, therapist profile photos would never have
+   worked in production. Added both routes to `kong.railway.yml`.
+
+Also found, while chasing the first live 401: routine `kong reload` was
+not picking up hand-edited changes to the bind-mounted `kong.yml` in this
+dev environment — the running Kong container kept serving a stale copy of
+the file even after a successful-looking reload, until the container was
+actually restarted (`docker compose restart kong`). Worth remembering for
+any future Kong config edit in this environment: restart, don't just
+reload.
+
 ## 2026-09-25 (latest — Testing + deployment review, Milestone 7 of the production build-out)
 
 ### Fixed — `kong.railway.yml` (production Kong config) had drifted out of sync with `kong.yml` (local dev), silently reverting a Milestone 1 fix
