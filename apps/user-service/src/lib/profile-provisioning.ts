@@ -66,3 +66,58 @@ export async function ensureProfileForUser(
 
   return false;
 }
+
+// Called when a TherapistApplication is APPROVED. The applicant registered
+// and has been operating as PATIENT the whole time they were under review
+// (see auth.routes.ts's role-lock comment), so this is the first time a
+// TherapistProfile row is created for them — PatientProfile is a separate
+// table and is deliberately left as-is (stale, unused once role flips to
+// THERAPIST; cleaning it up is out of scope for this milestone). Upsert,
+// not create, so re-approving after a suspend/reactivate cycle or a data
+// fix doesn't fail on the unique userId constraint.
+export async function upsertTherapistProfileFromApplication(
+  userId: string,
+  applicationId: string,
+  application: {
+    fullName: string;
+    professionalBio: string;
+    specialisations: string[];
+    languages: string[];
+    timezone: string;
+    contactEmail: string;
+  }
+): Promise<void> {
+  // TherapistProfile.specialisation is a single free-text field (predates
+  // the application system's specialisations[] list) — joined here rather
+  // than widened to an array, so GET /therapists' existing
+  // `specialisation: { contains }` filter keeps working unchanged.
+  const specialisation = application.specialisations.join(', ');
+
+  await prisma.therapistProfile.upsert({
+    where: { userId },
+    create: {
+      userId,
+      userName: application.fullName,
+      bio: application.professionalBio,
+      timezone: application.timezone,
+      specialisation,
+      languages: application.languages,
+      role: 'THERAPIST',
+      email: application.contactEmail,
+      applicationStatus: 'APPROVED',
+      applicationId,
+      isSuspended: false,
+    },
+    update: {
+      userName: application.fullName,
+      bio: application.professionalBio,
+      timezone: application.timezone,
+      specialisation,
+      languages: application.languages,
+      role: 'THERAPIST',
+      applicationStatus: 'APPROVED',
+      applicationId,
+      isSuspended: false,
+    },
+  });
+}

@@ -2,6 +2,10 @@ import { Router } from 'express';
 import type { AuthenticatedRequest } from '@mindora/auth-middleware';
 import { callService, httpClient } from '@mindora/http-client';
 import {
+  adminAddApplicationNoteSchema,
+  adminRejectApplicationSchema,
+  adminRequestInfoApplicationSchema,
+  analyticsRangeQuerySchema,
   listAlertsQuerySchema,
   listAuditLogQuerySchema,
   listUsersQuerySchema,
@@ -183,6 +187,506 @@ adminRouter.put(
 
     res.status(200).json({
       message: 'User reactivated',
+      userId,
+      auditLogId: auditLog.id,
+    });
+  })
+);
+
+// Therapist applications
+
+type TherapistApplicationRecord = {
+  id: string;
+  userId: string;
+  status: string;
+};
+
+adminRouter.get(
+  '/therapist-applications',
+  asyncHandler(async (req, res) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(req.query)) {
+      if (typeof value === 'string') query.set(key, value);
+    }
+
+    const response = await httpClient.get<{
+      applications: TherapistApplicationRecord[];
+      total: number;
+      page: number;
+      limit: number;
+    }>(KONG_URL, `/internal/users/therapist-applications?${query.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
+    });
+
+    if (!response.ok || !response.data) {
+      res.status(503).json({ message: 'User Service unavailable' });
+      return;
+    }
+
+    res.status(200).json(response.data);
+  })
+);
+
+adminRouter.get(
+  '/therapist-applications/:id',
+  asyncHandler(async (req, res) => {
+    const id = req.params.id as string;
+
+    const response = await httpClient.get<{
+      application: TherapistApplicationRecord;
+    }>(
+      KONG_URL,
+      `/internal/users/therapist-applications/${encodeURIComponent(id)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+
+    if (response.status === 404) {
+      res.status(404).json({ message: 'Application not found' });
+      return;
+    }
+    if (!response.ok || !response.data) {
+      res.status(503).json({ message: 'User Service unavailable' });
+      return;
+    }
+
+    res.status(200).json(response.data);
+  })
+);
+
+// Approve: two downstream calls, in order — User Service marks the
+// application APPROVED (and upserts the TherapistProfile) first, then Auth
+// Service flips role -> THERAPIST (the source of truth for role). If the
+// second call fails, the application is already APPROVED and the profile
+// already created, but the account is still PATIENT-role — this codebase
+// has no distributed-transaction/rollback mechanism for any cross-service
+// flow (same limitation applies to every other multi-call admin action
+// here), so that partial state is surfaced as a 503 telling the admin to
+// retry rather than silently dropped. A reconciliation endpoint would be a
+// reasonable follow-up but is out of scope for this milestone. The audit
+// log is written only once both calls have succeeded, per this file's
+// existing "never record an action that didn't complete" rule.
+adminRouter.put(
+  '/therapist-applications/:id/approve',
+  asyncHandler(async (req, res) => {
+    const authReq = req as unknown as AuthenticatedRequest;
+    const id = req.params.id as string;
+
+    const statusResponse = await callService<{
+      application: TherapistApplicationRecord;
+    }>(
+      KONG_URL,
+      `/internal/users/therapist-applications/${encodeURIComponent(id)}/status`,
+      {
+        method: 'PATCH',
+        body: { status: 'APPROVED', reviewedBy: authReq.user!.userId },
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+
+    if (statusResponse.status === 404) {
+      res.status(404).json({ message: 'Application not found' });
+      return;
+    }
+    if (statusResponse.status === 409) {
+      res.status(409).json({
+        message: 'Application cannot be approved from its current status',
+      });
+      return;
+    }
+    if (!statusResponse.ok || !statusResponse.data) {
+      res.status(503).json({ message: 'User Service unavailable' });
+      return;
+    }
+
+    const { userId } = statusResponse.data.application;
+
+    const roleResponse = await callService<{ id: string; role: string }>(
+      KONG_URL,
+      `/internal/auth/users/${encodeURIComponent(userId)}`,
+      {
+        method: 'PATCH',
+        body: { role: 'THERAPIST' },
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+
+    if (!roleResponse.ok) {
+      console.error(
+        `Application ${id} approved but role activation failed for user ${userId}`
+      );
+      res.status(503).json({
+        message: 'Application approved but role activation failed — retry required',
+        userId,
+      });
+      return;
+    }
+
+    const auditLog = await prisma.audit_logs.create({
+      data: {
+        adminId: authReq.user!.userId,
+        actionType: 'THERAPIST_APPLICATION_APPROVED',
+        targetId: id,
+        metadata: { userId, approvedAt: new Date().toISOString() },
+      },
+    });
+
+    res.status(200).json({
+      message: 'Application approved',
+      application: statusResponse.data.application,
+      auditLogId: auditLog.id,
+    });
+  })
+);
+
+adminRouter.put(
+  '/therapist-applications/:id/reject',
+  asyncHandler(async (req, res) => {
+    const authReq = req as unknown as AuthenticatedRequest;
+    const parsed = adminRejectApplicationSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const id = req.params.id as string;
+    const { reason } = parsed.data;
+
+    const statusResponse = await callService<{
+      application: TherapistApplicationRecord;
+    }>(
+      KONG_URL,
+      `/internal/users/therapist-applications/${encodeURIComponent(id)}/status`,
+      {
+        method: 'PATCH',
+        body: { status: 'REJECTED', reviewedBy: authReq.user!.userId, reason },
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+
+    if (statusResponse.status === 404) {
+      res.status(404).json({ message: 'Application not found' });
+      return;
+    }
+    if (statusResponse.status === 409) {
+      res.status(409).json({
+        message: 'Application cannot be rejected from its current status',
+      });
+      return;
+    }
+    if (!statusResponse.ok || !statusResponse.data) {
+      res.status(503).json({ message: 'User Service unavailable' });
+      return;
+    }
+
+    const auditLog = await prisma.audit_logs.create({
+      data: {
+        adminId: authReq.user!.userId,
+        actionType: 'THERAPIST_APPLICATION_REJECTED',
+        targetId: id,
+        metadata: { reason, rejectedAt: new Date().toISOString() },
+      },
+    });
+
+    res.status(200).json({
+      message: 'Application rejected',
+      application: statusResponse.data.application,
+      auditLogId: auditLog.id,
+    });
+  })
+);
+
+adminRouter.put(
+  '/therapist-applications/:id/request-info',
+  asyncHandler(async (req, res) => {
+    const authReq = req as unknown as AuthenticatedRequest;
+    const parsed = adminRequestInfoApplicationSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const id = req.params.id as string;
+    const { note } = parsed.data;
+
+    const statusResponse = await callService<{
+      application: TherapistApplicationRecord;
+    }>(
+      KONG_URL,
+      `/internal/users/therapist-applications/${encodeURIComponent(id)}/status`,
+      {
+        method: 'PATCH',
+        body: {
+          status: 'MORE_INFORMATION_REQUIRED',
+          reviewedBy: authReq.user!.userId,
+          note,
+        },
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+
+    if (statusResponse.status === 404) {
+      res.status(404).json({ message: 'Application not found' });
+      return;
+    }
+    if (statusResponse.status === 409) {
+      res.status(409).json({
+        message:
+          'Cannot request more information from the application\'s current status',
+      });
+      return;
+    }
+    if (!statusResponse.ok || !statusResponse.data) {
+      res.status(503).json({ message: 'User Service unavailable' });
+      return;
+    }
+
+    const auditLog = await prisma.audit_logs.create({
+      data: {
+        adminId: authReq.user!.userId,
+        actionType: 'THERAPIST_APPLICATION_MORE_INFO_REQUESTED',
+        targetId: id,
+        metadata: { note, requestedAt: new Date().toISOString() },
+      },
+    });
+
+    res.status(200).json({
+      message: 'More information requested',
+      application: statusResponse.data.application,
+      auditLogId: auditLog.id,
+    });
+  })
+);
+
+adminRouter.post(
+  '/therapist-applications/:id/notes',
+  asyncHandler(async (req, res) => {
+    const authReq = req as unknown as AuthenticatedRequest;
+    const parsed = adminAddApplicationNoteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const id = req.params.id as string;
+    const adminId = authReq.user!.userId;
+
+    const response = await callService<{ note: unknown }>(
+      KONG_URL,
+      `/internal/users/therapist-applications/${encodeURIComponent(id)}/notes`,
+      {
+        method: 'POST',
+        body: { authorId: adminId, note: parsed.data.note },
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+
+    if (response.status === 404) {
+      res.status(404).json({ message: 'Application not found' });
+      return;
+    }
+    if (!response.ok || !response.data) {
+      res.status(503).json({ message: 'User Service unavailable' });
+      return;
+    }
+
+    const auditLog = await prisma.audit_logs.create({
+      data: {
+        adminId,
+        actionType: 'THERAPIST_APPLICATION_NOTE_ADDED',
+        targetId: id,
+        metadata: { notedAt: new Date().toISOString() },
+      },
+    });
+
+    res
+      .status(201)
+      .json({ note: response.data.note, auditLogId: auditLog.id });
+  })
+);
+
+// Suspend/reactivate an already-approved therapist — distinct from the
+// generic /users/:id/suspend above (which any admin action against any
+// account uses) so the audit trail can tell conduct-based therapist
+// suspension apart from generic account moderation. Two downstream calls,
+// strictly in order: User Service's existing /internal/users/:id/suspend
+// proxy (the real access revocation — isActive=false on Auth Service, Redis
+// flag, refresh tokens revoked) must succeed BEFORE the discovery-visibility
+// flag below is touched. Fail-closed: a therapist must never end up hidden
+// from patient-facing search while still fully usable via a live token, or
+// the reverse (visible in search but actually locked out).
+adminRouter.put(
+  '/therapists/:id/suspend',
+  asyncHandler(async (req, res) => {
+    const authReq = req as unknown as AuthenticatedRequest;
+    const parsed = suspendUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const userId = req.params.id as string;
+    const { reason } = parsed.data;
+
+    const suspendResponse = await callService<{ message: string; userId: string }>(
+      KONG_URL,
+      `/internal/users/${encodeURIComponent(userId)}/suspend`,
+      {
+        method: 'PUT',
+        body: { reason },
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+
+    if (suspendResponse.status === 404) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    if (!suspendResponse.ok) {
+      res.status(503).json({ message: 'User Service unavailable' });
+      return;
+    }
+
+    const flagResponse = await callService<{
+      userId: string;
+      isSuspended: boolean;
+    }>(
+      KONG_URL,
+      `/internal/users/${encodeURIComponent(userId)}/therapist-suspension`,
+      {
+        method: 'PATCH',
+        body: { isSuspended: true },
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+    if (!flagResponse.ok) {
+      // Access is already revoked (the security-critical half, above) —
+      // only the discovery-visibility flag failed to update. Not rolled
+      // back; logged so it can be reconciled manually.
+      console.error(
+        `Therapist ${userId} suspended but discovery flag update failed`
+      );
+    }
+
+    const auditLog = await prisma.audit_logs.create({
+      data: {
+        adminId: authReq.user!.userId,
+        actionType: 'THERAPIST_SUSPENDED',
+        targetId: userId,
+        metadata: { reason, suspendedAt: new Date().toISOString() },
+      },
+    });
+
+    res.status(200).json({
+      message: 'Therapist suspended',
+      userId,
+      auditLogId: auditLog.id,
+    });
+  })
+);
+
+adminRouter.put(
+  '/therapists/:id/reactivate',
+  asyncHandler(async (req, res) => {
+    const authReq = req as unknown as AuthenticatedRequest;
+    const parsed = suspendUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const userId = req.params.id as string;
+    const { reason } = parsed.data;
+
+    const reactivateResponse = await callService<{
+      message: string;
+      userId: string;
+    }>(
+      KONG_URL,
+      `/internal/users/${encodeURIComponent(userId)}/reactivate`,
+      {
+        method: 'PUT',
+        body: { reason },
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+
+    if (reactivateResponse.status === 404) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    if (!reactivateResponse.ok) {
+      res.status(503).json({ message: 'User Service unavailable' });
+      return;
+    }
+
+    const flagResponse = await callService<{
+      userId: string;
+      isSuspended: boolean;
+    }>(
+      KONG_URL,
+      `/internal/users/${encodeURIComponent(userId)}/therapist-suspension`,
+      {
+        method: 'PATCH',
+        body: { isSuspended: false },
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+    if (!flagResponse.ok) {
+      console.error(
+        `Therapist ${userId} reactivated but discovery flag update failed`
+      );
+    }
+
+    const auditLog = await prisma.audit_logs.create({
+      data: {
+        adminId: authReq.user!.userId,
+        actionType: 'THERAPIST_REACTIVATED',
+        targetId: userId,
+        metadata: { reason, reactivatedAt: new Date().toISOString() },
+      },
+    });
+
+    res.status(200).json({
+      message: 'Therapist reactivated',
       userId,
       auditLogId: auditLog.id,
     });
@@ -407,6 +911,113 @@ adminRouter.get(
       totalCrisisEvents: aiStats.ok
         ? (aiStats.data?.totalCrisisEvents ?? null)
         : null,
+    });
+  })
+);
+
+// Detailed analytics for the charts-driven Analytics page — distinct from
+// GET /analytics above (kept as-is, still backs the plain Overview stat
+// cards). Same null-safe-per-service convention: each top-level section is
+// null if that service was unreachable, never the whole request. `from`/
+// `to` are forwarded to every downstream service so a single date-range
+// picker on the frontend drives all three sections consistently.
+adminRouter.get(
+  '/analytics/detailed',
+  asyncHandler(async (req, res) => {
+    const parsed = analyticsRangeQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const rangeFrom = parsed.data.from ?? thirtyDaysAgo;
+    const rangeTo = parsed.data.to ?? now;
+
+    const query = new URLSearchParams({
+      from: rangeFrom.toISOString(),
+      to: rangeTo.toISOString(),
+    });
+    const serviceHeaders = {
+      Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+    };
+
+    type UserAnalytics = {
+      totalUsers: number;
+      usersByRole: Record<string, number>;
+      newUsersInRange: number;
+      suspendedUsers: number;
+      dau: number;
+      wau: number;
+      mau: number;
+      registrationTrend: { date: string; count: number }[];
+      therapistApplications: {
+        byStatus: Record<string, number>;
+        approvalRate: number;
+        rejectionRate: number;
+        applicationTrend: { date: string; count: number }[];
+      };
+      totalTherapists: number;
+      suspendedTherapists: number;
+    };
+
+    type AppointmentAnalytics = {
+      totalAppointments: number;
+      completedAppointments: number;
+      statusBreakdown: Record<string, number>;
+      completionRate: number;
+      cancellationRate: number;
+      sessionTrend: {
+        date: string;
+        completed: number;
+        cancelled: number;
+        pending: number;
+        confirmed: number;
+      }[];
+    };
+
+    const [userStats, appointmentStats] = await Promise.all([
+      httpClient.get<UserAnalytics>(
+        KONG_URL,
+        `/internal/users/analytics?${query.toString()}`,
+        { headers: serviceHeaders }
+      ),
+      httpClient.get<AppointmentAnalytics>(
+        KONG_URL,
+        `/internal/appointments/analytics?${query.toString()}`,
+        { headers: serviceHeaders }
+      ),
+    ]);
+
+    res.status(200).json({
+      range: { from: rangeFrom.toISOString(), to: rangeTo.toISOString() },
+      users:
+        userStats.ok && userStats.data
+          ? {
+              totalUsers: userStats.data.totalUsers,
+              usersByRole: userStats.data.usersByRole,
+              newUsersInRange: userStats.data.newUsersInRange,
+              suspendedUsers: userStats.data.suspendedUsers,
+              dau: userStats.data.dau,
+              wau: userStats.data.wau,
+              mau: userStats.data.mau,
+              registrationTrend: userStats.data.registrationTrend,
+            }
+          : null,
+      therapists:
+        userStats.ok && userStats.data
+          ? {
+              totalTherapists: userStats.data.totalTherapists,
+              suspendedTherapists: userStats.data.suspendedTherapists,
+              applications: userStats.data.therapistApplications,
+            }
+          : null,
+      appointments: appointmentStats.ok ? appointmentStats.data : null,
     });
   })
 );

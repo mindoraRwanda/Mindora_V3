@@ -6,13 +6,16 @@ import {
 } from '@mindora/auth-middleware';
 import { publish } from '@mindora/queue';
 import {
+  analyticsRangeQuerySchema,
   forgotPasswordSchema,
   listUsersQuerySchema,
   loginSchema,
   registerSchema,
   resetPasswordSchema,
+  userRoleSchema,
 } from '@mindora/validation';
 import { Router, type Response } from 'express';
+import type { UserRole } from '../generated/prisma/index.js';
 import jwt from 'jsonwebtoken';
 import { randomBytes } from 'node:crypto';
 import passport from 'passport';
@@ -23,6 +26,7 @@ import {
 } from '../middleware/authenticate.js';
 import {
   authenticatedRouteLimiter,
+  loginRouteLimiter,
   publicAuthRouteLimiter,
 } from '../middleware/rate-limit.js';
 import { asyncHandler } from '../middleware/async-handler.js';
@@ -118,7 +122,7 @@ authRouter.post(
 
 authRouter.post(
   '/login',
-  publicAuthRouteLimiter,
+  loginRouteLimiter,
   asyncHandler(async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -430,7 +434,12 @@ authRouter.get(
 );
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
-// Currently only used to flip isActive when Admin Service suspends a user.
+// Originally only flipped isActive when Admin Service suspends a user; now
+// also accepts role, for the one place a role ever changes post-registration
+// — approving a therapist application (admin-service's approve route calls
+// this with { role: 'THERAPIST' } after user-service marks the application
+// APPROVED). Both fields are optional but at least one must be present;
+// either can be sent alone.
 authRouter.patch(
   '/internal/auth/users/:id',
   authenticatedRouteLimiter,
@@ -442,17 +451,40 @@ authRouter.patch(
       return;
     }
 
-    const id = req.params.id as string;
-    const { isActive } = req.body as { isActive?: unknown };
-    if (typeof isActive !== 'boolean') {
-      res.status(400).json({ message: 'isActive must be a boolean' });
+    const { isActive, role } = req.body as {
+      isActive?: unknown;
+      role?: unknown;
+    };
+    const hasIsActive = typeof isActive === 'boolean';
+
+    let validatedRole: string | undefined;
+    if (role !== undefined) {
+      const parsedRole = userRoleSchema.safeParse(role);
+      if (!parsedRole.success) {
+        res.status(400).json({ message: 'role must be PATIENT, THERAPIST, or ADMIN' });
+        return;
+      }
+      validatedRole = parsedRole.data;
+    }
+
+    if (!hasIsActive && validatedRole === undefined) {
+      res
+        .status(400)
+        .json({ message: 'isActive (boolean) or role must be provided' });
       return;
     }
+
+    const id = req.params.id as string;
 
     try {
       const user = await prisma.user.update({
         where: { id },
-        data: { isActive },
+        data: {
+          ...(hasIsActive ? { isActive: isActive as boolean } : {}),
+          ...(validatedRole !== undefined
+            ? { role: validatedRole as UserRole }
+            : {}),
+        },
         select: {
           id: true,
           email: true,
@@ -462,20 +494,22 @@ authRouter.patch(
         },
       });
 
-      // Redis is the fast-path every authenticated request checks (see
-      // createVerifyJwt) — without this, a still-valid access token would
-      // keep working until it naturally expires, even though isActive
-      // (the source of truth, just written above) already says otherwise.
-      await setUserSuspended(config.redisUrl, id, !isActive);
+      if (hasIsActive) {
+        // Redis is the fast-path every authenticated request checks (see
+        // createVerifyJwt) — without this, a still-valid access token would
+        // keep working until it naturally expires, even though isActive
+        // (the source of truth, just written above) already says otherwise.
+        await setUserSuspended(config.redisUrl, id, !isActive);
 
-      // Revoking refresh tokens closes the other loophole: without this, a
-      // suspended user whose access token has expired could still silently
-      // mint a new one via POST /refresh.
-      if (!isActive) {
-        await prisma.refreshToken.updateMany({
-          where: { userId: id, revoked: false },
-          data: { revoked: true },
-        });
+        // Revoking refresh tokens closes the other loophole: without this, a
+        // suspended user whose access token has expired could still silently
+        // mint a new one via POST /refresh.
+        if (!isActive) {
+          await prisma.refreshToken.updateMany({
+            where: { userId: id, revoked: false },
+            data: { revoked: true },
+          });
+        }
       }
 
       res.status(200).json(user);
@@ -488,6 +522,17 @@ authRouter.patch(
 
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
 // Backs Admin Service's platform-wide analytics aggregation.
+//
+// totalUsers/activeUsersLast30Days are kept exactly as before, semantics
+// included (existing consumer: admin-service's original GET /analytics) —
+// everything else is an additive extension for the newer
+// GET /analytics/detailed.
+//
+// "Active" throughout = registered in the window OR had a RefreshToken row
+// created in the window (login, or POST /refresh's rotation creating a new
+// row) — matches the original activeUsersLast30Days definition exactly, so
+// dau/wau/mau (new) and activeUsersLast30Days (existing) stay consistent
+// with each other instead of quietly using different rules.
 authRouter.get(
   '/internal/auth/analytics',
   authenticatedRouteLimiter,
@@ -499,24 +544,82 @@ authRouter.get(
       return;
     }
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const parsed = analyticsRangeQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
 
-    const [totalUsers, activeUsersLast30Days] = await Promise.all([
-      prisma.user.count(),
-      // "Active" = registered in the last 30 days, OR refreshed a session in
-      // the last 30 days (i.e. actually used the app, not just created once).
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const oneDayAgo = new Date(now);
+    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+    const rangeFrom = parsed.data.from ?? thirtyDaysAgo;
+    const rangeTo = parsed.data.to ?? now;
+
+    const activeSince = (since: Date) =>
       prisma.user.count({
         where: {
           OR: [
-            { createdAt: { gte: thirtyDaysAgo } },
-            { refreshTokens: { some: { createdAt: { gte: thirtyDaysAgo } } } },
+            { createdAt: { gte: since } },
+            { refreshTokens: { some: { createdAt: { gte: since } } } },
           ],
         },
+      });
+
+    const [
+      totalUsers,
+      activeUsersLast30Days,
+      usersByRoleRaw,
+      newUsersInRange,
+      suspendedUsers,
+      dau,
+      wau,
+      registrationTrendRaw,
+    ] = await Promise.all([
+      prisma.user.count(),
+      activeSince(thirtyDaysAgo),
+      prisma.user.groupBy({ by: ['role'], _count: { _all: true } }),
+      prisma.user.count({
+        where: { createdAt: { gte: rangeFrom, lte: rangeTo } },
       }),
+      prisma.user.count({ where: { isActive: false } }),
+      activeSince(oneDayAgo),
+      activeSince(sevenDaysAgo),
+      prisma.$queryRaw<{ bucket: Date; count: bigint }[]>`
+        SELECT date_trunc('day', "created_at") AS bucket, COUNT(*)::bigint AS count
+        FROM "users"
+        WHERE "created_at" >= ${rangeFrom} AND "created_at" <= ${rangeTo}
+        GROUP BY bucket
+        ORDER BY bucket ASC
+      `,
     ]);
 
-    res.status(200).json({ totalUsers, activeUsersLast30Days });
+    const usersByRole = Object.fromEntries(
+      usersByRoleRaw.map((r) => [r.role, r._count._all])
+    );
+
+    res.status(200).json({
+      totalUsers,
+      activeUsersLast30Days,
+      usersByRole,
+      newUsersInRange,
+      suspendedUsers,
+      dau,
+      wau,
+      mau: activeUsersLast30Days,
+      registrationTrend: registrationTrendRaw.map((r) => ({
+        date: r.bucket.toISOString().slice(0, 10),
+        count: Number(r.count),
+      })),
+    });
   })
 );
 

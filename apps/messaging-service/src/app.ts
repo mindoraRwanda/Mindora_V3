@@ -4,6 +4,7 @@ import express, {
   type Response,
 } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import conversationsRouter from './routes/conversations.routes.js';
 import { authenticate } from '@mindora/auth-middleware';
@@ -24,6 +25,11 @@ const app = express();
 // Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
 // real client IP from X-Forwarded-For instead of Kong's own container IP.
 app.set('trust proxy', 1);
+
+// CSP off: JSON API plus an internal Swagger UI, not a page serving
+// third-party content — the default CSP would just break the docs UI's
+// inline scripts/styles. Every other helmet default stays on.
+app.use(helmet({ contentSecurityPolicy: false }));
 
 // Wide open outside production (matches the Socket.io layer) so cross-origin
 // fetch() calls from e.g. a file:// test page aren't silently blocked before

@@ -5,6 +5,7 @@ import express, {
 } from 'express';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import helmet from 'helmet';
 import { appointmentRouter } from './routes/appointment.routes.js';
 import { registerOpenApiDocs } from './lib/openapi-docs.js';
 
@@ -19,6 +20,10 @@ export function createApp() {
   // Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
   // real client IP from X-Forwarded-For instead of Kong's own container IP.
   app.set('trust proxy', 1);
+  // CSP off: JSON API plus an internal Swagger UI, not a page serving
+  // third-party content — the default CSP would just break the docs UI's
+  // inline scripts/styles. Every other helmet default stays on.
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.use(express.json());
 
   try {

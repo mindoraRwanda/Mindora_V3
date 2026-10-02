@@ -7,18 +7,23 @@ import {
 import { prisma } from '../lib/prisma.js';
 import { Prisma } from '../generated/prisma/index.js';
 import {
+  analyticsRangeQuerySchema,
   appointmentListQuerySchema,
   availabilityQuerySchema,
   bookAppointmentSchema,
   cancelAppointmentSchema,
+  createTimeOffSchema,
+  listPatientsQuerySchema,
   rateAppointmentSchema,
   therapistScheduleQuerySchema,
+  updateAvailabilitySchema,
 } from '@mindora/validation';
 import { Router } from 'express';
 import {
   defaultAvailabilityRange,
   filterAvailableSlots,
   generateCandidateSlots,
+  generateCandidateSlotsFromWorkingHours,
 } from '../lib/availability.js';
 import {
   bookAppointmentWithLock,
@@ -95,17 +100,40 @@ appointmentRouter.get(
       return;
     }
 
-    const blocked = await prisma.appointment.findMany({
-      where: {
-        therapistId,
-        status: { in: ['PENDING', 'CONFIRMED'] },
-        slotStart: { lt: to },
-        slotEnd: { gt: from },
-      },
-      select: { slotStart: true, slotEnd: true },
-    });
+    const [bookedAppointments, schedule] = await Promise.all([
+      prisma.appointment.findMany({
+        where: {
+          therapistId,
+          status: { in: ['PENDING', 'CONFIRMED'] },
+          slotStart: { lt: to },
+          slotEnd: { gt: from },
+        },
+        select: { slotStart: true, slotEnd: true },
+      }),
+      prisma.therapistSchedule.findUnique({
+        where: { therapistId },
+        include: {
+          workingHours: true,
+          timeOff: { where: { startsAt: { lt: to }, endsAt: { gt: from } } },
+        },
+      }),
+    ]);
 
-    const candidates = generateCandidateSlots(from, to);
+    // A therapist with no configured schedule (or an empty working-hours
+    // list) falls back to the original fixed 9am-5pm-UTC default, so
+    // approval doesn't leave them unbookable until they set this up.
+    const candidates =
+      schedule && schedule.workingHours.length > 0
+        ? generateCandidateSlotsFromWorkingHours(from, to, schedule.workingHours)
+        : generateCandidateSlots(from, to);
+
+    const blocked = [
+      ...bookedAppointments,
+      ...(schedule?.timeOff.map((t) => ({
+        slotStart: t.startsAt,
+        slotEnd: t.endsAt,
+      })) ?? []),
+    ];
     const available = filterAvailableSlots(candidates, blocked);
 
     res.status(200).json({
@@ -268,6 +296,384 @@ appointmentRouter.get(
       total,
       page,
       limit,
+    });
+  })
+);
+
+// GET own schedule for editing (working hours + upcoming time-off).
+// Distinct from GET /availability/:therapistId above, which computes
+// bookable SLOTS for a patient — this returns the raw configuration a
+// therapist edits, including days/windows with no upcoming bookable slots.
+appointmentRouter.get(
+  '/availability',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+    if (authReq.user.role !== 'THERAPIST') {
+      res.status(403).json({ message: 'Requires THERAPIST role' });
+      return;
+    }
+
+    const schedule = await prisma.therapistSchedule.findUnique({
+      where: { therapistId: authReq.user.userId },
+      include: {
+        workingHours: { orderBy: [{ dayOfWeek: 'asc' }, { startMinute: 'asc' }] },
+        timeOff: {
+          where: { endsAt: { gt: new Date() } },
+          orderBy: { startsAt: 'asc' },
+        },
+      },
+    });
+
+    res.status(200).json({
+      timezone: schedule?.timezone ?? 'Africa/Kigali',
+      workingHours:
+        schedule?.workingHours.map((w) => ({
+          dayOfWeek: w.dayOfWeek,
+          startMinute: w.startMinute,
+          endMinute: w.endMinute,
+        })) ?? [],
+      timeOff:
+        schedule?.timeOff.map((t) => ({
+          id: t.id,
+          startsAt: t.startsAt.toISOString(),
+          endsAt: t.endsAt.toISOString(),
+          reason: t.reason,
+        })) ?? [],
+    });
+  })
+);
+
+// Full replace of the working-hours list, upserting the TherapistSchedule
+// header row lazily on first use — see the schema comment on
+// TherapistSchedule for why there's no separate "set up availability" step.
+appointmentRouter.put(
+  '/availability',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+    if (authReq.user.role !== 'THERAPIST') {
+      res.status(403).json({ message: 'Requires THERAPIST role' });
+      return;
+    }
+
+    const parsed = updateAvailabilitySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const therapistId = authReq.user.userId;
+    const { timezone, workingHours } = parsed.data;
+
+    // Delete-and-recreate, in one transaction — the weekly schedule is
+    // small (at most 50 windows) and always sent in full by the client
+    // (updateAvailabilitySchema, above), so there's no partial-update
+    // case to reconcile against.
+    await prisma.$transaction([
+      prisma.therapistSchedule.upsert({
+        where: { therapistId },
+        create: { therapistId, timezone },
+        update: { timezone },
+      }),
+      prisma.therapistWorkingHours.deleteMany({ where: { therapistId } }),
+      prisma.therapistWorkingHours.createMany({
+        data: workingHours.map((w) => ({
+          therapistId,
+          dayOfWeek: w.dayOfWeek,
+          startMinute: w.startMinute,
+          endMinute: w.endMinute,
+        })),
+      }),
+    ]);
+
+    res.status(200).json({ timezone, workingHours });
+  })
+);
+
+appointmentRouter.get(
+  '/time-off',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+    if (authReq.user.role !== 'THERAPIST') {
+      res.status(403).json({ message: 'Requires THERAPIST role' });
+      return;
+    }
+
+    const timeOff = await prisma.therapistTimeOff.findMany({
+      where: {
+        therapistId: authReq.user.userId,
+        endsAt: { gt: new Date() },
+      },
+      orderBy: { startsAt: 'asc' },
+    });
+
+    res.status(200).json({
+      timeOff: timeOff.map((t) => ({
+        id: t.id,
+        startsAt: t.startsAt.toISOString(),
+        endsAt: t.endsAt.toISOString(),
+        reason: t.reason,
+      })),
+    });
+  })
+);
+
+appointmentRouter.post(
+  '/time-off',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+    if (authReq.user.role !== 'THERAPIST') {
+      res.status(403).json({ message: 'Requires THERAPIST role' });
+      return;
+    }
+
+    const parsed = createTimeOffSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const therapistId = authReq.user.userId;
+
+    // Time-off references the schedule header row (FK) — ensure it exists
+    // even for a therapist who has never touched PUT /availability.
+    await prisma.therapistSchedule.upsert({
+      where: { therapistId },
+      create: { therapistId },
+      update: {},
+    });
+
+    const timeOff = await prisma.therapistTimeOff.create({
+      data: {
+        therapistId,
+        startsAt: parsed.data.startsAt,
+        endsAt: parsed.data.endsAt,
+        reason: parsed.data.reason,
+      },
+    });
+
+    res.status(201).json({
+      id: timeOff.id,
+      startsAt: timeOff.startsAt.toISOString(),
+      endsAt: timeOff.endsAt.toISOString(),
+      reason: timeOff.reason,
+    });
+  })
+);
+
+appointmentRouter.delete(
+  '/time-off/:id',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+    if (authReq.user.role !== 'THERAPIST') {
+      res.status(403).json({ message: 'Requires THERAPIST role' });
+      return;
+    }
+
+    const timeOff = await prisma.therapistTimeOff.findUnique({
+      where: { id: routeParam(req.params.id) },
+    });
+    if (!timeOff || timeOff.therapistId !== authReq.user.userId) {
+      res.status(404).json({ message: 'Time off not found' });
+      return;
+    }
+
+    await prisma.therapistTimeOff.delete({ where: { id: timeOff.id } });
+    res.status(204).send();
+  })
+);
+
+type PatientNameLookup = { id: string; userName: string | null };
+
+// Same per-id internal lookup pattern as isTherapist() above — Appointment
+// Service has no local view of patient_profiles, and page sizes here are
+// small (max 50), so N parallel single-id calls is simpler than adding a
+// new batch endpoint to User Service for this one caller.
+async function resolvePatientNames(
+  patientIds: string[]
+): Promise<Map<string, string | null>> {
+  const base = process.env.KONG_URL ?? 'http://localhost:8000';
+  const entries = await Promise.all(
+    patientIds.map(async (id): Promise<[string, string | null]> => {
+      try {
+        const res = await fetch(
+          `${base}/internal/users/${encodeURIComponent(id)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+            },
+          }
+        );
+        if (!res.ok) return [id, null];
+        const user = (await res.json()) as PatientNameLookup;
+        return [id, user.userName ?? null];
+      } catch {
+        return [id, null];
+      }
+    })
+  );
+  return new Map(entries);
+}
+
+// Therapists only see patients they have an actual appointment relationship
+// with (any status, including cancelled — same "evidence of contact" rule
+// as the internal relationship-check endpoint below), never a raw list of
+// platform patients. Grouped/paginated by Appointment, not by a patient
+// table this service doesn't have.
+appointmentRouter.get(
+  '/patients',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+    if (authReq.user.role !== 'THERAPIST') {
+      res.status(403).json({ message: 'Requires THERAPIST role' });
+      return;
+    }
+
+    const parsed = listPatientsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { page, limit } = parsed.data;
+    const skip = (page - 1) * limit;
+    const therapistId = authReq.user.userId;
+
+    const [groups, allPatientIds] = await Promise.all([
+      prisma.appointment.groupBy({
+        by: ['patientId'],
+        where: { therapistId },
+        _count: { _all: true },
+        _max: { slotStart: true },
+        orderBy: { _max: { slotStart: 'desc' } },
+        skip,
+        take: limit,
+      }),
+      prisma.appointment.findMany({
+        where: { therapistId },
+        distinct: ['patientId'],
+        select: { patientId: true },
+      }),
+    ]);
+
+    const names = await resolvePatientNames(groups.map((g) => g.patientId));
+
+    res.status(200).json({
+      patients: groups.map((g) => ({
+        patientId: g.patientId,
+        userName: names.get(g.patientId) ?? null,
+        totalSessions: g._count._all,
+        lastSessionAt: g._max.slotStart?.toISOString() ?? null,
+      })),
+      total: allPatientIds.length,
+      page,
+      limit,
+    });
+  })
+);
+
+// Aggregate counts for the therapist dashboard overview — deliberately
+// appointment-data-only (no cross-service calls) so this stays fast; a
+// therapist's accepting-patients/profile status is shown from data the
+// frontend already has via GET /users/me, not duplicated here.
+appointmentRouter.get(
+  '/dashboard',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+    if (authReq.user.role !== 'THERAPIST') {
+      res.status(403).json({ message: 'Requires THERAPIST role' });
+      return;
+    }
+
+    const therapistId = authReq.user.userId;
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setUTCHours(23, 59, 59, 999);
+
+    const [todaysSessions, pendingCount, upcomingCount, distinctPatients] =
+      await Promise.all([
+        prisma.appointment.findMany({
+          where: {
+            therapistId,
+            status: 'CONFIRMED',
+            slotStart: { gte: todayStart, lte: todayEnd },
+          },
+          orderBy: { slotStart: 'asc' },
+        }),
+        prisma.appointment.count({
+          where: { therapistId, status: 'PENDING' },
+        }),
+        prisma.appointment.count({
+          where: {
+            therapistId,
+            status: 'CONFIRMED',
+            slotStart: { gt: now },
+          },
+        }),
+        prisma.appointment.findMany({
+          where: { therapistId },
+          distinct: ['patientId'],
+          select: { patientId: true },
+        }),
+      ]);
+
+    res.status(200).json({
+      todaysSessions: todaysSessions.map(serializeAppointment),
+      pendingCount,
+      upcomingCount,
+      patientCount: distinctPatients.length,
     });
   })
 );
@@ -527,12 +933,84 @@ appointmentRouter.get(
       return;
     }
 
-    const [totalAppointments, completedAppointments] = await Promise.all([
+    const parsed = analyticsRangeQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const rangeFrom = parsed.data.from ?? thirtyDaysAgo;
+    const rangeTo = parsed.data.to ?? now;
+
+    // totalAppointments/completedAppointments stay all-time and unscoped by
+    // range - existing consumer (admin-service's original GET /analytics).
+    // Everything else below is scoped to [rangeFrom, rangeTo] and additive,
+    // for the newer GET /analytics/detailed.
+    const [
+      totalAppointments,
+      completedAppointments,
+      statusBreakdownRaw,
+      sessionTrendRaw,
+    ] = await Promise.all([
       prisma.appointment.count(),
       prisma.appointment.count({ where: { status: 'COMPLETED' } }),
+      prisma.appointment.groupBy({
+        by: ['status'],
+        where: { slotStart: { gte: rangeFrom, lte: rangeTo } },
+        _count: { _all: true },
+      }),
+      prisma.$queryRaw<
+        {
+          bucket: Date;
+          completed: bigint;
+          cancelled: bigint;
+          pending: bigint;
+          confirmed: bigint;
+        }[]
+      >`
+        SELECT
+          date_trunc('day', "slot_start") AS bucket,
+          COUNT(*) FILTER (WHERE "status" = 'COMPLETED')::bigint AS completed,
+          COUNT(*) FILTER (WHERE "status" = 'CANCELLED')::bigint AS cancelled,
+          COUNT(*) FILTER (WHERE "status" = 'PENDING')::bigint AS pending,
+          COUNT(*) FILTER (WHERE "status" = 'CONFIRMED')::bigint AS confirmed
+        FROM "appointments"
+        WHERE "slot_start" >= ${rangeFrom} AND "slot_start" <= ${rangeTo}
+        GROUP BY bucket
+        ORDER BY bucket ASC
+      `,
     ]);
 
-    res.status(200).json({ totalAppointments, completedAppointments });
+    const statusBreakdown = Object.fromEntries(
+      statusBreakdownRaw.map((r) => [r.status, r._count._all])
+    );
+    const rangeTotal = statusBreakdownRaw.reduce(
+      (sum, r) => sum + r._count._all,
+      0
+    );
+    const rangeCompleted = statusBreakdown.COMPLETED ?? 0;
+    const rangeCancelled = statusBreakdown.CANCELLED ?? 0;
+
+    res.status(200).json({
+      totalAppointments,
+      completedAppointments,
+      statusBreakdown,
+      completionRate: rangeTotal > 0 ? rangeCompleted / rangeTotal : 0,
+      cancellationRate: rangeTotal > 0 ? rangeCancelled / rangeTotal : 0,
+      sessionTrend: sessionTrendRaw.map((r) => ({
+        date: r.bucket.toISOString().slice(0, 10),
+        completed: Number(r.completed),
+        cancelled: Number(r.cancelled),
+        pending: Number(r.pending),
+        confirmed: Number(r.confirmed),
+      })),
+    });
   })
 );
 

@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import {
+  analyticsRangeQuerySchema,
   listUsersQuerySchema,
   suspendUserSchema,
   therapistListQuerySchema,
@@ -88,29 +89,94 @@ userRouter.get(
   '/internal/users/analytics',
   authenticatedRouteLimiter,
   verifyJwt,
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (authReq.user?.role !== 'SERVICE') {
       res.status(403).json({ message: 'Forbidden' });
       return;
     }
 
-    const response = await httpClient.get<{
-      totalUsers: number;
-      activeUsersLast30Days: number;
-    }>(KONG_URL, '/internal/auth/analytics', {
-      headers: {
-        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
-      },
-    });
+    const parsed = analyticsRangeQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
 
-    if (!response.ok || !response.data) {
+    const query = new URLSearchParams();
+    if (parsed.data.from) query.set('from', parsed.data.from.toISOString());
+    if (parsed.data.to) query.set('to', parsed.data.to.toISOString());
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const rangeFrom = parsed.data.from ?? thirtyDaysAgo;
+    const rangeTo = parsed.data.to ?? now;
+
+    const [authResponse, applicationsByStatusRaw, applicationTrendRaw, totalTherapists, suspendedTherapists] =
+      await Promise.all([
+        httpClient.get<{
+          totalUsers: number;
+          activeUsersLast30Days: number;
+          usersByRole?: Record<string, number>;
+          newUsersInRange?: number;
+          suspendedUsers?: number;
+          dau?: number;
+          wau?: number;
+          mau?: number;
+          registrationTrend?: { date: string; count: number }[];
+        }>(KONG_URL, `/internal/auth/analytics?${query.toString()}`, {
+          headers: {
+            Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+          },
+        }),
+        prisma.therapistApplication.groupBy({
+          by: ['status'],
+          _count: { _all: true },
+        }),
+        prisma.$queryRaw<{ bucket: Date; count: bigint }[]>`
+          SELECT date_trunc('day', "submitted_at") AS bucket, COUNT(*)::bigint AS count
+          FROM "therapist_applications"
+          WHERE "submitted_at" >= ${rangeFrom} AND "submitted_at" <= ${rangeTo}
+          GROUP BY bucket
+          ORDER BY bucket ASC
+        `,
+        prisma.therapistProfile.count({
+          where: { applicationStatus: 'APPROVED', isSuspended: false },
+        }),
+        prisma.therapistProfile.count({ where: { isSuspended: true } }),
+      ]);
+
+    if (!authResponse.ok || !authResponse.data) {
       res.status(503).json({ message: 'Auth Service unavailable' });
       return;
     }
 
-    res.status(200).json(response.data);
-  }
+    const applicationsByStatus = Object.fromEntries(
+      applicationsByStatusRaw.map((r) => [r.status, r._count._all])
+    );
+    const decided =
+      (applicationsByStatus.APPROVED ?? 0) + (applicationsByStatus.REJECTED ?? 0);
+
+    res.status(200).json({
+      ...authResponse.data,
+      therapistApplications: {
+        byStatus: applicationsByStatus,
+        approvalRate:
+          decided > 0 ? (applicationsByStatus.APPROVED ?? 0) / decided : 0,
+        rejectionRate:
+          decided > 0 ? (applicationsByStatus.REJECTED ?? 0) / decided : 0,
+        applicationTrend: applicationTrendRaw.map((r) => ({
+          date: r.bucket.toISOString().slice(0, 10),
+          count: Number(r.count),
+        })),
+      },
+      totalTherapists,
+      suspendedTherapists,
+    });
+  })
 );
 
 // INTERNAL SERVICE ENDPOINT — not exposed through the public Kong user-api route.
@@ -623,6 +689,12 @@ userRouter.get(
 
     const where: Prisma.TherapistProfileWhereInput = {
       isAcceptingPatients: true,
+      // Only surface therapists who cleared the application review and
+      // aren't currently suspended. applicationStatus is nullable for rows
+      // that predate the application system (seed.ts stamps those APPROVED
+      // directly) — anyone else defaults to hidden until approved.
+      applicationStatus: 'APPROVED',
+      isSuspended: false,
       ...(specialisation
         ? { specialisation: { contains: specialisation, mode: 'insensitive' } }
         : {}),

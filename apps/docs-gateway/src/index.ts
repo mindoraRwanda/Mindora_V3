@@ -1,4 +1,5 @@
 import express from 'express';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 
 const PORT = Number(process.env.DOCS_GATEWAY_PORT) || 3010;
@@ -67,6 +68,11 @@ const SERVICES = [
 ];
 
 const app = express();
+
+// CSP off: this whole service is a Swagger UI, not a page serving
+// third-party content — the default CSP would break swagger-ui-express's
+// inline scripts/styles. Every other helmet default stays on.
+app.use(helmet({ contentSecurityPolicy: false }));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });

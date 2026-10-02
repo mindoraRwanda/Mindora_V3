@@ -735,6 +735,132 @@ describe('GET /analytics', () => {
   });
 });
 
+describe('GET /analytics/detailed', () => {
+  it('assembles users/therapists/appointments sections from the two extended internal endpoints', async () => {
+    mockHttpGet.mockImplementation((_base: string, path: string) => {
+      if (path.startsWith('/internal/users/analytics')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          data: {
+            totalUsers: 10,
+            usersByRole: { PATIENT: 7, THERAPIST: 2, ADMIN: 1 },
+            newUsersInRange: 3,
+            suspendedUsers: 1,
+            dau: 2,
+            wau: 5,
+            mau: 8,
+            registrationTrend: [{ date: '2026-06-10', count: 3 }],
+            therapistApplications: {
+              byStatus: { APPROVED: 2, REJECTED: 1 },
+              approvalRate: 2 / 3,
+              rejectionRate: 1 / 3,
+              applicationTrend: [{ date: '2026-06-10', count: 1 }],
+            },
+            totalTherapists: 2,
+            suspendedTherapists: 0,
+          },
+        });
+      }
+      if (path.startsWith('/internal/appointments/analytics')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          data: {
+            totalAppointments: 5,
+            completedAppointments: 3,
+            statusBreakdown: { COMPLETED: 3, CANCELLED: 1 },
+            completionRate: 0.75,
+            cancellationRate: 0.25,
+            sessionTrend: [
+              { date: '2026-06-10', completed: 3, cancelled: 1, pending: 0, confirmed: 0 },
+            ],
+          },
+        });
+      }
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/analytics/detailed')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.users).toMatchObject({
+      totalUsers: 10,
+      usersByRole: { PATIENT: 7, THERAPIST: 2, ADMIN: 1 },
+      dau: 2,
+      wau: 5,
+      mau: 8,
+    });
+    expect(response.body.therapists).toMatchObject({
+      totalTherapists: 2,
+      suspendedTherapists: 0,
+      applications: { byStatus: { APPROVED: 2, REJECTED: 1 } },
+    });
+    expect(response.body.appointments).toMatchObject({
+      totalAppointments: 5,
+      completionRate: 0.75,
+    });
+    expect(response.body.range).toEqual({
+      from: expect.any(String),
+      to: expect.any(String),
+    });
+  });
+
+  it('users and therapists sections are both null (not 503) when User Service is down, appointments unaffected', async () => {
+    mockHttpGet.mockImplementation((_base: string, path: string) => {
+      if (path.startsWith('/internal/users/analytics')) {
+        return Promise.resolve({ ok: false, status: 503, data: null });
+      }
+      if (path.startsWith('/internal/appointments/analytics')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          data: { totalAppointments: 5, completedAppointments: 3 },
+        });
+      }
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/analytics/detailed')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.users).toBeNull();
+    expect(response.body.therapists).toBeNull();
+    expect(response.body.appointments).toMatchObject({ totalAppointments: 5 });
+  });
+
+  it('accepts custom from/to and forwards them to both internal calls', async () => {
+    mockHttpGet.mockResolvedValue({ ok: true, status: 200, data: {} });
+
+    const app = createApp();
+    await request(app)
+      .get('/analytics/detailed?from=2026-01-01T00:00:00.000Z&to=2026-01-31T00:00:00.000Z')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    const usersCall = mockHttpGet.mock.calls.find((call) =>
+      (call[1] as string).startsWith('/internal/users/analytics')
+    );
+    expect(usersCall?.[1]).toContain('from=2026-01-01T00%3A00%3A00.000Z');
+    expect(usersCall?.[1]).toContain('to=2026-01-31T00%3A00%3A00.000Z');
+  });
+
+  it('rejects a non-admin caller with 403', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/analytics/detailed')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockHttpGet).not.toHaveBeenCalled();
+  });
+});
+
 describe('GET /ai/usage', () => {
   it('proxies successfully and writes an AI_USAGE_VIEWED audit log only after success', async () => {
     mockHttpGet.mockResolvedValue({
@@ -788,5 +914,277 @@ describe('GET /ai/usage', () => {
 
     expect(response.status).toBe(403);
     expect(mockHttpGet).not.toHaveBeenCalled();
+  });
+});
+
+describe('PUT /therapist-applications/:id/approve', () => {
+  it('calls User Service then Auth Service in order, and writes an audit log only after both succeed', async () => {
+    mockCallService
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: { application: { id: 'app-1', userId: 'user-1', status: 'APPROVED' } },
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: { id: 'user-1', role: 'THERAPIST' } });
+    mockAuditCreate.mockResolvedValue({ id: 'audit-1' });
+
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapist-applications/app-1/approve')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.auditLogId).toBe('audit-1');
+    expect(mockCallService).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000',
+      '/internal/users/therapist-applications/app-1/status',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: { status: 'APPROVED', reviewedBy: 'admin-1' },
+      })
+    );
+    expect(mockCallService).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000',
+      '/internal/auth/users/user-1',
+      expect.objectContaining({ method: 'PATCH', body: { role: 'THERAPIST' } })
+    );
+    expect(mockAuditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        adminId: 'admin-1',
+        actionType: 'THERAPIST_APPLICATION_APPROVED',
+        targetId: 'app-1',
+      }),
+    });
+  });
+
+  it('returns 503 and does NOT write an audit log when the role-activation call fails', async () => {
+    mockCallService
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: { application: { id: 'app-1', userId: 'user-1', status: 'APPROVED' } },
+      })
+      .mockResolvedValueOnce({ ok: false, status: 503, data: null });
+
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapist-applications/app-1/approve')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    expect(response.status).toBe(503);
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 without calling Auth Service when the application is not reviewable', async () => {
+    mockCallService.mockResolvedValueOnce({ ok: false, status: 409, data: null });
+
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapist-applications/app-1/approve')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    expect(response.status).toBe(409);
+    expect(mockCallService).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a non-admin caller with 403', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapist-applications/app-1/approve')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+});
+
+describe('PUT /therapist-applications/:id/reject', () => {
+  it('requires a reason', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapist-applications/app-1/reject')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({});
+
+    expect(response.status).toBe(400);
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+
+  it('rejects the application and writes an audit log with the reason', async () => {
+    mockCallService.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { application: { id: 'app-1', userId: 'user-1', status: 'REJECTED' } },
+    });
+    mockAuditCreate.mockResolvedValue({ id: 'audit-2' });
+
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapist-applications/app-1/reject')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({ reason: 'Unverifiable license' });
+
+    expect(response.status).toBe(200);
+    expect(mockAuditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actionType: 'THERAPIST_APPLICATION_REJECTED',
+        targetId: 'app-1',
+        metadata: expect.objectContaining({ reason: 'Unverifiable license' }),
+      }),
+    });
+  });
+});
+
+describe('PUT /therapist-applications/:id/request-info', () => {
+  it('requires a note', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapist-applications/app-1/request-info')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({});
+
+    expect(response.status).toBe(400);
+  });
+
+  it('requests more information and writes an audit log with the note', async () => {
+    mockCallService.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        application: { id: 'app-1', userId: 'user-1', status: 'MORE_INFORMATION_REQUIRED' },
+      },
+    });
+    mockAuditCreate.mockResolvedValue({ id: 'audit-3' });
+
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapist-applications/app-1/request-info')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({ note: 'Please upload your license.' });
+
+    expect(response.status).toBe(200);
+    expect(mockAuditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actionType: 'THERAPIST_APPLICATION_MORE_INFO_REQUESTED',
+        metadata: expect.objectContaining({ note: 'Please upload your license.' }),
+      }),
+    });
+  });
+});
+
+describe('POST /therapist-applications/:id/notes', () => {
+  it('forwards the note with the caller as authorId and writes an audit log', async () => {
+    mockCallService.mockResolvedValue({
+      ok: true,
+      status: 201,
+      data: { note: { id: 'note-1', note: 'Internal comment' } },
+    });
+    mockAuditCreate.mockResolvedValue({ id: 'audit-4' });
+
+    const app = createApp();
+    const response = await request(app)
+      .post('/therapist-applications/app-1/notes')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({ note: 'Internal comment' });
+
+    expect(response.status).toBe(201);
+    expect(mockCallService).toHaveBeenCalledWith(
+      'http://localhost:8000',
+      '/internal/users/therapist-applications/app-1/notes',
+      expect.objectContaining({
+        method: 'POST',
+        body: { authorId: 'admin-1', note: 'Internal comment' },
+      })
+    );
+  });
+});
+
+describe('PUT /therapists/:id/suspend', () => {
+  it('revokes access first, then flips the discovery flag, then audits — distinct actionType from generic user suspend', async () => {
+    mockCallService
+      .mockResolvedValueOnce({ ok: true, status: 200, data: { message: 'User suspended', userId: 't1' } })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: { userId: 't1', isSuspended: true } });
+    mockAuditCreate.mockResolvedValue({ id: 'audit-5' });
+
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapists/t1/suspend')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({ reason: 'conduct violation' });
+
+    expect(response.status).toBe(200);
+    expect(mockCallService).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000',
+      '/internal/users/t1/suspend',
+      expect.objectContaining({ method: 'PUT', body: { reason: 'conduct violation' } })
+    );
+    expect(mockCallService).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000',
+      '/internal/users/t1/therapist-suspension',
+      expect.objectContaining({ method: 'PATCH', body: { isSuspended: true } })
+    );
+    expect(mockAuditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ actionType: 'THERAPIST_SUSPENDED', targetId: 't1' }),
+    });
+  });
+
+  it('still audits the suspension even if the discovery-flag call fails (access revocation already succeeded)', async () => {
+    mockCallService
+      .mockResolvedValueOnce({ ok: true, status: 200, data: { message: 'User suspended', userId: 't1' } })
+      .mockResolvedValueOnce({ ok: false, status: 503, data: null });
+    mockAuditCreate.mockResolvedValue({ id: 'audit-6' });
+
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapists/t1/suspend')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({ reason: 'conduct violation' });
+
+    expect(response.status).toBe(200);
+    expect(mockAuditCreate).toHaveBeenCalled();
+  });
+
+  it('404s and does not touch the discovery flag when the user does not exist', async () => {
+    mockCallService.mockResolvedValueOnce({ ok: false, status: 404, data: null });
+
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapists/does-not-exist/suspend')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({ reason: 'conduct violation' });
+
+    expect(response.status).toBe(404);
+    expect(mockCallService).toHaveBeenCalledTimes(1);
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('PUT /therapists/:id/reactivate', () => {
+  it('restores access and clears the discovery flag', async () => {
+    mockCallService
+      .mockResolvedValueOnce({ ok: true, status: 200, data: { message: 'User reactivated', userId: 't1' } })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: { userId: 't1', isSuspended: false } });
+    mockAuditCreate.mockResolvedValue({ id: 'audit-7' });
+
+    const app = createApp();
+    const response = await request(app)
+      .put('/therapists/t1/reactivate')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({ reason: 'appeal approved' });
+
+    expect(response.status).toBe(200);
+    expect(mockCallService).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000',
+      '/internal/users/t1/therapist-suspension',
+      expect.objectContaining({ method: 'PATCH', body: { isSuspended: false } })
+    );
+    expect(mockAuditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ actionType: 'THERAPIST_REACTIVATED' }),
+    });
   });
 });

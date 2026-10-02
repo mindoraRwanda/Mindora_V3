@@ -152,6 +152,24 @@ routes:
     paths: [/api/v1/users/health]
     strip_path: false
     methods: [GET]
+  # Was missing from this file entirely (present in the local kong.yml) —
+  # without it, therapist profile photos 404 in production. An <img> tag
+  # can't send an Authorization header, so this can't sit behind the
+  # jwt-protected user-api route below.
+  - name: user-photos
+    service: user-service
+    paths: [/api/v1/users/photos]
+    strip_path: false
+    methods: [GET]
+  # Therapist application documents (GridFS) — same jwt-free carve-out as
+  # user-photos above, same reason: a window.open()/<a href> download can't
+  # attach an Authorization header. Authorized instead by the short-lived
+  # signed token object-storage.ts puts in the URL's query string.
+  - name: user-documents
+    service: user-service
+    paths: [/api/v1/users/therapist-documents]
+    strip_path: false
+    methods: [GET]
   - name: appointment-health
     service: appointment-service
     paths: [/api/v1/appointments/health]
@@ -222,7 +240,12 @@ routes:
     service: user-service
     paths: [/internal/users]
     strip_path: false
-    methods: [GET, PUT]
+    # POST/PATCH added for the therapist-application review endpoints
+    # (list/detail/status-transition/notes/suspension-flag) — this drifted
+    # out of sync with the local kong.yml's identical fix when it was made;
+    # left at [GET, PUT] here would 405 every admin review action in
+    # production while working fine locally.
+    methods: [GET, POST, PUT, PATCH]
     plugins:
       - name: jwt
       - name: rate-limiting

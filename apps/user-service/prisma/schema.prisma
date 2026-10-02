@@ -62,7 +62,131 @@ model TherapistProfile {
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
 
+  // Denormalized from TherapistApplication for GET /therapists filtering
+  // only — nullable because rows seeded/created before the application
+  // system existed predate this (seed.ts stamps them APPROVED directly).
+  // The application/status-transition endpoints are the source of truth;
+  // never write these two fields from anywhere else.
+  applicationStatus TherapistApplicationStatus? @map("application_status")
+  applicationId     String?                     @db.Uuid @map("application_id")
+  // Distinct from Auth Service's account-level suspension (isActive):
+  // that revokes all API access; this only hides the therapist from patient
+  // discovery. Admin-service's therapist-suspend route sets both, in that
+  // order, so a failed auth-service call never leaves a therapist hidden
+  // from search but still fully able to use a live token.
+  isSuspended       Boolean                     @default(false) @map("is_suspended")
+
   @@index([isAcceptingPatients])
   @@index([specialisation])
+  @@index([applicationStatus])
+  @@index([isSuspended])
   @@map("therapist_profiles")
+}
+
+enum TherapistApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  MORE_INFORMATION_REQUIRED
+}
+
+// A prospective therapist's onboarding application. userId is a plain
+// identifier, no @relation — same cross-service convention as
+// PatientProfile/TherapistProfile.userId above; the account itself lives in
+// Auth Service. A user keeps role PATIENT through the entire review; role
+// only flips to THERAPIST when this application is APPROVED (see
+// user.routes.ts's status-transition handler and auth.routes.ts's
+// PATCH /internal/auth/users/:id).
+model TherapistApplication {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  status TherapistApplicationStatus @default(DRAFT)
+
+  fullName     String @map("full_name")
+  phoneNumber  String @map("phone_number")
+  contactEmail String @map("contact_email")
+
+  professionalBio                String    @map("professional_bio")
+  qualifications                  String[]  @default([])
+  certifications                  String[]  @default([])
+  licenseNumber                   String    @map("license_number")
+  licenseIssuingBody              String    @map("license_issuing_body")
+  licenseExpiryDate               DateTime? @map("license_expiry_date")
+  professionalRegistrationNumber  String?   @map("professional_registration_number")
+  specialisations                 String[]  @default([])
+  yearsOfExperience               Int       @map("years_of_experience")
+  languages                       String[]  @default([])
+
+  // Free text at intake, not a real schedule — the therapist configures
+  // real availability in appointment-service after approval, this is only
+  // context for the reviewer.
+  availabilitySummary String? @map("availability_summary")
+  location            String
+  timezone            String  @default("Africa/Kigali")
+
+  submittedAt DateTime? @map("submitted_at")
+  reviewedAt  DateTime? @map("reviewed_at")
+  // The admin's Auth Service userId — plain field, not a local FK, same
+  // convention as userId above.
+  reviewedBy  String?   @db.Uuid @map("reviewed_by")
+  // Applicant-visible record of the last REJECTED/MORE_INFORMATION_REQUIRED
+  // decision. Without these, the reason/note only ever reached the
+  // applicant via the one-off notification email (see notification-service)
+  // — anyone who missed that email, or just revisits the application page
+  // later, had no way to see why. Whichever is relevant to the current
+  // `status` is the one to show; the other is simply stale from a prior
+  // decision, not cleared on later transitions.
+  rejectionReason String? @map("rejection_reason")
+  infoRequestNote String? @map("info_request_note")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  documents TherapistDocument[]
+  notes     TherapistApplicationNote[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([submittedAt])
+  @@map("therapist_applications")
+}
+
+model TherapistDocument {
+  id            String               @id @default(uuid()) @db.Uuid
+  applicationId String               @map("application_id") @db.Uuid
+  application   TherapistApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // LICENSE | CERTIFICATION | ID | OTHER — plain string, not an enum, kept
+  // loose since new document categories shouldn't need a migration.
+  documentType String   @map("document_type")
+  fileName     String   @map("file_name")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  // Object-store key only — never a public URL. Retrieval is always a
+  // short-TTL presigned GET generated per request; see object-storage.ts.
+  storageKey   String   @map("storage_key")
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+
+  @@index([applicationId])
+  @@map("therapist_documents")
+}
+
+// Internal reviewer commentary on an application — distinct from
+// admin-service's immutable audit_logs (that's the action record: who
+// approved/rejected/requested-info and when). This is free-form notes
+// admins leave for each other, visible only within the admin review UI.
+model TherapistApplicationNote {
+  id            String               @id @default(uuid()) @db.Uuid
+  applicationId String               @map("application_id") @db.Uuid
+  application   TherapistApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  // The admin's Auth Service userId — plain field, not a local FK.
+  authorId      String               @map("author_id") @db.Uuid
+  note          String
+  createdAt     DateTime             @default(now()) @map("created_at")
+
+  @@index([applicationId])
+  @@map("therapist_application_notes")
 }
