@@ -5,6 +5,7 @@ import express, {
 } from 'express';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import helmet from 'helmet';
 import { appointmentRouter } from './routes/appointment.routes.js';
 import { registerOpenApiDocs } from './lib/openapi-docs.js';
 
@@ -19,6 +20,15 @@ export function createApp() {
   // Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
   // real client IP from X-Forwarded-For instead of Kong's own container IP.
   app.set('trust proxy', 1);
+  // Helmet defaults, CSP included. swagger-ui-express loads its scripts from
+  // files and only needs inline styles, both allowed by the default policy.
+  // upgrade-insecure-requests is dropped so /docs still loads over plain HTTP
+  // (local dev, internal container traffic).
+  app.use(
+    helmet({
+      contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } },
+    })
+  );
   app.use(express.json());
 
   try {

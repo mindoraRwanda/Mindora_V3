@@ -19,9 +19,15 @@ model notification_logs {
   deliveredAt   DateTime?
   failureReason String?
   createdAt     DateTime  @default(now())
+  // Set when the user opens/dismisses this notification in-app (GET/PUT
+  // /api/v1/notifications). Nullable = unread; this is the same row the
+  // admin-only delivery log already reads (GET /api/v1/notifications/logs)
+  // — one table serving both views, not a second notifications system.
+  readAt        DateTime?
 
   @@index([userId])
   @@index([eventType])
   @@index([status])
   @@index([createdAt])
+  @@index([userId, readAt])
 }

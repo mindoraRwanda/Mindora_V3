@@ -91,7 +91,8 @@ REDIS_URL=${{Redis.REDIS_URL}}
 # whatever credential variables its Variables tab actually shows (commonly
 # MONGOUSER/MONGOPASSWORD, but confirm the exact names). No trailing
 # database name or query string here — ecosystem.config.cjs appends
-# /mindora_community, /mindora_messaging, and ?authSource=admin itself.
+# /mindora_community, /mindora_messaging, /mindora_user_documents, and
+# ?authSource=admin itself.
 MONGO_BASE_URL=mongodb://${{MongoDB.MONGOUSER}}:${{MongoDB.MONGOPASSWORD}}@${{MongoDB.RAILWAY_PRIVATE_DOMAIN}}:27017
 
 # RabbitMQ's official template also generates its own credentials — use its
@@ -102,6 +103,16 @@ RABBITMQ_URL=${{RabbitMQ.RABBITMQ_PRIVATE_URL}}
 # and admin-service all call out to Kong for service-to-service auth-enforced
 # lookups. Fine to add this later; those specific calls just fail until it's set.
 KONG_URL=http://<kong-service-name>.railway.internal:8000
+
+# Different from KONG_URL above: this one is handed to a *browser*
+# (user-service mints therapist-document download links pointing here -
+# see apps/user-service/src/lib/object-storage.ts) and so must be the same
+# externally-reachable Kong URL the frontend's NEXT_PUBLIC_API_URL and the
+# mobile app's EXPO_PUBLIC_KONG_BASE_URL already point at (e.g.
+# https://api.mindora.rw), never the *.railway.internal host above - that
+# hostname only resolves inside Railway's private network, not from a
+# visitor's browser.
+PUBLIC_KONG_URL=https://api.mindora.rw
 
 JWT_SECRET=<generate with: openssl rand -hex 32>
 INTERNAL_SERVICE_TOKEN=<generate locally with the SAME JWT_SECRET as above: JWT_SECRET=<value> npm run generate:service-token --workspace=@mindora/auth-service>
@@ -120,6 +131,21 @@ THERAPY_CHATBOT_BASE_URL=https://chatbot.mindora.rw
 # Get the real value from the chatbot vendor via a password manager — never commit it.
 MINDORA_INTEGRATION_KEY=<get from the chatbot vendor, never commit>
 ```
+
+Therapist application documents (license PDFs/IDs) no longer need their own
+object-storage credentials — they live in MongoDB GridFS now, on the same
+Mongo instance/`MONGO_BASE_URL` already set above for community-service and
+messaging-service (see `apps/user-service/src/lib/mongo.ts`). This feature
+does need `PUBLIC_KONG_URL` set (above) — without it, document downloads
+default to `http://localhost:8000`, which is correct for local dev but not
+reachable from a real visitor's browser in production.
+
+Kong also needs the `user-documents` route (`infrastructure/kong/
+kong.railway.yml`) — deliberately outside the jwt plugin, same as
+`user-photos` beside it, since a document download link is opened directly
+by the browser (`window.open()`), which can't attach an Authorization
+header. Both routes ship in the checked-in `kong.railway.yml`; nothing to
+add here, just don't remove them if you're hand-editing that file.
 
 `USER_SERVICE_URL` and `THERAPY_CHATBOT_BASE_URL` are the only two values
 above that are correct to paste exactly as shown — everything else is either

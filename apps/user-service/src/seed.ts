@@ -370,11 +370,18 @@ async function main() {
   for (const t of SEED_THERAPISTS) {
     await prisma.therapistProfile.upsert({
       where: { userId: t.id },
-      // Only photoUrl is synced on rerun — everything else is left alone so
-      // a reseed doesn't clobber hand-edited dev data. undefined here (for
-      // the 22 therapists with no photo) means "leave unchanged," per
-      // Prisma's update semantics.
-      update: { photoUrl: t.photoUrl },
+      // photoUrl, plus applicationStatus/isSuspended — everything else is
+      // left alone so a reseed doesn't clobber hand-edited dev data.
+      // applicationStatus/isSuspended are the exception: they gate
+      // GET /therapists (patient-facing discovery) as of the therapist
+      // application system, so a database seeded before that migration
+      // must get them backfilled on rerun, not just on first create, or
+      // these fixtures silently vanish from discovery.
+      update: {
+        photoUrl: t.photoUrl,
+        applicationStatus: 'APPROVED',
+        isSuspended: false,
+      },
       create: {
         userId: t.id,
         userName: t.userName,
@@ -387,6 +394,13 @@ async function main() {
         photoUrl: t.photoUrl,
         role: 'THERAPIST',
         email: t.email,
+        // These fixtures represent therapists who were never routed through
+        // the application system (seeded directly, same as
+        // auth-service's seed.ts creating their THERAPIST-role account
+        // directly) — stamped pre-approved so they behave like any other
+        // active therapist for discovery/suspension purposes.
+        applicationStatus: 'APPROVED',
+        isSuspended: false,
       },
     });
   }

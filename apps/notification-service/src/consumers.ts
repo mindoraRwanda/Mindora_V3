@@ -5,6 +5,7 @@ import {
   communityDomainEventSchema,
   messageReceivedEventSchema,
   moodDomainEventSchema,
+  therapistApplicationDomainEventSchema,
 } from '@mindora/events';
 import type {
   AppointmentBookedEvent,
@@ -24,6 +25,12 @@ import {
   appointmentBookedTemplate,
   appointmentConfirmedTemplate,
   appointmentCancelledTemplate,
+  therapistApplicationApprovedTemplate,
+  therapistApplicationMoreInfoTemplate,
+  therapistApplicationRejectedTemplate,
+  therapistApplicationSubmittedTemplate,
+  therapistReactivatedTemplate,
+  therapistSuspendedTemplate,
 } from './emailTemplates.js';
 import { subscribeWithRetry } from './retry.js';
 import { InvalidEventPayloadError } from './errors.js';
@@ -34,6 +41,7 @@ const NOTIFICATION_QUEUES = {
   MOOD: 'notification.mood',
   AI: 'notification.ai',
   COMMUNITY: 'notification.community',
+  THERAPIST_APPLICATIONS: 'notification.therapist-applications',
 } as const;
 
 export const SUBSCRIBED_EXCHANGES = Object.values(EXCHANGES);
@@ -292,6 +300,83 @@ async function handleMood(payload: unknown): Promise<void> {
   // No push/email/SMS wired to mood events yet — validation only, for now.
 }
 
+async function handleTherapistApplication(payload: unknown): Promise<void> {
+  const parsed = therapistApplicationDomainEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid therapist application event: ${parsed.error.message}`,
+      EXCHANGES.THERAPIST_APPLICATIONS
+    );
+  }
+  const event = parsed.data;
+  const name = (await getUserName(event.userId)) ?? 'there';
+  const prefs = await getUserPreferences(event.userId);
+
+  switch (event.eventType) {
+    case 'therapist_application.submitted':
+      await sendEmailIfEnabled(
+        event.userId,
+        'Your therapist application has been received',
+        therapistApplicationSubmittedTemplate(name),
+        event.eventType,
+        prefs
+      );
+      return;
+    case 'therapist_application.approved':
+      await sendPushIfEnabled(
+        event.userId,
+        'Application Approved',
+        'Your therapist application has been approved.',
+        event.eventType,
+        prefs
+      );
+      await sendEmailIfEnabled(
+        event.userId,
+        'Your therapist application has been approved',
+        therapistApplicationApprovedTemplate(name),
+        event.eventType,
+        prefs
+      );
+      return;
+    case 'therapist_application.rejected':
+      await sendEmailIfEnabled(
+        event.userId,
+        'An update on your therapist application',
+        therapistApplicationRejectedTemplate(name, event.reason),
+        event.eventType,
+        prefs
+      );
+      return;
+    case 'therapist_application.more_info_requested':
+      await sendEmailIfEnabled(
+        event.userId,
+        'More information needed for your therapist application',
+        therapistApplicationMoreInfoTemplate(name, event.note),
+        event.eventType,
+        prefs
+      );
+      return;
+    case 'therapist_application.suspended':
+      await sendEmailIfEnabled(
+        event.userId,
+        'Your Mindora therapist account has been suspended',
+        therapistSuspendedTemplate(name),
+        event.eventType,
+        prefs
+      );
+      return;
+    case 'therapist_application.reactivated':
+      await sendEmailIfEnabled(
+        event.userId,
+        'Your Mindora therapist account has been reactivated',
+        therapistReactivatedTemplate(name),
+        event.eventType,
+        prefs
+      );
+      return;
+  }
+}
+
 export async function startConsumers(): Promise<void> {
   // 'topic' here because appointment-service/mood-tracking-service publish
   // via publishToExchange, which declares these two exchanges as 'topic'.
@@ -325,4 +410,11 @@ export async function startConsumers(): Promise<void> {
   );
 
   await subscribeWithRetry(EXCHANGES.AI, NOTIFICATION_QUEUES.AI, handleAi);
+
+  await subscribeWithRetry(
+    EXCHANGES.THERAPIST_APPLICATIONS,
+    NOTIFICATION_QUEUES.THERAPIST_APPLICATIONS,
+    handleTherapistApplication,
+    'topic'
+  );
 }

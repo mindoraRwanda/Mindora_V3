@@ -3,6 +3,7 @@ import express, {
   type Request,
   type Response,
 } from 'express';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import { authenticate } from '@mindora/auth-middleware';
 import aiRouter from './routes/ai.routes.js';
@@ -13,6 +14,22 @@ const SERVICE_NAME = 'ai-integration-service';
 const GATEWAY_HEALTH_PATH = '/api/v1/ai/health';
 
 const app = express();
+
+// Trust exactly one hop (Kong) so req.ip / express-rate-limit read the real
+// client IP from X-Forwarded-For instead of Kong's own container IP — this
+// service was missing this (every other service already has it), so its
+// rate limiter has been keying off Kong's IP, not the actual caller's.
+app.set('trust proxy', 1);
+
+// Helmet defaults, CSP included. swagger-ui-express loads its scripts from
+// files and only needs inline styles, both allowed by the default policy.
+// upgrade-insecure-requests is dropped so /docs still loads over plain HTTP
+// (local dev, internal container traffic).
+app.use(
+  helmet({
+    contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } },
+  })
+);
 
 app.use(express.json());
 

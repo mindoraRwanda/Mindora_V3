@@ -33,8 +33,8 @@ describe('startConsumers — registration', () => {
     await startConsumers();
   });
 
-  it('subscribes to exactly 5 exchanges', () => {
-    expect(mocks.subscribeWithRetry).toHaveBeenCalledTimes(5);
+  it('subscribes to exactly 6 exchanges', () => {
+    expect(mocks.subscribeWithRetry).toHaveBeenCalledTimes(6);
   });
 
   it('SUBSCRIBED_EXCHANGES contains all exchange names', () => {
@@ -52,6 +52,7 @@ describe('startConsumers — registration', () => {
     expect(registeredExchanges).toContain(EXCHANGES.COMMUNITY);
     expect(registeredExchanges).toContain(EXCHANGES.MOOD);
     expect(registeredExchanges).toContain(EXCHANGES.AI);
+    expect(registeredExchanges).toContain(EXCHANGES.THERAPIST_APPLICATIONS);
   });
 });
 

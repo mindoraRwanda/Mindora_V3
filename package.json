@@ -24,6 +24,7 @@
     "db:seed:appointments": "npm run seed -w @mindora/appointment-service",
     "db:seed:mood": "npm run seed -w @mindora/mood-tracking-service",
     "db:seed:community": "npm run seed -w @mindora/community-service",
+    "seed": "node scripts/seed-platform/index.mjs",
     "postinstall": "node -e \"const{rmSync,existsSync}=require('fs');const p='node_modules/africastalking/node_modules/axios';if(existsSync(p))rmSync(p,{recursive:true,force:true});\""
   },
   "repository": {
@@ -55,21 +56,21 @@
   },
   "packageManager": "npm@10.9.2",
   "overrides": {
-    "axios": "^1.18.1",
-    "joi": "^18.2.3",
+    "axios": "^1.20.0",
+    "joi": "^18.2.9",
     "africastalking": {
-      "axios": "^1.18.1",
-      "joi": "^18.2.3"
+      "axios": "1.20.0",
+      "joi": "18.2.9"
     },
     "vite": "7.3.6"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
-    "axios": "^1.18.1",
+    "axios": "^1.20.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "ioredis": "^5.11.1",
-    "joi": "^18.2.3",
+    "joi": "^18.2.9",
     "mongoose": "^9.6.3",
     "resend": "^6.16.0",
     "socket.io": "^4.8.3"
