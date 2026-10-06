@@ -18,7 +18,7 @@
 // Configure: TOTAL_USERS, PATIENT_RATIO, THERAPIST_RATIO, ADMIN_COUNT, SEED
 // (see .env.example for the full list and defaults).
 
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import argon2 from 'argon2';
 import { createRng } from './rng.mjs';
 import {
@@ -51,10 +51,9 @@ const TOTAL_USERS = Number(process.env.TOTAL_USERS ?? 10000);
 const PATIENT_RATIO = Number(process.env.PATIENT_RATIO ?? 0.85);
 const THERAPIST_RATIO = Number(process.env.THERAPIST_RATIO ?? 0.1);
 const ADMIN_COUNT = Number(process.env.ADMIN_COUNT ?? 5);
-const SEED = process.env.SEED
-  ? Number(process.env.SEED)
-  : Math.floor(Math.random() * 2 ** 31);
-const SEED_PASSWORD = process.env.SEED_PASSWORD ?? 'Seeded-User-Not-A-Real-Login-1!';
+const SEED = process.env.SEED ? Number(process.env.SEED) : randomInt(2 ** 31);
+const SEED_PASSWORD =
+  process.env.SEED_PASSWORD ?? 'Seeded-User-Not-A-Real-Login-1!';
 const BATCH_SIZE = 2000;
 
 const AUTH_DATABASE_URL =
@@ -109,12 +108,18 @@ function log(msg) {
 // client so field names/enums match that service's schema exactly.
 // ---------------------------------------------------------------------------
 
-const authDb = new AuthClient({ datasources: { db: { url: AUTH_DATABASE_URL } } });
-const userDb = new UserClient({ datasources: { db: { url: USER_DATABASE_URL } } });
+const authDb = new AuthClient({
+  datasources: { db: { url: AUTH_DATABASE_URL } },
+});
+const userDb = new UserClient({
+  datasources: { db: { url: USER_DATABASE_URL } },
+});
 const appointmentDb = new AppointmentClient({
   datasources: { db: { url: APPOINTMENT_DATABASE_URL } },
 });
-const adminDb = new AdminClient({ datasources: { db: { url: ADMIN_DATABASE_URL } } });
+const adminDb = new AdminClient({
+  datasources: { db: { url: ADMIN_DATABASE_URL } },
+});
 const notificationDb = new NotificationClient({
   datasources: { db: { url: NOTIFICATION_DATABASE_URL } },
 });
@@ -197,7 +202,8 @@ function buildRefreshTokens(user) {
   for (let i = 0; i < count; i++) {
     const daysAgo = rng.int(0, spanDays);
     let createdAt = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
-    if (createdAt.getTime() < earliestPossible) createdAt = new Date(earliestPossible);
+    if (createdAt.getTime() < earliestPossible)
+      createdAt = new Date(earliestPossible);
     rows.push({
       id: randomUUID(),
       userId: user.id,
@@ -215,7 +221,9 @@ export async function main() {
     `Starting seed — TOTAL_USERS=${TOTAL_USERS} PATIENT_RATIO=${PATIENT_RATIO} ` +
       `THERAPIST_RATIO=${THERAPIST_RATIO} ADMIN_COUNT=${ADMIN_COUNT} SEED=${SEED}`
   );
-  log('(reproduce this exact dataset later with: SEED=' + SEED + ' npm run seed)');
+  log(
+    '(reproduce this exact dataset later with: SEED=' + SEED + ' npm run seed)'
+  );
   const startedAt = Date.now();
 
   // -------------------------------------------------------------------------
@@ -237,8 +245,9 @@ export async function main() {
   );
 
   const admins = Array.from({ length: ADMIN_COUNT }, () => makeUser('ADMIN'));
-  const approvedTherapists = Array.from({ length: approvedTherapistCount }, () =>
-    makeUser('THERAPIST')
+  const approvedTherapists = Array.from(
+    { length: approvedTherapistCount },
+    () => makeUser('THERAPIST')
   );
   const prospectiveTherapists = Array.from(
     { length: prospectiveTherapistCount },
@@ -326,10 +335,7 @@ export async function main() {
   ];
 
   function buildApplication(user, { approved }) {
-    const specialisations = rng.pickMany(
-      SPECIALISATIONS,
-      rng.int(1, 3)
-    );
+    const specialisations = rng.pickMany(SPECIALISATIONS, rng.int(1, 3));
     const languages = pickLanguages(rng);
     const submittedAt = new Date(
       user.createdAt.getTime() + rng.int(1, 14) * 24 * 60 * 60 * 1000
@@ -342,7 +348,9 @@ export async function main() {
       contactEmail: user.email,
       professionalBio: buildBio(rng, specialisations),
       qualifications: rng.pickMany(QUALIFICATIONS, rng.int(1, 2)),
-      certifications: rng.chance(0.5) ? rng.pickMany(CERTIFICATIONS, rng.int(1, 2)) : [],
+      certifications: rng.chance(0.5)
+        ? rng.pickMany(CERTIFICATIONS, rng.int(1, 2))
+        : [],
       licenseNumber: randomLicenseNumber(rng),
       licenseIssuingBody: rng.pick(LICENSE_ISSUING_BODIES),
       professionalRegistrationNumber: rng.chance(0.6)
@@ -351,7 +359,9 @@ export async function main() {
       specialisations,
       yearsOfExperience: rng.int(1, 25),
       languages,
-      availabilitySummary: rng.chance(0.5) ? 'Weekday evenings, Kigali time' : null,
+      availabilitySummary: rng.chance(0.5)
+        ? 'Weekday evenings, Kigali time'
+        : null,
       location: user.location,
       timezone: 'Africa/Kigali',
       submittedAt,
@@ -379,7 +389,10 @@ export async function main() {
         // Never actually submitted - matches the real create-a-draft flow.
         application.submittedAt = null;
         application.updatedAt = user.createdAt;
-      } else if (status === 'REJECTED' || status === 'MORE_INFORMATION_REQUIRED') {
+      } else if (
+        status === 'REJECTED' ||
+        status === 'MORE_INFORMATION_REQUIRED'
+      ) {
         const reviewedAt = new Date(
           submittedAt.getTime() + rng.int(1, 10) * 24 * 60 * 60 * 1000
         );
@@ -413,7 +426,9 @@ export async function main() {
     'therapist_applications'
   );
 
-  const applicationByUserId = new Map(allApplications.map((a) => [a.userId, a]));
+  const applicationByUserId = new Map(
+    allApplications.map((a) => [a.userId, a])
+  );
 
   await createManyBatched(
     userDb.therapistProfile,
@@ -465,8 +480,12 @@ export async function main() {
       targetId: application.id,
       metadata: {
         userId: application.userId,
-        ...(application.rejectionReason ? { reason: application.rejectionReason } : {}),
-        ...(application.infoRequestNote ? { note: application.infoRequestNote } : {}),
+        ...(application.rejectionReason
+          ? { reason: application.rejectionReason }
+          : {}),
+        ...(application.infoRequestNote
+          ? { note: application.infoRequestNote }
+          : {}),
       },
       createdAt: application.reviewedAt,
     });
@@ -479,7 +498,8 @@ export async function main() {
     auditLogs.push({
       id: randomUUID(),
       adminId: rng.pick(admins).id,
-      actionType: u.role === 'THERAPIST' ? 'THERAPIST_SUSPENDED' : 'USER_SUSPENDED',
+      actionType:
+        u.role === 'THERAPIST' ? 'THERAPIST_SUSPENDED' : 'USER_SUSPENDED',
       targetId: u.id,
       metadata: { reason: 'Policy violation (seeded)' },
       createdAt: suspendedAt > now ? now : suspendedAt,
@@ -518,7 +538,11 @@ export async function main() {
       });
     }
   }
-  await createManyBatched(appointmentDb.therapistSchedule, schedules, 'therapist_schedules');
+  await createManyBatched(
+    appointmentDb.therapistSchedule,
+    schedules,
+    'therapist_schedules'
+  );
   await createManyBatched(
     appointmentDb.therapistWorkingHours,
     workingHoursRows,
@@ -558,7 +582,10 @@ export async function main() {
       }[patient.activityLevel];
       if (!rng.chance(engagementChance)) continue;
 
-      const appointmentCount = rng.int(1, patient.activityLevel === 'highlyActive' ? 8 : 4);
+      const appointmentCount = rng.int(
+        1,
+        patient.activityLevel === 'highlyActive' ? 8 : 4
+      );
       for (let i = 0; i < appointmentCount; i++) {
         const therapist = rng.pick(bookableTherapists);
         // Spread across ~9 months in the past to ~2 months in the future.
@@ -576,7 +603,11 @@ export async function main() {
         if (isFuture) {
           status = rng.chance(0.6) ? 'CONFIRMED' : 'PENDING';
         } else {
-          const outcome = rng.weighted({ completed: 65, cancelled: 20, noShow: 15 });
+          const outcome = rng.weighted({
+            completed: 65,
+            cancelled: 20,
+            noShow: 15,
+          });
           if (outcome === 'completed') {
             status = 'COMPLETED';
             rating = rng.chance(0.8) ? rng.int(4, 5) : rng.int(1, 5);
@@ -606,14 +637,20 @@ export async function main() {
           status,
           cancellationReason: cancellationReason ?? null,
           rating: rating ?? null,
-          createdAt: new Date(slotStart.getTime() - rng.int(1, 10) * 24 * 60 * 60 * 1000),
+          createdAt: new Date(
+            slotStart.getTime() - rng.int(1, 10) * 24 * 60 * 60 * 1000
+          ),
           updatedAt: slotStart,
         });
       }
     }
   }
 
-  await createManyBatched(appointmentDb.appointment, appointments, 'appointments');
+  await createManyBatched(
+    appointmentDb.appointment,
+    appointments,
+    'appointments'
+  );
 
   // -------------------------------------------------------------------------
   // Phase 7: notification-service — delivery log for real seeded events
@@ -704,7 +741,7 @@ export async function main() {
   log(`  notification_logs:        ${notificationLogs.length}`);
   log('');
   log(`Finished in ${elapsedSeconds}s. SEED=${SEED}`);
-  log(`All seeded accounts share one password: ${SEED_PASSWORD}`);
+  log('All seeded accounts share one password (set via SEED_PASSWORD).');
 }
 
 main()

@@ -5,9 +5,13 @@ import CircuitBreaker from 'opossum';
 // forge fake-looking log lines (log injection), independent of the
 // format-string concern already handled by never interpolating these values
 // into the first console.error argument.
-function sanitizeForLog(value: string): string {
-  // eslint-disable-next-line no-control-regex
-  return value.replace(/[\x00-\x1f\x7f]/g, '');
+export function sanitizeForLog(value: string): string {
+  return (
+    value
+      .replace(/\r?\n|\r/g, '')
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\x00-\x1f\x7f]/g, '')
+  );
 }
 
 // The shape of every response that comes back from an internal service call
@@ -143,7 +147,11 @@ export async function callService<T>(
       };
     }
 
-    console.error('HTTP client error calling:', sanitizeForLog(url), error);
+    console.error(
+      'HTTP client error calling:',
+      sanitizeForLog(url),
+      sanitizeForLog(error instanceof Error ? error.message : String(error))
+    );
     return {
       data: null,
       status: 500,

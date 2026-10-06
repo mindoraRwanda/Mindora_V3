@@ -31,6 +31,7 @@ const mockCallService = vi.fn();
 vi.mock('@mindora/http-client', () => ({
   httpClient: { get: (...args: unknown[]) => mockHttpGet(...args) },
   callService: (...args: unknown[]) => mockCallService(...args),
+  sanitizeForLog: (value: string) => value,
 }));
 
 const mockAuditCreate = vi.fn();

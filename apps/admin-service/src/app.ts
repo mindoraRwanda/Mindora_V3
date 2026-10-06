@@ -21,10 +21,15 @@ export function createApp() {
   // — this service was missing this (every other service already has it).
   app.set('trust proxy', 1);
 
-  // CSP off: JSON API plus an internal Swagger UI, not a page serving
-  // third-party content — the default CSP would just break the docs UI's
-  // inline scripts/styles. Every other helmet default stays on.
-  app.use(helmet({ contentSecurityPolicy: false }));
+  // Helmet defaults, CSP included. swagger-ui-express loads its scripts from
+  // files and only needs inline styles, both allowed by the default policy.
+  // upgrade-insecure-requests is dropped so /docs still loads over plain HTTP
+  // (local dev, internal container traffic).
+  app.use(
+    helmet({
+      contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } },
+    })
+  );
 
   app.use(express.json());
 

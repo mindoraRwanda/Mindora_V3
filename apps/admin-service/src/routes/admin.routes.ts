@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { AuthenticatedRequest } from '@mindora/auth-middleware';
-import { callService, httpClient } from '@mindora/http-client';
+import { callService, httpClient, sanitizeForLog } from '@mindora/http-client';
 import {
   adminAddApplicationNoteSchema,
   adminRejectApplicationSchema,
@@ -322,7 +322,7 @@ adminRouter.put(
 
     if (!roleResponse.ok) {
       console.error(
-        `Application ${id} approved but role activation failed for user ${userId}`
+        `Application ${sanitizeForLog(String(id))} approved but role activation failed for user ${sanitizeForLog(String(userId))}`
       );
       res.status(503).json({
         message:
@@ -593,7 +593,7 @@ adminRouter.put(
       // only the discovery-visibility flag failed to update. Not rolled
       // back; logged so it can be reconciled manually.
       console.error(
-        `Therapist ${userId} suspended but discovery flag update failed`
+        `Therapist ${sanitizeForLog(String(userId))} suspended but discovery flag update failed`
       );
     }
 
@@ -666,7 +666,7 @@ adminRouter.put(
     );
     if (!flagResponse.ok) {
       console.error(
-        `Therapist ${userId} reactivated but discovery flag update failed`
+        `Therapist ${sanitizeForLog(String(userId))} reactivated but discovery flag update failed`
       );
     }
 

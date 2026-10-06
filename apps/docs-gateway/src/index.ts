@@ -69,10 +69,22 @@ const SERVICES = [
 
 const app = express();
 
-// CSP off: this whole service is a Swagger UI, not a page serving
-// third-party content — the default CSP would break swagger-ui-express's
-// inline scripts/styles. Every other helmet default stays on.
-app.use(helmet({ contentSecurityPolicy: false }));
+// Helmet defaults, CSP included. swagger-ui-express loads its scripts from
+// files and only needs inline styles, both allowed by the default policy.
+// upgrade-insecure-requests is dropped so /docs still loads over plain HTTP
+// (local dev, internal container traffic).
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        upgradeInsecureRequests: null,
+        // "Try it out" sends requests to each service's own origin
+        // (Kong / the public domain), not just back to this gateway.
+        connectSrc: ["'self'", 'https:', 'http:'],
+      },
+    },
+  })
+);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
