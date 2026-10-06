@@ -36,14 +36,8 @@ export const updateTherapistApplicationSchema = z.object({
   phoneNumber: applicantPhoneNumber.optional(),
   contactEmail: applicantContactEmail.optional(),
   professionalBio: z.string().trim().min(1).max(4000).optional(),
-  qualifications: z
-    .array(z.string().trim().min(1).max(200))
-    .max(20)
-    .optional(),
-  certifications: z
-    .array(z.string().trim().min(1).max(200))
-    .max(20)
-    .optional(),
+  qualifications: z.array(z.string().trim().min(1).max(200)).max(20).optional(),
+  certifications: z.array(z.string().trim().min(1).max(200)).max(20).optional(),
   licenseNumber: z.string().trim().min(1).max(100).optional(),
   licenseIssuingBody: z.string().trim().min(1).max(200).optional(),
   // .nullish() (not .optional()) — a PUT may explicitly send null to clear
@@ -56,7 +50,11 @@ export const updateTherapistApplicationSchema = z.object({
     .max(10)
     .optional(),
   yearsOfExperience: z.coerce.number().int().min(0).max(70).optional(),
-  languages: z.array(z.string().trim().min(1).max(50)).min(1).max(10).optional(),
+  languages: z
+    .array(z.string().trim().min(1).max(50))
+    .min(1)
+    .max(10)
+    .optional(),
   availabilitySummary: z.string().trim().max(1000).nullish(),
   location: z.string().trim().min(1).max(200).optional(),
   timezone: z.string().trim().min(1).max(64).optional(),
@@ -71,7 +69,10 @@ export const submitTherapistApplicationSchema = z.object({
   contactEmail: applicantContactEmail,
   professionalBio: z.string().trim().min(1).max(4000),
   qualifications: z.array(z.string().trim().min(1).max(200)).min(1).max(20),
-  certifications: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
+  certifications: z
+    .array(z.string().trim().min(1).max(200))
+    .max(20)
+    .default([]),
   licenseNumber: z.string().trim().min(1).max(100),
   licenseIssuingBody: z.string().trim().min(1).max(200),
   // .nullish() — these are optional fields backed by nullable Prisma

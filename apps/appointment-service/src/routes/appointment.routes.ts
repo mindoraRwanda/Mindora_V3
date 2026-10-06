@@ -124,7 +124,11 @@ appointmentRouter.get(
     // approval doesn't leave them unbookable until they set this up.
     const candidates =
       schedule && schedule.workingHours.length > 0
-        ? generateCandidateSlotsFromWorkingHours(from, to, schedule.workingHours)
+        ? generateCandidateSlotsFromWorkingHours(
+            from,
+            to,
+            schedule.workingHours
+          )
         : generateCandidateSlots(from, to);
 
     const blocked = [
@@ -322,7 +326,9 @@ appointmentRouter.get(
     const schedule = await prisma.therapistSchedule.findUnique({
       where: { therapistId: authReq.user.userId },
       include: {
-        workingHours: { orderBy: [{ dayOfWeek: 'asc' }, { startMinute: 'asc' }] },
+        workingHours: {
+          orderBy: [{ dayOfWeek: 'asc' }, { startMinute: 'asc' }],
+        },
         timeOff: {
           where: { endsAt: { gt: new Date() } },
           orderBy: { startsAt: 'asc' },

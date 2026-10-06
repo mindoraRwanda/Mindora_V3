@@ -113,7 +113,9 @@ export function appointmentCancelledTemplate(
   `;
 }
 
-export function therapistApplicationSubmittedTemplate(fullName: string): string {
+export function therapistApplicationSubmittedTemplate(
+  fullName: string
+): string {
   return `
     <div style="${BASE_STYLES}">
       <h1 style="color: #2b6cb0; margin-bottom: 8px;">Application Received</h1>

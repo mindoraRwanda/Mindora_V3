@@ -461,7 +461,9 @@ authRouter.patch(
     if (role !== undefined) {
       const parsedRole = userRoleSchema.safeParse(role);
       if (!parsedRole.success) {
-        res.status(400).json({ message: 'role must be PATIENT, THERAPIST, or ADMIN' });
+        res
+          .status(400)
+          .json({ message: 'role must be PATIENT, THERAPIST, or ADMIN' });
         return;
       }
       validatedRole = parsedRole.data;

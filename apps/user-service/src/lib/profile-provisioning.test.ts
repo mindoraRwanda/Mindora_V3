@@ -51,11 +51,21 @@ describe('ensureProfileForUser', () => {
     mockPatientFindUnique.mockResolvedValueOnce(null);
     mockPatientCreate.mockResolvedValueOnce({});
 
-    const created = await ensureProfileForUser('user-1', 'PATIENT', 'Jane', 'jane@example.com');
+    const created = await ensureProfileForUser(
+      'user-1',
+      'PATIENT',
+      'Jane',
+      'jane@example.com'
+    );
 
     expect(created).toBe(true);
     expect(mockPatientCreate).toHaveBeenCalledWith({
-      data: { userId: 'user-1', userName: 'Jane', role: 'PATIENT', email: 'jane@example.com' },
+      data: {
+        userId: 'user-1',
+        userName: 'Jane',
+        role: 'PATIENT',
+        email: 'jane@example.com',
+      },
     });
     expect(mockTherapistCreate).not.toHaveBeenCalled();
   });
@@ -77,7 +87,12 @@ describe('ensureProfileForUser', () => {
 
     expect(created).toBe(true);
     expect(mockTherapistCreate).toHaveBeenCalledWith({
-      data: { userId: 'user-2', userName: 'Dr. X', role: 'THERAPIST', email: undefined },
+      data: {
+        userId: 'user-2',
+        userName: 'Dr. X',
+        role: 'THERAPIST',
+        email: undefined,
+      },
     });
   });
 
@@ -104,7 +119,9 @@ describe('ensureProfileForUser', () => {
     mockPatientFindUnique.mockResolvedValueOnce(null);
     mockPatientCreate.mockRejectedValueOnce(new Error('connection lost'));
 
-    await expect(ensureProfileForUser('user-1', 'PATIENT')).rejects.toThrow('connection lost');
+    await expect(ensureProfileForUser('user-1', 'PATIENT')).rejects.toThrow(
+      'connection lost'
+    );
   });
 });
 

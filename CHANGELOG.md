@@ -51,9 +51,9 @@ pass caught three real bugs the test suite alone would have missed:
    registered at a path relative to the router's mount point
    (`/therapist-documents/download`), but Kong's new `user-documents`
    route uses `strip_path: false` (matching `user-photos`, on purpose —
-   see above), which forwards the *full* `/api/v1/users/...` path
+   see above), which forwards the _full_ `/api/v1/users/...` path
    unstripped. Confirmed live: `Cannot GET /api/v1/users/therapist-
-   documents/download` — the same class of bug already hit and fixed for
+documents/download` — the same class of bug already hit and fixed for
    community-api/ai-api/messaging-api/notification-api elsewhere in this
    stack. Fixed by registering the route at its full literal path,
    matching `user-photos`'s existing convention.
@@ -196,7 +196,7 @@ Every service (`auth`, `user`, `appointment`, `mood-tracking`, `community`,
 sets `X-Content-Type-Options`, `X-Frame-Options`, `Strict-Transport-
 Security`, `Referrer-Policy`, and the rest of helmet's defaults. CSP is
 explicitly off everywhere, documented inline: every one of these is a JSON
-API with an internal Swagger UI at `/docs` (or, for `docs-gateway`, *is*
+API with an internal Swagger UI at `/docs` (or, for `docs-gateway`, _is_
 one) — CSP is an HTML-content-serving concern, and helmet's default would
 just break `swagger-ui-express`'s inline scripts. Live-verified: headers
 present on a direct request, `/docs` still renders.
@@ -221,6 +221,7 @@ pass's scope. Live-verified: 10 rapid login attempts return 401 (bad
 credentials), the 11th+ return 429.
 
 ### Reviewed, no change needed
+
 - **CORS**: already centralized correctly at Kong (explicit origin
   allowlist, `credentials: true`, no wildcard — required together per the
   CORS spec since the refresh-token cookie needs `credentials: 'include'`).
@@ -237,6 +238,7 @@ credentials), the 11th+ return 429.
   checkout at all — already a non-issue, nothing to delete.
 
 ### Not done in this pass
+
 Normalizing the ad hoc `SERVICE` role check (`role !== 'SERVICE'` string
 comparison, repeated across every internal endpoint) into the shared
 `UserRole` type — every check is already correct, this would be a
@@ -269,6 +271,7 @@ localhost/127.0.0.1, overridable only with an explicit
 must never touch a real deployment by accident (spec hard requirement).
 
 Notable design choices:
+
 - Therapist role only flips to THERAPIST on approval — same rule Milestone
   1 built into the real application flow, so the seed doesn't create a
   state the real system couldn't. A smaller pool of PATIENT-role users get
@@ -299,7 +302,7 @@ Notable design choices:
 
 Found live once the seed produced a realistic volume of DRAFT applications
 (never actually submitted, so `submittedAt` is null) — the default sort
-(`submittedAt desc`) put every null-`submittedAt` row *first* (Postgres's
+(`submittedAt desc`) put every null-`submittedAt` row _first_ (Postgres's
 default `NULLS FIRST` on `DESC`), so the admin queue's default view was
 mostly-drafts with real pending applications buried below. Fixed with
 Prisma's `nulls: 'last'` sort modifier. Not a seed-script bug — a
@@ -330,7 +333,7 @@ The existing `GET /admin/analytics` (backing the Overview page's flat stat
 cards) is untouched — its response shape and semantics are byte-for-byte
 identical to before, verified live. This adds a second, richer endpoint,
 `GET /admin/analytics/detailed`, for a new charts-driven Analytics page,
-built by extending each service's *existing* internal analytics endpoint
+built by extending each service's _existing_ internal analytics endpoint
 additively rather than inventing a parallel analytics system:
 
 - `auth-service`'s `GET /internal/auth/analytics` gains `usersByRole`,

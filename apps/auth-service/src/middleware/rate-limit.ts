@@ -31,5 +31,7 @@ export const loginRouteLimiter = rateLimit({
   max: isTest ? 10_000 : 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: 'Too many login attempts — please wait a moment and try again' },
+  message: {
+    message: 'Too many login attempts — please wait a moment and try again',
+  },
 });

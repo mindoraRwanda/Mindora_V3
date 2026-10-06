@@ -267,7 +267,9 @@ notificationsRouter.put(
       data: { readAt: existing.readAt ?? new Date() },
     });
 
-    res.status(200).json({ id: updated.id, readAt: updated.readAt!.toISOString() });
+    res
+      .status(200)
+      .json({ id: updated.id, readAt: updated.readAt!.toISOString() });
   })
 );
 

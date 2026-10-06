@@ -45,11 +45,16 @@ describe('getDocumentDownloadUrl', () => {
     );
 
     expect(
-      url.startsWith(`${config.publicKongUrl}/api/v1/users/therapist-documents/download?token=`)
+      url.startsWith(
+        `${config.publicKongUrl}/api/v1/users/therapist-documents/download?token=`
+      )
     ).toBe(true);
 
     const token = new URL(url).searchParams.get('token')!;
-    const payload = jwt.verify(token, config.jwtSecret) as Record<string, unknown>;
+    const payload = jwt.verify(token, config.jwtSecret) as Record<
+      string,
+      unknown
+    >;
     expect(payload).toMatchObject({
       purpose: 'therapist-document-download',
       storageKey: 'therapist-applications/app-1/uuid-license.pdf',
@@ -69,7 +74,9 @@ describe('streamDocumentForToken', () => {
   // PassThrough satisfies the latter; setHeader is bolted on separately
   // since PassThrough doesn't have one.
   function fakeResponse() {
-    const stream = new PassThrough() as unknown as Response & { headers: Record<string, string> };
+    const stream = new PassThrough() as unknown as Response & {
+      headers: Record<string, string>;
+    };
     const headers: Record<string, string> = {};
     stream.headers = headers;
     stream.setHeader = vi.fn((key: string, value: string) => {
@@ -81,21 +88,26 @@ describe('streamDocumentForToken', () => {
 
   it('rejects a garbage token', async () => {
     const res = fakeResponse();
-    await expect(streamDocumentForToken('not-a-real-token', res)).rejects.toThrow(
-      InvalidDownloadTokenError
-    );
+    await expect(
+      streamDocumentForToken('not-a-real-token', res)
+    ).rejects.toThrow(InvalidDownloadTokenError);
   });
 
   it('rejects a validly-signed token with the wrong purpose', async () => {
     const wrongPurposeToken = jwt.sign(
-      { purpose: 'something-else', storageKey: 'x', fileName: 'x', mimeType: 'x' },
+      {
+        purpose: 'something-else',
+        storageKey: 'x',
+        fileName: 'x',
+        mimeType: 'x',
+      },
       config.jwtSecret,
       { expiresIn: 300 }
     );
     const res = fakeResponse();
-    await expect(streamDocumentForToken(wrongPurposeToken, res)).rejects.toThrow(
-      InvalidDownloadTokenError
-    );
+    await expect(
+      streamDocumentForToken(wrongPurposeToken, res)
+    ).rejects.toThrow(InvalidDownloadTokenError);
   });
 
   it('rejects an expired token', async () => {
@@ -139,6 +151,8 @@ describe('streamDocumentForToken', () => {
       'therapist-applications/app-1/uuid-license.pdf'
     );
     expect(res.headers['Content-Type']).toBe('application/pdf');
-    expect(res.headers['Content-Disposition']).toBe('inline; filename="license.pdf"');
+    expect(res.headers['Content-Disposition']).toBe(
+      'inline; filename="license.pdf"'
+    );
   });
 });

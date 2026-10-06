@@ -59,13 +59,14 @@ vi.mock('../lib/prisma.js', () => ({
   },
 }));
 
-const { MockInvalidDownloadTokenError, mockStreamDocumentForToken } = vi.hoisted(() => {
-  class MockInvalidDownloadTokenError extends Error {}
-  return {
-    MockInvalidDownloadTokenError,
-    mockStreamDocumentForToken: vi.fn(),
-  };
-});
+const { MockInvalidDownloadTokenError, mockStreamDocumentForToken } =
+  vi.hoisted(() => {
+    class MockInvalidDownloadTokenError extends Error {}
+    return {
+      MockInvalidDownloadTokenError,
+      mockStreamDocumentForToken: vi.fn(),
+    };
+  });
 
 vi.mock('../lib/object-storage.js', () => ({
   buildDocumentStorageKey: vi.fn(
@@ -114,7 +115,11 @@ function patientToken(userId = 'patient-1') {
 
 function serviceToken() {
   return jwt.sign(
-    { sub: 'admin-service', email: 'service@mindora.internal', role: 'SERVICE' },
+    {
+      sub: 'admin-service',
+      email: 'service@mindora.internal',
+      role: 'SERVICE',
+    },
     process.env.JWT_SECRET!,
     { expiresIn: '15m', issuer: process.env.JWT_ISSUER, jwtid: randomUUID() }
   );
@@ -504,7 +509,9 @@ describe('GET /api/v1/users/therapist-documents/download', () => {
     });
 
     const app = createApp();
-    const response = await request(app).get(path).query({ token: 'good-token' });
+    const response = await request(app)
+      .get(path)
+      .query({ token: 'good-token' });
 
     expect(response.status).toBe(200);
   });

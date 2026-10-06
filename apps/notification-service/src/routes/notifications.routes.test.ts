@@ -233,7 +233,9 @@ describe('GET /api/v1/notifications/logs (admin) — not shadowed by the new use
     expect(response.status).toBe(200);
     expect(response.body.total).toBe(1);
     // Kigali offset is +02:00, not the previously-wrong +03:00.
-    expect(response.body.logs[0].createdAtKigali).toBe('2026-06-10T11:00:00.000+02:00');
+    expect(response.body.logs[0].createdAtKigali).toBe(
+      '2026-06-10T11:00:00.000+02:00'
+    );
   });
 
   it('rejects a non-admin caller with 403', async () => {

@@ -46,5 +46,7 @@ export function getDocumentsBucket(): mongoose.mongo.GridFSBucket {
   if (!db) {
     throw new Error('MongoDB not connected - call connectMongo() first');
   }
-  return new mongoose.mongo.GridFSBucket(db, { bucketName: 'therapist_documents' });
+  return new mongoose.mongo.GridFSBucket(db, {
+    bucketName: 'therapist_documents',
+  });
 }

@@ -325,7 +325,8 @@ adminRouter.put(
         `Application ${id} approved but role activation failed for user ${userId}`
       );
       res.status(503).json({
-        message: 'Application approved but role activation failed — retry required',
+        message:
+          'Application approved but role activation failed — retry required',
         userId,
       });
       return;
@@ -451,7 +452,7 @@ adminRouter.put(
     if (statusResponse.status === 409) {
       res.status(409).json({
         message:
-          'Cannot request more information from the application\'s current status',
+          "Cannot request more information from the application's current status",
       });
       return;
     }
@@ -523,9 +524,7 @@ adminRouter.post(
       },
     });
 
-    res
-      .status(201)
-      .json({ note: response.data.note, auditLogId: auditLog.id });
+    res.status(201).json({ note: response.data.note, auditLogId: auditLog.id });
   })
 );
 
@@ -555,17 +554,16 @@ adminRouter.put(
     const userId = req.params.id as string;
     const { reason } = parsed.data;
 
-    const suspendResponse = await callService<{ message: string; userId: string }>(
-      KONG_URL,
-      `/internal/users/${encodeURIComponent(userId)}/suspend`,
-      {
-        method: 'PUT',
-        body: { reason },
-        headers: {
-          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
-        },
-      }
-    );
+    const suspendResponse = await callService<{
+      message: string;
+      userId: string;
+    }>(KONG_URL, `/internal/users/${encodeURIComponent(userId)}/suspend`, {
+      method: 'PUT',
+      body: { reason },
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
+    });
 
     if (suspendResponse.status === 404) {
       res.status(404).json({ message: 'User not found' });
@@ -635,17 +633,13 @@ adminRouter.put(
     const reactivateResponse = await callService<{
       message: string;
       userId: string;
-    }>(
-      KONG_URL,
-      `/internal/users/${encodeURIComponent(userId)}/reactivate`,
-      {
-        method: 'PUT',
-        body: { reason },
-        headers: {
-          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
-        },
-      }
-    );
+    }>(KONG_URL, `/internal/users/${encodeURIComponent(userId)}/reactivate`, {
+      method: 'PUT',
+      body: { reason },
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
+    });
 
     if (reactivateResponse.status === 404) {
       res.status(404).json({ message: 'User not found' });

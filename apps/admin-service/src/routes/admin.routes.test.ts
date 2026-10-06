@@ -773,7 +773,13 @@ describe('GET /analytics/detailed', () => {
             completionRate: 0.75,
             cancellationRate: 0.25,
             sessionTrend: [
-              { date: '2026-06-10', completed: 3, cancelled: 1, pending: 0, confirmed: 0 },
+              {
+                date: '2026-06-10',
+                completed: 3,
+                cancelled: 1,
+                pending: 0,
+                confirmed: 0,
+              },
             ],
           },
         });
@@ -840,7 +846,9 @@ describe('GET /analytics/detailed', () => {
 
     const app = createApp();
     await request(app)
-      .get('/analytics/detailed?from=2026-01-01T00:00:00.000Z&to=2026-01-31T00:00:00.000Z')
+      .get(
+        '/analytics/detailed?from=2026-01-01T00:00:00.000Z&to=2026-01-31T00:00:00.000Z'
+      )
       .set('Authorization', `Bearer ${adminToken()}`);
 
     const usersCall = mockHttpGet.mock.calls.find((call) =>
@@ -923,9 +931,15 @@ describe('PUT /therapist-applications/:id/approve', () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        data: { application: { id: 'app-1', userId: 'user-1', status: 'APPROVED' } },
+        data: {
+          application: { id: 'app-1', userId: 'user-1', status: 'APPROVED' },
+        },
       })
-      .mockResolvedValueOnce({ ok: true, status: 200, data: { id: 'user-1', role: 'THERAPIST' } });
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: { id: 'user-1', role: 'THERAPIST' },
+      });
     mockAuditCreate.mockResolvedValue({ id: 'audit-1' });
 
     const app = createApp();
@@ -964,7 +978,9 @@ describe('PUT /therapist-applications/:id/approve', () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        data: { application: { id: 'app-1', userId: 'user-1', status: 'APPROVED' } },
+        data: {
+          application: { id: 'app-1', userId: 'user-1', status: 'APPROVED' },
+        },
       })
       .mockResolvedValueOnce({ ok: false, status: 503, data: null });
 
@@ -978,7 +994,11 @@ describe('PUT /therapist-applications/:id/approve', () => {
   });
 
   it('returns 409 without calling Auth Service when the application is not reviewable', async () => {
-    mockCallService.mockResolvedValueOnce({ ok: false, status: 409, data: null });
+    mockCallService.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      data: null,
+    });
 
     const app = createApp();
     const response = await request(app)
@@ -1016,7 +1036,9 @@ describe('PUT /therapist-applications/:id/reject', () => {
     mockCallService.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { application: { id: 'app-1', userId: 'user-1', status: 'REJECTED' } },
+      data: {
+        application: { id: 'app-1', userId: 'user-1', status: 'REJECTED' },
+      },
     });
     mockAuditCreate.mockResolvedValue({ id: 'audit-2' });
 
@@ -1053,7 +1075,11 @@ describe('PUT /therapist-applications/:id/request-info', () => {
       ok: true,
       status: 200,
       data: {
-        application: { id: 'app-1', userId: 'user-1', status: 'MORE_INFORMATION_REQUIRED' },
+        application: {
+          id: 'app-1',
+          userId: 'user-1',
+          status: 'MORE_INFORMATION_REQUIRED',
+        },
       },
     });
     mockAuditCreate.mockResolvedValue({ id: 'audit-3' });
@@ -1068,7 +1094,9 @@ describe('PUT /therapist-applications/:id/request-info', () => {
     expect(mockAuditCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         actionType: 'THERAPIST_APPLICATION_MORE_INFO_REQUESTED',
-        metadata: expect.objectContaining({ note: 'Please upload your license.' }),
+        metadata: expect.objectContaining({
+          note: 'Please upload your license.',
+        }),
       }),
     });
   });
@@ -1104,8 +1132,16 @@ describe('POST /therapist-applications/:id/notes', () => {
 describe('PUT /therapists/:id/suspend', () => {
   it('revokes access first, then flips the discovery flag, then audits — distinct actionType from generic user suspend', async () => {
     mockCallService
-      .mockResolvedValueOnce({ ok: true, status: 200, data: { message: 'User suspended', userId: 't1' } })
-      .mockResolvedValueOnce({ ok: true, status: 200, data: { userId: 't1', isSuspended: true } });
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: { message: 'User suspended', userId: 't1' },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: { userId: 't1', isSuspended: true },
+      });
     mockAuditCreate.mockResolvedValue({ id: 'audit-5' });
 
     const app = createApp();
@@ -1119,7 +1155,10 @@ describe('PUT /therapists/:id/suspend', () => {
       1,
       'http://localhost:8000',
       '/internal/users/t1/suspend',
-      expect.objectContaining({ method: 'PUT', body: { reason: 'conduct violation' } })
+      expect.objectContaining({
+        method: 'PUT',
+        body: { reason: 'conduct violation' },
+      })
     );
     expect(mockCallService).toHaveBeenNthCalledWith(
       2,
@@ -1128,13 +1167,20 @@ describe('PUT /therapists/:id/suspend', () => {
       expect.objectContaining({ method: 'PATCH', body: { isSuspended: true } })
     );
     expect(mockAuditCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({ actionType: 'THERAPIST_SUSPENDED', targetId: 't1' }),
+      data: expect.objectContaining({
+        actionType: 'THERAPIST_SUSPENDED',
+        targetId: 't1',
+      }),
     });
   });
 
   it('still audits the suspension even if the discovery-flag call fails (access revocation already succeeded)', async () => {
     mockCallService
-      .mockResolvedValueOnce({ ok: true, status: 200, data: { message: 'User suspended', userId: 't1' } })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: { message: 'User suspended', userId: 't1' },
+      })
       .mockResolvedValueOnce({ ok: false, status: 503, data: null });
     mockAuditCreate.mockResolvedValue({ id: 'audit-6' });
 
@@ -1149,7 +1195,11 @@ describe('PUT /therapists/:id/suspend', () => {
   });
 
   it('404s and does not touch the discovery flag when the user does not exist', async () => {
-    mockCallService.mockResolvedValueOnce({ ok: false, status: 404, data: null });
+    mockCallService.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      data: null,
+    });
 
     const app = createApp();
     const response = await request(app)
@@ -1166,8 +1216,16 @@ describe('PUT /therapists/:id/suspend', () => {
 describe('PUT /therapists/:id/reactivate', () => {
   it('restores access and clears the discovery flag', async () => {
     mockCallService
-      .mockResolvedValueOnce({ ok: true, status: 200, data: { message: 'User reactivated', userId: 't1' } })
-      .mockResolvedValueOnce({ ok: true, status: 200, data: { userId: 't1', isSuspended: false } });
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: { message: 'User reactivated', userId: 't1' },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: { userId: 't1', isSuspended: false },
+      });
     mockAuditCreate.mockResolvedValue({ id: 'audit-7' });
 
     const app = createApp();

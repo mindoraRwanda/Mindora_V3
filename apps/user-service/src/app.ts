@@ -59,7 +59,10 @@ export function createApp() {
   // file over the 10MB limit — are client errors, not server errors; catch
   // them before the generic handler below so they return 400, not 500.
   app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
-    if (err instanceof multer.MulterError || (err instanceof Error && err.message === 'Unsupported file type')) {
+    if (
+      err instanceof multer.MulterError ||
+      (err instanceof Error && err.message === 'Unsupported file type')
+    ) {
       res.status(400).json({ message: err.message });
       return;
     }

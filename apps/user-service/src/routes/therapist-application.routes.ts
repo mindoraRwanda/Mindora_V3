@@ -66,7 +66,12 @@ const ALLOWED_REVIEW_TRANSITIONS: Record<
   TherapistApplicationStatus[]
 > = {
   DRAFT: [],
-  SUBMITTED: ['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'MORE_INFORMATION_REQUIRED'],
+  SUBMITTED: [
+    'UNDER_REVIEW',
+    'APPROVED',
+    'REJECTED',
+    'MORE_INFORMATION_REQUIRED',
+  ],
   UNDER_REVIEW: ['APPROVED', 'REJECTED', 'MORE_INFORMATION_REQUIRED'],
   APPROVED: [],
   REJECTED: [],
@@ -293,7 +298,10 @@ therapistApplicationRouter.post(
       res.status(404).json({ message: 'Application not found' });
       return;
     }
-    if (application.status === 'APPROVED' || application.status === 'REJECTED') {
+    if (
+      application.status === 'APPROVED' ||
+      application.status === 'REJECTED'
+    ) {
       res.status(409).json({
         message: `Documents cannot be added while status is ${application.status}`,
       });
@@ -520,7 +528,11 @@ therapistApplicationRouter.get(
     const documentsWithUrls = await Promise.all(
       application.documents.map(async (doc) => ({
         ...doc,
-        url: await getDocumentDownloadUrl(doc.storageKey, doc.fileName, doc.mimeType),
+        url: await getDocumentDownloadUrl(
+          doc.storageKey,
+          doc.fileName,
+          doc.mimeType
+        ),
       }))
     );
 
@@ -589,7 +601,9 @@ therapistApplicationRouter.patch(
         // the applicant can still see why on a later visit to the
         // application page, not only in a one-off email they may have missed.
         ...(status === 'REJECTED' ? { rejectionReason: reason } : {}),
-        ...(status === 'MORE_INFORMATION_REQUIRED' ? { infoRequestNote: note } : {}),
+        ...(status === 'MORE_INFORMATION_REQUIRED'
+          ? { infoRequestNote: note }
+          : {}),
       },
     });
 
@@ -726,9 +740,7 @@ therapistApplicationRouter.patch(
         );
       }
 
-      res
-        .status(200)
-        .json({ userId, isSuspended: profile.isSuspended });
+      res.status(200).json({ userId, isSuspended: profile.isSuspended });
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

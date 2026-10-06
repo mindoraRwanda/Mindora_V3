@@ -115,39 +115,44 @@ userRouter.get(
     const rangeFrom = parsed.data.from ?? thirtyDaysAgo;
     const rangeTo = parsed.data.to ?? now;
 
-    const [authResponse, applicationsByStatusRaw, applicationTrendRaw, totalTherapists, suspendedTherapists] =
-      await Promise.all([
-        httpClient.get<{
-          totalUsers: number;
-          activeUsersLast30Days: number;
-          usersByRole?: Record<string, number>;
-          newUsersInRange?: number;
-          suspendedUsers?: number;
-          dau?: number;
-          wau?: number;
-          mau?: number;
-          registrationTrend?: { date: string; count: number }[];
-        }>(KONG_URL, `/internal/auth/analytics?${query.toString()}`, {
-          headers: {
-            Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
-          },
-        }),
-        prisma.therapistApplication.groupBy({
-          by: ['status'],
-          _count: { _all: true },
-        }),
-        prisma.$queryRaw<{ bucket: Date; count: bigint }[]>`
+    const [
+      authResponse,
+      applicationsByStatusRaw,
+      applicationTrendRaw,
+      totalTherapists,
+      suspendedTherapists,
+    ] = await Promise.all([
+      httpClient.get<{
+        totalUsers: number;
+        activeUsersLast30Days: number;
+        usersByRole?: Record<string, number>;
+        newUsersInRange?: number;
+        suspendedUsers?: number;
+        dau?: number;
+        wau?: number;
+        mau?: number;
+        registrationTrend?: { date: string; count: number }[];
+      }>(KONG_URL, `/internal/auth/analytics?${query.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }),
+      prisma.therapistApplication.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+      prisma.$queryRaw<{ bucket: Date; count: bigint }[]>`
           SELECT date_trunc('day', "submitted_at") AS bucket, COUNT(*)::bigint AS count
           FROM "therapist_applications"
           WHERE "submitted_at" >= ${rangeFrom} AND "submitted_at" <= ${rangeTo}
           GROUP BY bucket
           ORDER BY bucket ASC
         `,
-        prisma.therapistProfile.count({
-          where: { applicationStatus: 'APPROVED', isSuspended: false },
-        }),
-        prisma.therapistProfile.count({ where: { isSuspended: true } }),
-      ]);
+      prisma.therapistProfile.count({
+        where: { applicationStatus: 'APPROVED', isSuspended: false },
+      }),
+      prisma.therapistProfile.count({ where: { isSuspended: true } }),
+    ]);
 
     if (!authResponse.ok || !authResponse.data) {
       res.status(503).json({ message: 'Auth Service unavailable' });
@@ -158,7 +163,8 @@ userRouter.get(
       applicationsByStatusRaw.map((r) => [r.status, r._count._all])
     );
     const decided =
-      (applicationsByStatus.APPROVED ?? 0) + (applicationsByStatus.REJECTED ?? 0);
+      (applicationsByStatus.APPROVED ?? 0) +
+      (applicationsByStatus.REJECTED ?? 0);
 
     res.status(200).json({
       ...authResponse.data,

@@ -588,7 +588,10 @@ describe('PUT /availability', () => {
     mockTransaction.mockImplementation(async (ops: unknown) =>
       Array.isArray(ops) ? Promise.all(ops) : ops
     );
-    mockScheduleUpsert.mockResolvedValue({ therapistId, timezone: 'Africa/Kigali' });
+    mockScheduleUpsert.mockResolvedValue({
+      therapistId,
+      timezone: 'Africa/Kigali',
+    });
     mockWorkingHoursDeleteMany.mockResolvedValue({ count: 0 });
     mockWorkingHoursCreateMany.mockResolvedValue({ count: 1 });
   });
@@ -617,7 +620,9 @@ describe('PUT /availability', () => {
     const response = await request(app)
       .put('/availability')
       .set('Authorization', `Bearer ${therapistToken()}`)
-      .send({ workingHours: [{ dayOfWeek: 1, startMinute: 600, endMinute: 500 }] });
+      .send({
+        workingHours: [{ dayOfWeek: 1, startMinute: 600, endMinute: 500 }],
+      });
 
     expect(response.status).toBe(400);
     expect(mockTransaction).not.toHaveBeenCalled();

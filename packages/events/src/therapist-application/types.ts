@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { eventMetadataSchema, type UuidString, type WithMetadata } from '../common.js';
+import {
+  eventMetadataSchema,
+  type UuidString,
+  type WithMetadata,
+} from '../common.js';
 import type { THERAPIST_APPLICATION_ROUTING_KEYS } from './constants.js';
 
 export type TherapistApplicationSubmittedEvent = WithMetadata<{
@@ -46,24 +50,27 @@ export type TherapistApplicationDomainEvent =
   | TherapistApplicationSuspendedEvent
   | TherapistApplicationReactivatedEvent;
 
-export const therapistApplicationSubmittedEventSchema = eventMetadataSchema.extend({
-  eventType: z.literal('therapist_application.submitted'),
-  applicationId: z.string().uuid(),
-  userId: z.string().uuid(),
-});
+export const therapistApplicationSubmittedEventSchema =
+  eventMetadataSchema.extend({
+    eventType: z.literal('therapist_application.submitted'),
+    applicationId: z.string().uuid(),
+    userId: z.string().uuid(),
+  });
 
-export const therapistApplicationApprovedEventSchema = eventMetadataSchema.extend({
-  eventType: z.literal('therapist_application.approved'),
-  applicationId: z.string().uuid(),
-  userId: z.string().uuid(),
-});
+export const therapistApplicationApprovedEventSchema =
+  eventMetadataSchema.extend({
+    eventType: z.literal('therapist_application.approved'),
+    applicationId: z.string().uuid(),
+    userId: z.string().uuid(),
+  });
 
-export const therapistApplicationRejectedEventSchema = eventMetadataSchema.extend({
-  eventType: z.literal('therapist_application.rejected'),
-  applicationId: z.string().uuid(),
-  userId: z.string().uuid(),
-  reason: z.string(),
-});
+export const therapistApplicationRejectedEventSchema =
+  eventMetadataSchema.extend({
+    eventType: z.literal('therapist_application.rejected'),
+    applicationId: z.string().uuid(),
+    userId: z.string().uuid(),
+    reason: z.string(),
+  });
 
 export const therapistApplicationMoreInfoRequestedEventSchema =
   eventMetadataSchema.extend({
@@ -73,15 +80,17 @@ export const therapistApplicationMoreInfoRequestedEventSchema =
     note: z.string(),
   });
 
-export const therapistApplicationSuspendedEventSchema = eventMetadataSchema.extend({
-  eventType: z.literal('therapist_application.suspended'),
-  userId: z.string().uuid(),
-});
+export const therapistApplicationSuspendedEventSchema =
+  eventMetadataSchema.extend({
+    eventType: z.literal('therapist_application.suspended'),
+    userId: z.string().uuid(),
+  });
 
-export const therapistApplicationReactivatedEventSchema = eventMetadataSchema.extend({
-  eventType: z.literal('therapist_application.reactivated'),
-  userId: z.string().uuid(),
-});
+export const therapistApplicationReactivatedEventSchema =
+  eventMetadataSchema.extend({
+    eventType: z.literal('therapist_application.reactivated'),
+    userId: z.string().uuid(),
+  });
 
 /** Matches any event published to the mindora.therapist-applications exchange. */
 export const therapistApplicationDomainEventSchema = z.union([
