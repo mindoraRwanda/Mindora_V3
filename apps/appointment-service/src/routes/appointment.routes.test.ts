@@ -30,10 +30,19 @@ const mockAppointmentFindFirst = vi.fn();
 const mockAppointmentCount = vi.fn();
 const mockAppointmentCreate = vi.fn();
 const mockAppointmentUpdate = vi.fn();
+const mockAppointmentGroupBy = vi.fn();
 const mockQueryRaw = vi.fn();
 const mockTransaction = vi.fn();
 const mockPublishAppointmentEvent = vi.fn();
 const mockIsBlacklisted = vi.fn();
+const mockScheduleFindUnique = vi.fn();
+const mockScheduleUpsert = vi.fn();
+const mockWorkingHoursDeleteMany = vi.fn();
+const mockWorkingHoursCreateMany = vi.fn();
+const mockTimeOffFindMany = vi.fn();
+const mockTimeOffFindUnique = vi.fn();
+const mockTimeOffCreate = vi.fn();
+const mockTimeOffDelete = vi.fn();
 
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
@@ -44,6 +53,21 @@ vi.mock('../lib/prisma.js', () => ({
       count: (...args: unknown[]) => mockAppointmentCount(...args),
       create: (...args: unknown[]) => mockAppointmentCreate(...args),
       update: (...args: unknown[]) => mockAppointmentUpdate(...args),
+      groupBy: (...args: unknown[]) => mockAppointmentGroupBy(...args),
+    },
+    therapistSchedule: {
+      findUnique: (...args: unknown[]) => mockScheduleFindUnique(...args),
+      upsert: (...args: unknown[]) => mockScheduleUpsert(...args),
+    },
+    therapistWorkingHours: {
+      deleteMany: (...args: unknown[]) => mockWorkingHoursDeleteMany(...args),
+      createMany: (...args: unknown[]) => mockWorkingHoursCreateMany(...args),
+    },
+    therapistTimeOff: {
+      findMany: (...args: unknown[]) => mockTimeOffFindMany(...args),
+      findUnique: (...args: unknown[]) => mockTimeOffFindUnique(...args),
+      create: (...args: unknown[]) => mockTimeOffCreate(...args),
+      delete: (...args: unknown[]) => mockTimeOffDelete(...args),
     },
     $transaction: (...args: unknown[]) => mockTransaction(...args),
     $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
@@ -372,8 +396,21 @@ describe('GET /internal/appointments/analytics', () => {
     mockIsBlacklisted.mockResolvedValue(false);
   });
 
-  it('returns totalAppointments and completedAppointments', async () => {
+  it('returns totalAppointments and completedAppointments plus the range-scoped breakdown/trend', async () => {
     mockAppointmentCount.mockResolvedValueOnce(30).mockResolvedValueOnce(18);
+    mockAppointmentGroupBy.mockResolvedValueOnce([
+      { status: 'COMPLETED', _count: { _all: 5 } },
+      { status: 'CANCELLED', _count: { _all: 2 } },
+    ]);
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        bucket: new Date('2026-06-10T00:00:00.000Z'),
+        completed: 5n,
+        cancelled: 2n,
+        pending: 0n,
+        confirmed: 0n,
+      },
+    ]);
 
     const app = createApp();
     const response = await request(app)
@@ -381,9 +418,21 @@ describe('GET /internal/appointments/analytics', () => {
       .set('Authorization', `Bearer ${serviceToken()}`);
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({
+    expect(response.body).toMatchObject({
       totalAppointments: 30,
       completedAppointments: 18,
+      statusBreakdown: { COMPLETED: 5, CANCELLED: 2 },
+      completionRate: 5 / 7,
+      cancellationRate: 2 / 7,
+      sessionTrend: [
+        {
+          date: '2026-06-10',
+          completed: 5,
+          cancelled: 2,
+          pending: 0,
+          confirmed: 0,
+        },
+      ],
     });
     expect(mockAppointmentCount).toHaveBeenCalledTimes(2);
     expect(mockAppointmentCount.mock.calls[1]?.[0]).toEqual({
@@ -460,5 +509,312 @@ describe('GET /internal/appointments/relationship/:therapistId/:patientId', () =
     );
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe('GET /availability (own schedule)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  it('returns the default timezone and empty lists when no schedule exists yet', async () => {
+    mockScheduleFindUnique.mockResolvedValueOnce(null);
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/availability')
+      .set('Authorization', `Bearer ${therapistToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      timezone: 'Africa/Kigali',
+      workingHours: [],
+      timeOff: [],
+    });
+  });
+
+  it('returns the configured schedule', async () => {
+    mockScheduleFindUnique.mockResolvedValueOnce({
+      therapistId,
+      timezone: 'Africa/Kigali',
+      workingHours: [{ dayOfWeek: 1, startMinute: 540, endMinute: 1020 }],
+      timeOff: [
+        {
+          id: 'off-1',
+          startsAt: new Date('2026-07-01T00:00:00.000Z'),
+          endsAt: new Date('2026-07-03T00:00:00.000Z'),
+          reason: 'Vacation',
+        },
+      ],
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/availability')
+      .set('Authorization', `Bearer ${therapistToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.workingHours).toEqual([
+      { dayOfWeek: 1, startMinute: 540, endMinute: 1020 },
+    ]);
+    expect(response.body.timeOff[0]).toMatchObject({
+      id: 'off-1',
+      reason: 'Vacation',
+    });
+  });
+
+  it('rejects a PATIENT-role token with 403', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/availability')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockScheduleFindUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe('PUT /availability', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+    // PUT /availability uses the array form of $transaction (each op is
+    // already a live promise from the mocks below by the time it's
+    // collected into the array) — unlike POST /'s interactive-callback
+    // form mocked elsewhere in this file, so this needs its own
+    // implementation, set fresh per test since mockImplementation isn't
+    // cleared by vi.clearAllMocks().
+    mockTransaction.mockImplementation(async (ops: unknown) =>
+      Array.isArray(ops) ? Promise.all(ops) : ops
+    );
+    mockScheduleUpsert.mockResolvedValue({
+      therapistId,
+      timezone: 'Africa/Kigali',
+    });
+    mockWorkingHoursDeleteMany.mockResolvedValue({ count: 0 });
+    mockWorkingHoursCreateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it('replaces the working-hours list', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .put('/availability')
+      .set('Authorization', `Bearer ${therapistToken()}`)
+      .send({
+        timezone: 'Africa/Kigali',
+        workingHours: [{ dayOfWeek: 1, startMinute: 540, endMinute: 1020 }],
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockWorkingHoursDeleteMany).toHaveBeenCalledWith({
+      where: { therapistId },
+    });
+    expect(mockWorkingHoursCreateMany).toHaveBeenCalledWith({
+      data: [{ therapistId, dayOfWeek: 1, startMinute: 540, endMinute: 1020 }],
+    });
+  });
+
+  it('400s when endMinute is not after startMinute', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .put('/availability')
+      .set('Authorization', `Bearer ${therapistToken()}`)
+      .send({
+        workingHours: [{ dayOfWeek: 1, startMinute: 600, endMinute: 500 }],
+      });
+
+    expect(response.status).toBe(400);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a PATIENT-role token with 403', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .put('/availability')
+      .set('Authorization', `Bearer ${patientToken()}`)
+      .send({ workingHours: [] });
+
+    expect(response.status).toBe(403);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('time off', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  it('POST /time-off creates a block, ensuring the schedule row exists first', async () => {
+    mockScheduleUpsert.mockResolvedValueOnce({ therapistId });
+    mockTimeOffCreate.mockResolvedValueOnce({
+      id: 'off-1',
+      startsAt: new Date('2026-07-01T00:00:00.000Z'),
+      endsAt: new Date('2026-07-03T00:00:00.000Z'),
+      reason: 'Vacation',
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .post('/time-off')
+      .set('Authorization', `Bearer ${therapistToken()}`)
+      .send({
+        startsAt: '2026-07-01T00:00:00.000Z',
+        endsAt: '2026-07-03T00:00:00.000Z',
+        reason: 'Vacation',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ id: 'off-1', reason: 'Vacation' });
+    expect(mockScheduleUpsert).toHaveBeenCalled();
+  });
+
+  it('POST /time-off 400s when endsAt is not after startsAt', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .post('/time-off')
+      .set('Authorization', `Bearer ${therapistToken()}`)
+      .send({
+        startsAt: '2026-07-03T00:00:00.000Z',
+        endsAt: '2026-07-01T00:00:00.000Z',
+      });
+
+    expect(response.status).toBe(400);
+    expect(mockTimeOffCreate).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /time-off/:id 404s when the block belongs to a different therapist', async () => {
+    mockTimeOffFindUnique.mockResolvedValueOnce({
+      id: 'off-1',
+      therapistId: 'someone-else',
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .delete('/time-off/off-1')
+      .set('Authorization', `Bearer ${therapistToken()}`);
+
+    expect(response.status).toBe(404);
+    expect(mockTimeOffDelete).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /time-off/:id succeeds for the owning therapist', async () => {
+    mockTimeOffFindUnique.mockResolvedValueOnce({ id: 'off-1', therapistId });
+    mockTimeOffDelete.mockResolvedValueOnce({ id: 'off-1' });
+
+    const app = createApp();
+    const response = await request(app)
+      .delete('/time-off/off-1')
+      .set('Authorization', `Bearer ${therapistToken()}`);
+
+    expect(response.status).toBe(204);
+  });
+});
+
+describe('GET /patients', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  it('returns paginated patients with resolved names and never exposes patients with no relationship', async () => {
+    mockAppointmentGroupBy.mockResolvedValueOnce([
+      {
+        patientId,
+        _count: { _all: 3 },
+        _max: { slotStart: new Date('2026-06-01T10:00:00.000Z') },
+      },
+    ]);
+    mockAppointmentFindMany.mockResolvedValueOnce([{ patientId }]);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: patientId, userName: 'Jane Patient' }),
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/patients')
+      .set('Authorization', `Bearer ${therapistToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      patients: [
+        {
+          patientId,
+          userName: 'Jane Patient',
+          totalSessions: 3,
+          lastSessionAt: '2026-06-01T10:00:00.000Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+    expect(mockAppointmentGroupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { therapistId } })
+    );
+  });
+
+  it('falls back to a null name when User Service is unreachable', async () => {
+    mockAppointmentGroupBy.mockResolvedValueOnce([
+      { patientId, _count: { _all: 1 }, _max: { slotStart: null } },
+    ]);
+    mockAppointmentFindMany.mockResolvedValueOnce([{ patientId }]);
+    mockFetch.mockResolvedValueOnce({ ok: false });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/patients')
+      .set('Authorization', `Bearer ${therapistToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.patients[0].userName).toBeNull();
+  });
+
+  it('rejects a PATIENT-role token with 403', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/patients')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockAppointmentGroupBy).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /dashboard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  it('aggregates today, pending, upcoming and patient counts', async () => {
+    mockAppointmentFindMany
+      .mockResolvedValueOnce([sampleAppointment()]) // todaysSessions
+      .mockResolvedValueOnce([{ patientId }]); // distinct patients
+    mockAppointmentCount
+      .mockResolvedValueOnce(2) // pendingCount
+      .mockResolvedValueOnce(5); // upcomingCount
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/dashboard')
+      .set('Authorization', `Bearer ${therapistToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.pendingCount).toBe(2);
+    expect(response.body.upcomingCount).toBe(5);
+    expect(response.body.patientCount).toBe(1);
+    expect(response.body.todaysSessions).toHaveLength(1);
+  });
+
+  it('rejects a PATIENT-role token with 403', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/dashboard')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
   });
 });

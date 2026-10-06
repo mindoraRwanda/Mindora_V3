@@ -30,6 +30,8 @@ const mockTherapistFindUnique = vi.fn();
 const mockTherapistUpdate = vi.fn();
 const mockTherapistFindMany = vi.fn();
 const mockTherapistCount = vi.fn();
+const mockTherapistApplicationGroupBy = vi.fn();
+const mockQueryRaw = vi.fn();
 const mockIsBlacklisted = vi.fn();
 const mockHttpGet = vi.fn();
 
@@ -45,6 +47,10 @@ vi.mock('../lib/prisma.js', () => ({
       findMany: (...args: unknown[]) => mockTherapistFindMany(...args),
       count: (...args: unknown[]) => mockTherapistCount(...args),
     },
+    therapistApplication: {
+      groupBy: (...args: unknown[]) => mockTherapistApplicationGroupBy(...args),
+    },
+    $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
   },
 }));
 
@@ -195,12 +201,22 @@ describe('GET /internal/users/analytics', () => {
     mockIsBlacklisted.mockResolvedValue(false);
   });
 
-  it('proxies to Auth Service via httpClient — not shadowed by /internal/users/:id', async () => {
+  it('proxies to Auth Service and merges in the local therapist-application analytics — not shadowed by /internal/users/:id', async () => {
     mockHttpGet.mockResolvedValue({
       ok: true,
       status: 200,
       data: { totalUsers: 17, activeUsersLast30Days: 5 },
     });
+    mockTherapistApplicationGroupBy.mockResolvedValueOnce([
+      { status: 'APPROVED', _count: { _all: 3 } },
+      { status: 'REJECTED', _count: { _all: 1 } },
+    ]);
+    mockQueryRaw.mockResolvedValueOnce([
+      { bucket: new Date('2026-06-10T00:00:00.000Z'), count: 2n },
+    ]);
+    mockTherapistCount
+      .mockResolvedValueOnce(3) // totalTherapists (APPROVED, not suspended)
+      .mockResolvedValueOnce(1); // suspendedTherapists
 
     const app = createApp();
     const response = await request(app)
@@ -208,13 +224,24 @@ describe('GET /internal/users/analytics', () => {
       .set('Authorization', `Bearer ${serviceToken()}`);
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ totalUsers: 17, activeUsersLast30Days: 5 });
+    expect(response.body).toMatchObject({
+      totalUsers: 17,
+      activeUsersLast30Days: 5,
+      totalTherapists: 3,
+      suspendedTherapists: 1,
+      therapistApplications: {
+        byStatus: { APPROVED: 3, REJECTED: 1 },
+        approvalRate: 3 / 4,
+        rejectionRate: 1 / 4,
+        applicationTrend: [{ date: '2026-06-10', count: 2 }],
+      },
+    });
     // If /internal/users/:id had shadowed this route (the exact bug found
     // live earlier — "analytics" matched as :id), httpClient.get would
     // never be called at all; that handler only queries prisma directly.
     expect(mockHttpGet).toHaveBeenCalledWith(
       expect.any(String),
-      '/internal/auth/analytics',
+      expect.stringContaining('/internal/auth/analytics'),
       expect.objectContaining({ headers: expect.any(Object) })
     );
     expect(mockPatientFindUnique).not.toHaveBeenCalled();
@@ -223,6 +250,9 @@ describe('GET /internal/users/analytics', () => {
 
   it('returns 503 when Auth Service is unreachable', async () => {
     mockHttpGet.mockResolvedValue({ ok: false, status: 503, data: null });
+    mockTherapistApplicationGroupBy.mockResolvedValueOnce([]);
+    mockQueryRaw.mockResolvedValueOnce([]);
+    mockTherapistCount.mockResolvedValueOnce(0).mockResolvedValueOnce(0);
 
     const app = createApp();
     const response = await request(app)

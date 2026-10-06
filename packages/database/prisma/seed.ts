@@ -3,7 +3,7 @@ import argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 
-const ARGON2_OPTIONS: argon2.Options & { raw?: false } = {
+const ARGON2_OPTIONS: argon2.HashOptions & { raw?: false } = {
   type: argon2.argon2id,
   memoryCost: 65536,
   timeCost: 3,

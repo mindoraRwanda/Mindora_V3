@@ -1,4 +1,5 @@
 import express from 'express';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 
 const PORT = Number(process.env.DOCS_GATEWAY_PORT) || 3010;
@@ -67,6 +68,23 @@ const SERVICES = [
 ];
 
 const app = express();
+
+// Helmet defaults, CSP included. swagger-ui-express loads its scripts from
+// files and only needs inline styles, both allowed by the default policy.
+// upgrade-insecure-requests is dropped so /docs still loads over plain HTTP
+// (local dev, internal container traffic).
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        upgradeInsecureRequests: null,
+        // "Try it out" sends requests to each service's own origin
+        // (Kong / the public domain), not just back to this gateway.
+        connectSrc: ["'self'", 'https:', 'http:'],
+      },
+    },
+  })
+);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });

@@ -113,6 +113,103 @@ export function appointmentCancelledTemplate(
   `;
 }
 
+export function therapistApplicationSubmittedTemplate(
+  fullName: string
+): string {
+  return `
+    <div style="${BASE_STYLES}">
+      <h1 style="color: #2b6cb0; margin-bottom: 8px;">Application Received</h1>
+      <p style="margin-top: 0; color: #4a5568;">Hi ${fullName},</p>
+      <p>Thanks for applying to join Mindora as a therapist. Our team will review your application and supporting documents.</p>
+      <p style="color: #4a5568; font-size: 0.9rem;">We'll email you as soon as there's an update — no action is needed from you right now.</p>
+      ${DIVIDER}
+      ${FOOTER}
+    </div>
+  `;
+}
+
+export function therapistApplicationApprovedTemplate(fullName: string): string {
+  return `
+    <div style="${BASE_STYLES}">
+      <h1 style="color: #276749; margin-bottom: 8px;">Application Approved ✓</h1>
+      <p style="margin-top: 0; color: #4a5568;">Hi ${fullName},</p>
+      <p>Congratulations — your therapist application has been approved. Your account now has therapist access.</p>
+      <p style="color: #4a5568; font-size: 0.9rem;">Sign in to set up your availability and start accepting patients.</p>
+      ${DIVIDER}
+      ${FOOTER}
+    </div>
+  `;
+}
+
+export function therapistApplicationRejectedTemplate(
+  fullName: string,
+  reason: string
+): string {
+  return `
+    <div style="${BASE_STYLES}">
+      <h1 style="color: #c53030; margin-bottom: 8px;">Application Update</h1>
+      <p style="margin-top: 0; color: #4a5568;">Hi ${fullName},</p>
+      <p>After review, we're unable to approve your therapist application at this time.</p>
+      <table style="background: #fff5f5; border-radius: 8px; padding: 16px 20px; width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 4px 0; color: #4a5568; font-size: 0.875rem;">Reason</td>
+          <td style="padding: 4px 0;">${reason}</td>
+        </tr>
+      </table>
+      <p style="color: #4a5568; font-size: 0.9rem;">You're welcome to submit a new application once the noted issue is addressed.</p>
+      ${DIVIDER}
+      ${FOOTER}
+    </div>
+  `;
+}
+
+export function therapistApplicationMoreInfoTemplate(
+  fullName: string,
+  note: string
+): string {
+  return `
+    <div style="${BASE_STYLES}">
+      <h1 style="color: #d69e2e; margin-bottom: 8px;">More Information Needed</h1>
+      <p style="margin-top: 0; color: #4a5568;">Hi ${fullName},</p>
+      <p>Our review team needs a bit more information before they can continue reviewing your therapist application.</p>
+      <table style="background: #fffaf0; border-radius: 8px; padding: 16px 20px; width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 4px 0; color: #4a5568; font-size: 0.875rem;">Requested</td>
+          <td style="padding: 4px 0;">${note}</td>
+        </tr>
+      </table>
+      <p style="color: #4a5568; font-size: 0.9rem;">Sign in to update your application and resubmit.</p>
+      ${DIVIDER}
+      ${FOOTER}
+    </div>
+  `;
+}
+
+export function therapistSuspendedTemplate(fullName: string): string {
+  return `
+    <div style="${BASE_STYLES}">
+      <h1 style="color: #c53030; margin-bottom: 8px;">Account Suspended</h1>
+      <p style="margin-top: 0; color: #4a5568;">Hi ${fullName},</p>
+      <p>Your therapist account has been suspended. You no longer have access to the platform.</p>
+      <p style="color: #4a5568; font-size: 0.9rem;">If you believe this is a mistake, please contact Mindora support.</p>
+      ${DIVIDER}
+      ${FOOTER}
+    </div>
+  `;
+}
+
+export function therapistReactivatedTemplate(fullName: string): string {
+  return `
+    <div style="${BASE_STYLES}">
+      <h1 style="color: #276749; margin-bottom: 8px;">Account Reactivated</h1>
+      <p style="margin-top: 0; color: #4a5568;">Hi ${fullName},</p>
+      <p>Your therapist account has been reactivated and you now have full access again.</p>
+      ${DIVIDER}
+      ${FOOTER}
+    </div>
+  `;
+}
+
 // TODO[email/mood-concern] — BLOCKED: two prerequisites are unresolved.
 //   1. No 'mood.concern' event type exists. MoodLoggedEvent fires on every mood entry.
 //      A concern threshold (e.g. rolling average < 4) needs to be defined and emitted

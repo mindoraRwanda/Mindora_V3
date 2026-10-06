@@ -4,6 +4,7 @@ import express, {
   type Response,
 } from 'express';
 import communityRoutes, { internalRouter } from './routes/community.routes.js';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './docs/swagger.js';
 import { publicRouteLimiter } from './middleware/rate-limit.js';
@@ -13,6 +14,16 @@ const app = express();
 // Trust exactly one hop (Kong) so req.ip / express-rate-limit read the
 // real client IP from X-Forwarded-For instead of Kong's own container IP.
 app.set('trust proxy', 1);
+
+// Helmet defaults, CSP included. swagger-ui-express loads its scripts from
+// files and only needs inline styles, both allowed by the default policy.
+// upgrade-insecure-requests is dropped so /docs still loads over plain HTTP
+// (local dev, internal container traffic).
+app.use(
+  helmet({
+    contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } },
+  })
+);
 
 app.use(express.json());
 

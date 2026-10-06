@@ -40,3 +40,54 @@ model Appointment {
   @@index([therapistId, status, slotStart])
   @@map("appointments")
 }
+
+// One row per therapist who has configured availability — created lazily
+// on first PUT /availability, not at approval time, so a therapist with no
+// row yet just means "hasn't configured a schedule," not an error state.
+// A therapist with no row (or an empty workingHours list) falls back to
+// the pre-existing fixed 9am-5pm-UTC-every-day default in availability.ts,
+// so approval doesn't leave a therapist unbookable until they configure this.
+model TherapistSchedule {
+  therapistId String   @id @map("therapist_id") @db.Uuid
+  // Africa/Kigali is fixed UTC+2 with no DST, so working-hours minutes are
+  // plain minute-of-day in that zone — this field is stored for display and
+  // future multi-timezone support, not consulted by the slot-generation math.
+  timezone    String   @default("Africa/Kigali")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workingHours TherapistWorkingHours[]
+  timeOff      TherapistTimeOff[]
+
+  @@map("therapist_schedules")
+}
+
+model TherapistWorkingHours {
+  id          String            @id @default(uuid()) @db.Uuid
+  therapistId String            @map("therapist_id") @db.Uuid
+  schedule    TherapistSchedule @relation(fields: [therapistId], references: [therapistId], onDelete: Cascade)
+  // 0=Sunday..6=Saturday, matching JS's Date.getUTCDay().
+  dayOfWeek   Int               @map("day_of_week")
+  // Minutes since midnight, Africa/Kigali local time. Multiple rows per day
+  // are allowed (e.g. a split morning/afternoon schedule).
+  startMinute Int               @map("start_minute")
+  endMinute   Int               @map("end_minute")
+
+  @@index([therapistId])
+  @@map("therapist_working_hours")
+}
+
+// Temporary unavailability (time off / vacation) — blocks slot generation
+// for the given range regardless of working hours, same as an existing
+// booked appointment does.
+model TherapistTimeOff {
+  id          String            @id @default(uuid()) @db.Uuid
+  therapistId String            @map("therapist_id") @db.Uuid
+  schedule    TherapistSchedule @relation(fields: [therapistId], references: [therapistId], onDelete: Cascade)
+  startsAt    DateTime          @map("starts_at")
+  endsAt      DateTime          @map("ends_at")
+  reason      String?
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  @@index([therapistId, startsAt])
+  @@map("therapist_time_off")
+}
