@@ -1,6 +1,4 @@
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { config as dotenvConfig } from 'dotenv';
+import './env.js'; // must be first — loads .env before any module reads process.env
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { connectRedis } from './lib/redis.js';
@@ -9,12 +7,6 @@ import type { AuthenticatedRequest } from '@mindora/auth-middleware';
 
 export { authenticate };
 export type { AuthenticatedRequest };
-
-const moduleDir = dirname(fileURLToPath(import.meta.url));
-
-dotenvConfig({ path: resolve(moduleDir, '../../../.env') });
-dotenvConfig({ path: resolve(moduleDir, '../../../packages/database/.env') });
-dotenvConfig();
 
 async function start() {
   await connectRedis();
