@@ -33,22 +33,42 @@ export async function issueAuthSession(
     },
   });
 
-  res.cookie(config.cookieName, refreshToken, {
-    httpOnly: true,
-    secure: config.isProduction,
-    sameSite: 'lax',
-    maxAge: config.refreshTokenDays * 24 * 60 * 60 * 1000,
-    path: '/',
-  });
+  setRefreshCookie(res, refreshToken);
 
   return { accessToken };
 }
 
-export function clearRefreshCookie(res: Response): void {
-  res.clearCookie(config.cookieName, {
+const baseCookieOptions = () =>
+  ({
     httpOnly: true,
     secure: config.isProduction,
     sameSite: 'lax',
     path: '/',
+  }) as const;
+
+export function setRefreshCookie(res: Response, refreshToken: string): void {
+  res.cookie(config.cookieName, refreshToken, {
+    ...baseCookieOptions(),
+    domain: config.cookieDomain,
+    maxAge: config.refreshTokenDays * 24 * 60 * 60 * 1000,
   });
+  clearLegacyHostOnlyCookie(res);
+}
+
+export function clearRefreshCookie(res: Response): void {
+  res.clearCookie(config.cookieName, {
+    ...baseCookieOptions(),
+    domain: config.cookieDomain,
+  });
+  clearLegacyHostOnlyCookie(res);
+}
+
+// Sessions issued before COOKIE_DOMAIN was set still hold a host-only
+// refreshToken on the API host. Left in place, the browser sends both
+// cookies and getRequestCookie may pick the stale one first — so drop it
+// whenever the domain-scoped cookie is written or cleared.
+function clearLegacyHostOnlyCookie(res: Response): void {
+  if (config.cookieDomain) {
+    res.clearCookie(config.cookieName, baseCookieOptions());
+  }
 }

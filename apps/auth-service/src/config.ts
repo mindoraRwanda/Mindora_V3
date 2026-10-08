@@ -17,6 +17,13 @@ export const config = {
   refreshTokenDays: 7,
   redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
   cookieName: 'refreshToken',
+  // Set to the parent domain (e.g. .mindora.rw) when the frontend and this
+  // API live on different subdomains. Without it the refresh cookie is
+  // host-only on the API host, so the frontend's edge route guard (which
+  // checks for this cookie on its own host) never sees a session and
+  // bounces every successful login straight back to /login. Leave unset
+  // for localhost, where cookies already ignore the port.
+  cookieDomain: process.env.COOKIE_DOMAIN || undefined,
   isProduction: process.env.NODE_ENV === 'production',
   appBaseUrl: process.env.APP_BASE_URL ?? 'http://localhost:3001',
   // Where the browser lands after a successful Google OAuth callback. The
