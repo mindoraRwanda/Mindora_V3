@@ -234,6 +234,35 @@ describe('POST /login', () => {
     expect(response.headers['set-cookie']?.[0]).toContain('refreshToken=');
   });
 
+  it('scopes the refresh cookie to COOKIE_DOMAIN and drops the host-only one', async () => {
+    const passwordHash = await hashPassword('securePass1');
+    mockFindUnique.mockResolvedValue({
+      id: 'user-123',
+      email: 'patient@example.com',
+      passwordHash,
+      role: 'PATIENT',
+      isActive: true,
+    });
+    config.cookieDomain = '.mindora.rw';
+
+    try {
+      const app = createApp();
+      const response = await request(app).post('/login').send({
+        email: 'patient@example.com',
+        password: 'securePass1',
+      });
+
+      const cookies = response.headers['set-cookie'] as unknown as string[];
+      expect(response.status).toBe(200);
+      expect(cookies).toHaveLength(2);
+      expect(cookies[0]).toMatch(/^refreshToken=[^;]+;.*Domain=\.mindora\.rw/);
+      expect(cookies[1]).toMatch(/^refreshToken=;/);
+      expect(cookies[1]).not.toContain('Domain=');
+    } finally {
+      config.cookieDomain = undefined;
+    }
+  });
+
   it('rejects invalid credentials with 401', async () => {
     const passwordHash = await hashPassword('securePass1');
     mockFindUnique.mockResolvedValue({
