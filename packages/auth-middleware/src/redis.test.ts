@@ -66,3 +66,18 @@ describe('setUserSuspended', () => {
     expect(mockSet).not.toHaveBeenCalled();
   });
 });
+
+describe('connection handling', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('never calls connect() itself — concurrent calls must not race it', async () => {
+    mockExists.mockResolvedValue(0);
+    await Promise.all([
+      isUserSuspended(REDIS_URL, 'a'),
+      isUserSuspended(REDIS_URL, 'b'),
+      setUserSuspended(REDIS_URL, 'c', true),
+    ]);
+
+    expect(mockConnect).not.toHaveBeenCalled();
+  });
+});

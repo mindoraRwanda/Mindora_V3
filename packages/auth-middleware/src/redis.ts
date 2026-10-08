@@ -2,6 +2,11 @@ import { Redis } from 'ioredis';
 
 let redis: Redis | null = null;
 
+// lazyConnect: the first command opens the connection, and commands issued
+// while it is still connecting (or reconnecting) wait in ioredis's offline
+// queue. Callers must NOT call client.connect() themselves before a command
+// — under concurrent requests that throws "Redis is already
+// connecting/connected" and turns into a 500.
 export function getRedisClient(redisUrl: string): Redis {
   if (!redis) {
     redis = new Redis(redisUrl, {
@@ -21,9 +26,6 @@ export async function isTokenBlacklisted(
   jti: string
 ): Promise<boolean> {
   const client = getRedisClient(redisUrl);
-  if (client.status !== 'ready') {
-    await client.connect();
-  }
   const result = await client.exists(blacklistKey(jti));
   return result === 1;
 }
@@ -34,9 +36,6 @@ export async function blacklistToken(
   ttlSeconds: number
 ): Promise<void> {
   const client = getRedisClient(redisUrl);
-  if (client.status !== 'ready') {
-    await client.connect();
-  }
   if (ttlSeconds > 0) {
     await client.set(blacklistKey(jti), '1', 'EX', ttlSeconds);
   }
@@ -59,9 +58,6 @@ export async function isUserSuspended(
   userId: string
 ): Promise<boolean> {
   const client = getRedisClient(redisUrl);
-  if (client.status !== 'ready') {
-    await client.connect();
-  }
   const result = await client.exists(suspendedKey(userId));
   return result === 1;
 }
@@ -75,9 +71,6 @@ export async function setUserSuspended(
   suspended: boolean
 ): Promise<void> {
   const client = getRedisClient(redisUrl);
-  if (client.status !== 'ready') {
-    await client.connect();
-  }
   if (suspended) {
     await client.set(suspendedKey(userId), '1');
   } else {
