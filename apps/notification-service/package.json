@@ -16,7 +16,7 @@
     "@mindora/auth-middleware": "1.0.0",
     "@mindora/events": "*",
     "@mindora/queue": "*",
-    "@prisma/client": "^6.19.3",
+    "@prisma/client": "^7.10.0",
     "africastalking": "^0.8.0",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
