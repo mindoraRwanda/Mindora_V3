@@ -25,7 +25,7 @@
     "@mindora/queue": "*",
     "@mindora/validation": "*",
     "@prisma/adapter-pg": "^6.5.0",
-    "@prisma/client": "^6.5.0",
+    "@prisma/client": "^7.10.0",
     "@types/pg": "^8.23.1",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
