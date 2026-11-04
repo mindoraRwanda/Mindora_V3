@@ -1,6 +1,7 @@
 import {
   EXCHANGES,
   aiCrisisEventSchema,
+  authNotificationEventSchema,
   appointmentDomainEventSchema,
   communityDomainEventSchema,
   messageReceivedEventSchema,
@@ -13,9 +14,14 @@ import type {
   AppointmentCancelledEvent,
 } from '@mindora/events';
 import { sendPushNotification } from './fcm.js';
-import { getUserName, sendEmailToUser } from './email.js';
+import { getUserName, sendEmail, sendEmailToUser } from './email.js';
 import { sendSms } from './sms.js';
-import { logNotification } from './notificationLogger.js';
+import { sendVoiceCall } from './voice.js';
+import {
+  claimNotificationAttempt,
+  finishNotificationAttempt,
+  logNotification,
+} from './notificationLogger.js';
 import {
   getUserPreferences,
   isChannelEnabled,
@@ -40,6 +46,7 @@ const NOTIFICATION_QUEUES = {
   MESSAGES: 'notification.messages',
   MOOD: 'notification.mood',
   AI: 'notification.ai',
+  AUTH: 'notification.auth',
   COMMUNITY: 'notification.community',
   THERAPIST_APPLICATIONS: 'notification.therapist-applications',
 } as const;
@@ -108,6 +115,141 @@ async function sendSmsIfEnabled(
   // when that feature flag is off — this gate is specifically the user's
   // per-channel preference, checked before sendSms's own flag check runs.
   await sendSms(userId, body, prefs.phoneNumber, eventType);
+}
+
+function configuredList(name: string): string[] {
+  return (process.env[name] ?? '')
+    .split(/[;,]/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>\"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;',
+  })[char] ?? char);
+}
+
+async function sendAdminEmailAlerts(
+  recipients: string[],
+  subject: string,
+  html: string,
+  eventId?: string,
+  eventType = 'admin.alert.email'
+): Promise<void> {
+  if (recipients.length === 0) {
+    throw new Error('No MINDORA operations email recipient is configured');
+  }
+  const failures: string[] = [];
+  await Promise.all(recipients.map(async (recipient) => {
+    const dedupeKey = eventId ? `${eventId}:email:${recipient}` : undefined;
+    if (dedupeKey) {
+      const claimed = await claimNotificationAttempt({
+        dedupeKey, userId: 'mindora-admin', eventType, channel: 'email',
+      });
+      if (!claimed) return;
+    }
+    try {
+      const sent = await sendEmail(recipient, subject, html);
+      if (!sent) throw new Error('Resend is not initialized or email was skipped');
+      if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'delivered');
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'unknown error';
+      if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'failed', reason);
+      failures.push(`${recipient}: ${reason}`);
+    }
+  }));
+  if (failures.length) {
+    console.error('[notification] Admin email delivery failures:', failures.join('; '));
+    throw new Error(`Admin alert email delivery failed for ${failures.length} recipient(s)`);
+  }
+}
+
+async function sendAdminSmsAlerts(
+  recipients: string[],
+  message: string,
+  eventType: string,
+  eventId?: string
+): Promise<void> {
+  if (recipients.length === 0) {
+    console.warn(`[notification] No recipient configured for ${eventType}; SMS skipped`);
+    return;
+  }
+  if (process.env.SMS_ENABLED !== 'true') {
+    console.warn(`[notification] SMS_ENABLED is not true; ${eventType} SMS skipped`);
+    for (const phone of recipients) {
+      await logNotification({ userId: 'mindora-admin', eventType, channel: 'sms', status: 'skipped', failureReason: 'SMS_ENABLED is not true' });
+    }
+    return;
+  }
+  if (!process.env.AT_API_KEY || !process.env.AT_USERNAME) {
+    throw new Error(`Africa's Talking credentials are missing for ${eventType} SMS`);
+  }
+  const failures: string[] = [];
+  await Promise.all(recipients.map(async (phone) => {
+    const dedupeKey = eventId ? `${eventId}:sms:${phone}` : undefined;
+    if (dedupeKey) {
+      const claimed = await claimNotificationAttempt({
+        dedupeKey, userId: 'mindora-admin', eventType, channel: 'sms',
+      });
+      if (!claimed) return;
+    }
+    try {
+      await sendSms('mindora-admin', message, phone, eventType);
+      if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'delivered');
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'unknown error';
+      if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'failed', reason);
+      failures.push(`${phone}: ${reason}`);
+    }
+  }));
+  if (failures.length) {
+    console.error('[notification] Admin SMS delivery failures:', failures.join('; '));
+    throw new Error(`Admin SMS delivery failed for ${failures.length} recipient(s)`);
+  }
+}
+
+async function sendAdminVoiceAlerts(
+  recipients: string[],
+  eventId: string,
+  eventType: string
+): Promise<void> {
+  if (recipients.length === 0) {
+    console.warn(`[notification] No recipient configured for ${eventType}; Voice skipped`);
+    return;
+  }
+  if (process.env.AT_VOICE_ENABLED !== 'true') {
+    console.warn(`[notification] AT_VOICE_ENABLED is not true; ${eventType} Voice skipped`);
+    for (const phone of recipients) {
+      await logNotification({ userId: 'mindora-admin', eventType, channel: 'voice', status: 'skipped', failureReason: 'AT_VOICE_ENABLED is not true' });
+    }
+    return;
+  }
+
+  const failures: string[] = [];
+  await Promise.all(recipients.map(async (phone) => {
+    const dedupeKey = `${eventId}:voice:${phone}`;
+    const claimed = await claimNotificationAttempt({
+      dedupeKey, userId: 'mindora-admin', eventType, channel: 'voice',
+    });
+    if (!claimed) return;
+    try {
+      const result = await sendVoiceCall(phone, eventId);
+      if (!result.accepted) {
+        await finishNotificationAttempt(dedupeKey, 'skipped', 'Voice provider is not enabled');
+        return;
+      }
+      await finishNotificationAttempt(dedupeKey, 'accepted', "Call request accepted by Africa's Talking; final call outcome is reported through the configured Voice events callback.");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'unknown error';
+      await finishNotificationAttempt(dedupeKey, 'failed', reason);
+      failures.push(`${phone}: ${reason}`);
+    }
+  }));
+  if (failures.length) {
+    console.error('[notification] Admin Voice call failures:', failures.join('; '));
+    throw new Error(`Admin Voice call failed for ${failures.length} recipient(s)`);
+  }
 }
 
 function sessionTypeLabel(
@@ -207,20 +349,51 @@ async function handleAppointment(payload: unknown): Promise<void> {
     const booked = event as AppointmentBookedEvent;
     const typeLabel = sessionTypeLabel(booked.sessionType);
     const prefs = await getUserPreferences(booked.patientId);
-    await sendPushIfEnabled(
-      booked.patientId,
-      'Appointment Booked',
-      `${typeLabel} appointment scheduled.`,
-      event.eventType,
-      prefs
+
+    const adminEmails = configuredList('MINDORA_BOOKING_ALERT_EMAILS');
+    const adminPhones = configuredList('MINDORA_BOOKING_ALERT_PHONES');
+    const bookingSummary = `New MINDORA appointment booking\nPatient: ${patientName}\nTherapist: ${therapistName}\nWhen: ${booked.slotStart}\nSession: ${typeLabel}\nBooking ID: ${booked.appointmentId}`;
+
+    // Patient-facing and operations notifications are independent. In
+    // particular, a failed patient email or push must never suppress the
+    // required MINDORA staff email/SMS booking alerts.
+    const results = await Promise.allSettled([
+      sendPushIfEnabled(
+        booked.patientId,
+        'Appointment Booked',
+        `${typeLabel} appointment scheduled.`,
+        event.eventType,
+        prefs
+      ),
+      sendEmailIfEnabled(
+        booked.patientId,
+        'Your appointment has been booked',
+        appointmentBookedTemplate(patientName, therapistName, booked.slotStart),
+        event.eventType,
+        prefs
+      ),
+      sendAdminEmailAlerts(
+        adminEmails,
+        'MINDORA — New appointment booking',
+        `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px"><h2>New appointment booking</h2><p><strong>Patient:</strong> ${escapeHtml(patientName)}</p><p><strong>Therapist:</strong> ${escapeHtml(therapistName)}</p><p><strong>When:</strong> ${escapeHtml(booked.slotStart)}</p><p><strong>Session:</strong> ${escapeHtml(typeLabel)}</p><p><strong>Booking ID:</strong> ${escapeHtml(booked.appointmentId)}</p></div>`,
+        booked.eventId,
+        'appointment.booked.admin.email'
+      ),
+      sendAdminSmsAlerts(
+        adminPhones,
+        bookingSummary.slice(0, 500),
+        'appointment.booked.admin.sms',
+        booked.eventId
+      ),
+    ]);
+    const failures = results.flatMap((result, index) =>
+      result.status === 'rejected'
+        ? [`${['patient-push', 'patient-email', 'operations-email', 'operations-sms'][index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`]
+        : []
     );
-    await sendEmailIfEnabled(
-      booked.patientId,
-      'Your appointment has been booked',
-      appointmentBookedTemplate(patientName, therapistName, booked.slotStart),
-      event.eventType,
-      prefs
-    );
+    if (failures.length) {
+      throw new Error(`Appointment booking notifications failed: ${failures.join('; ')}`);
+    }
   }
 }
 
@@ -269,8 +442,7 @@ async function handleCommunity(payload: unknown): Promise<void> {
 }
 
 async function handleAi(payload: unknown): Promise<void> {
-  console.log(`[${EXCHANGES.AI}] received:`, JSON.stringify(payload));
-
+  // Never log the raw payload: it may contain a person's crisis disclosure.
   const parsed = aiCrisisEventSchema.safeParse(payload);
   if (!parsed.success) {
     throw new InvalidEventPayloadError(
@@ -279,13 +451,66 @@ async function handleAi(payload: unknown): Promise<void> {
     );
   }
   const crisis = parsed.data;
-  const prefs = await getUserPreferences(crisis.userId);
-  await sendSmsIfEnabled(
-    crisis.userId,
-    `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`,
-    'ai.crisis',
-    prefs
+  const adminEmails = configuredList('MINDORA_CRISIS_ALERT_EMAILS');
+  const adminPhones = configuredList('MINDORA_CRISIS_ALERT_PHONES');
+  const excerpt = crisis.messageExcerpt
+    ? escapeHtml(crisis.messageExcerpt.slice(0, 1500))
+    : 'No message excerpt was attached. Review the encrypted interaction using the secure admin workflow.';
+  const transcript = crisis.conversationExcerpt
+    ? escapeHtml(crisis.conversationExcerpt.slice(0, 5000))
+    : 'No recent transcript excerpt was available.';
+  const subject = `URGENT: MINDORA chatbot crisis alert (level ${crisis.crisisLevel})`;
+  const html = `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;padding:24px;color:#15242c"><h1 style="color:#a61b1b">Urgent chatbot safety alert</h1><p>A chatbot message was flagged for possible suicide or self-harm risk.</p><p><strong>Crisis level:</strong> ${crisis.crisisLevel}</p><p><strong>User ID:</strong> ${escapeHtml(crisis.userId)}</p><p><strong>Session ID:</strong> ${escapeHtml(crisis.sessionId ?? 'Unavailable')}</p><p><strong>Interaction ID:</strong> ${escapeHtml(crisis.interactionId ?? 'Unavailable')}</p><p><strong>Source:</strong> ${escapeHtml(crisis.source ?? 'web-chatbot')}</p><p><strong>External chatbot user reference:</strong> ${escapeHtml(crisis.externalUserRef ?? 'Not supplied')}</p><p><strong>Detected at:</strong> ${escapeHtml(crisis.occurredAt)}</p><h2>Flagged message excerpt</h2><blockquote style="border-left:4px solid #c53030;padding-left:12px;white-space:pre-wrap">${excerpt}</blockquote><h2>Recent conversation context</h2><blockquote style="border-left:4px solid #718096;padding-left:12px;white-space:pre-wrap">${transcript}</blockquote><p>Please follow MINDORA's approved clinical escalation protocol. This alert is not a substitute for emergency services.</p></div>`;
+  const voicePhones = configuredList('MINDORA_CRISIS_ALERT_VOICE_PHONES');
+  // Each channel is attempted independently. Promise.allSettled prevents a
+  // rejected email provider call from suppressing SMS or Voice. Durable
+  // per-recipient idempotency records prevent successful channels from being
+  // re-sent when RabbitMQ retries an event because another channel failed.
+  const channelResults = await Promise.allSettled([
+    sendAdminEmailAlerts(adminEmails, subject, html, crisis.eventId, 'ai.crisis.admin.email'),
+    sendAdminSmsAlerts(
+      adminPhones,
+      `URGENT MINDORA crisis alert level ${crisis.crisisLevel}. A safety event requires attention. Review the restricted admin console.`,
+      'ai.crisis.admin.sms',
+      crisis.eventId
+    ),
+    sendAdminVoiceAlerts(voicePhones, crisis.eventId, 'ai.crisis.admin.voice'),
+  ]);
+  const failures = channelResults.flatMap((result, index) =>
+    result.status === 'rejected'
+      ? [`${['email', 'sms', 'voice'][index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`]
+      : []
   );
+  if (failures.length) {
+    throw new Error(`One or more crisis notification channels failed: ${failures.join('; ')}`);
+  }
+}
+
+async function handleAuth(payload: unknown): Promise<void> {
+  const parsed = authNotificationEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new InvalidEventPayloadError(
+      `Invalid auth notification event: ${parsed.error.message}`,
+      EXCHANGES.AUTH
+    );
+  }
+  const event = parsed.data;
+  if (event.eventType === 'password.reset') {
+    const safeUrl = escapeHtml(event.resetUrl);
+    const sent = await sendEmail(
+      event.recipientEmail,
+      'Reset your MINDORA password',
+      `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;color:#15242c"><h1>Reset your password</h1><p>We received a request to reset the password for your MINDORA account.</p><p><a href="${safeUrl}" style="display:inline-block;background:#279eae;color:white;padding:12px 20px;border-radius:8px;text-decoration:none">Reset password</a></p><p>This secure link expires in ${event.expiresInMinutes} minutes and can only be used once. If you did not request this, you can ignore this email.</p></div>`
+    );
+    if (!sent) throw new Error('Password reset email provider is not initialized');
+    return;
+  }
+  const sent = await sendEmail(
+    event.recipientEmail,
+    'MINDORA account temporarily locked',
+    `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;color:#15242c"><h1>Account temporarily locked</h1><p>We detected five unsuccessful sign-in attempts for your MINDORA account.</p><p>For your protection, sign-in is blocked for 15 minutes, until ${escapeHtml(event.lockedUntil)}.</p><p>If this was not you, reset your password and contact MINDORA support.</p></div>`
+  );
+  if (!sent) throw new Error('Account lock notification email provider is not initialized');
 }
 
 async function handleMood(payload: unknown): Promise<void> {
@@ -410,6 +635,8 @@ export async function startConsumers(): Promise<void> {
   );
 
   await subscribeWithRetry(EXCHANGES.AI, NOTIFICATION_QUEUES.AI, handleAi);
+
+  await subscribeWithRetry(EXCHANGES.AUTH, NOTIFICATION_QUEUES.AUTH, handleAuth, 'topic');
 
   await subscribeWithRetry(
     EXCHANGES.THERAPIST_APPLICATIONS,

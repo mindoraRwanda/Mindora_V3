@@ -39,6 +39,11 @@ const mockStoreReset = vi.fn();
 const mockGetResetUser = vi.fn();
 const mockDeleteReset = vi.fn();
 const mockPublish = vi.fn();
+const mockPublishToExchange = vi.fn();
+const mockLockRemaining = vi.fn();
+const mockRecordLoginFailure = vi.fn();
+const mockClearLoginFailures = vi.fn();
+const mockClearLoginLock = vi.fn();
 
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
@@ -73,6 +78,7 @@ vi.mock('@mindora/auth-middleware', async (importOriginal) => {
 // a profile — mocked here so tests never attempt a real RabbitMQ connection.
 vi.mock('@mindora/queue', () => ({
   publish: (...args: unknown[]) => mockPublish(...args),
+  publishToExchange: (...args: unknown[]) => mockPublishToExchange(...args),
 }));
 
 vi.mock('../lib/redis.js', () => ({
@@ -82,6 +88,10 @@ vi.mock('../lib/redis.js', () => ({
   deletePasswordResetToken: (...args: unknown[]) => mockDeleteReset(...args),
   isTokenBlacklisted: (...args: unknown[]) => mockIsBlacklisted(...args),
   blacklistToken: (...args: unknown[]) => mockBlacklistToken(...args),
+  getLoginLockRemainingSeconds: (...args: unknown[]) => mockLockRemaining(...args),
+  recordLoginFailure: (...args: unknown[]) => mockRecordLoginFailure(...args),
+  clearLoginFailures: (...args: unknown[]) => mockClearLoginFailures(...args),
+  clearLoginLock: (...args: unknown[]) => mockClearLoginLock(...args),
 }));
 
 import { createApp } from '../app.js';
@@ -211,6 +221,11 @@ describe('POST /login', () => {
     vi.clearAllMocks();
     mockRefreshCreate.mockResolvedValue({ id: 'refresh-1' });
     mockIsBlacklisted.mockResolvedValue(false);
+    mockLockRemaining.mockResolvedValue(0);
+    mockRecordLoginFailure.mockResolvedValue({ locked: false, lockedNow: false, retryAfterSeconds: 0 });
+    mockClearLoginFailures.mockResolvedValue(undefined);
+    mockClearLoginLock.mockResolvedValue(undefined);
+    mockPublishToExchange.mockResolvedValue(undefined);
   });
 
   it('returns an access token for valid credentials', async () => {
@@ -304,6 +319,16 @@ describe('POST /login', () => {
     expect(mockFindUnique).toHaveBeenCalledWith({
       where: { email: 'patient@example.com' },
     });
+  });
+
+  it('locks a user after the fifth invalid attempt and emits a security notification', async () => {
+    const passwordHash = await hashPassword('securePass1');
+    mockFindUnique.mockResolvedValue({ id: 'user-123', email: 'patient@example.com', passwordHash, role: 'PATIENT', isActive: true });
+    mockRecordLoginFailure.mockResolvedValue({ locked: true, lockedNow: true, retryAfterSeconds: 900 });
+    const app = createApp();
+    const response = await request(app).post('/login').send({ email: 'patient@example.com', password: 'wrong-password' });
+    expect(response.status).toBe(423);
+    expect(mockPublishToExchange).toHaveBeenCalledWith(expect.any(String), 'account.locked', expect.objectContaining({ recipientEmail: 'patient@example.com' }));
   });
 
   it('rejects login for a suspended account with 403', async () => {
