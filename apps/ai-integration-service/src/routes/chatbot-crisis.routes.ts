@@ -12,9 +12,30 @@ function safeTokenEqual(expected: string, supplied: string): boolean {
 }
 
 function bearerToken(req: Request): string | null {
+  // Authorization is user-controlled. Bound parsing work and avoid a
+  // backtracking regular expression on attacker-supplied whitespace.
   const value = req.header('authorization') ?? '';
-  const match = /^Bearer\s+(.+)$/i.exec(value);
-  return match?.[1]?.trim() || null;
+  if (value.length > 4096 || value.slice(0, 6).toLowerCase() !== 'bearer') {
+    return null;
+  }
+
+  let index = 6;
+  const separator = value.charCodeAt(index);
+  if (separator !== 0x20 && separator !== 0x09) return null;
+  while (index < value.length) {
+    const code = value.charCodeAt(index);
+    if (code !== 0x20 && code !== 0x09) break;
+    index += 1;
+  }
+
+  const token = value.slice(index);
+  if (!token || token.length > 2048) return null;
+  // A bearer credential is a single token, not a whitespace-delimited value.
+  for (let i = 0; i < token.length; i += 1) {
+    const code = token.charCodeAt(i);
+    if (code <= 0x20 || code === 0x7f) return null;
+  }
+  return token;
 }
 
 /**

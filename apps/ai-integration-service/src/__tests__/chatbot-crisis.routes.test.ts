@@ -47,6 +47,15 @@ describe('private Python chatbot crisis webhook', () => {
     expect(connect).not.toHaveBeenCalled();
   });
 
+  it('rejects an oversized bearer header without parsing unbounded input', async () => {
+    const response = await request(app)
+      .post('/api/v1/ai/internal/chatbot-crisis-events')
+      .set('Authorization', `Bearer ${' '.repeat(5000)}test-only-shared-secret`)
+      .send(validPayload);
+    expect(response.status).toBe(401);
+    expect(connect).not.toHaveBeenCalled();
+  });
+
   it('rejects an invalid crisis level', async () => {
     const response = await request(app)
       .post('/api/v1/ai/internal/chatbot-crisis-events')

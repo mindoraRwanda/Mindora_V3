@@ -125,8 +125,8 @@ function configuredList(name: string): string[] {
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>\"']/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;',
+  return value.replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   })[char] ?? char);
 }
 
@@ -177,7 +177,7 @@ async function sendAdminSmsAlerts(
   }
   if (process.env.SMS_ENABLED !== 'true') {
     console.warn(`[notification] SMS_ENABLED is not true; ${eventType} SMS skipped`);
-    for (const phone of recipients) {
+    for (const _phone of recipients) {
       await logNotification({ userId: 'mindora-admin', eventType, channel: 'sms', status: 'skipped', failureReason: 'SMS_ENABLED is not true' });
     }
     return;
@@ -220,7 +220,7 @@ async function sendAdminVoiceAlerts(
   }
   if (process.env.AT_VOICE_ENABLED !== 'true') {
     console.warn(`[notification] AT_VOICE_ENABLED is not true; ${eventType} Voice skipped`);
-    for (const phone of recipients) {
+    for (const _phone of recipients) {
       await logNotification({ userId: 'mindora-admin', eventType, channel: 'voice', status: 'skipped', failureReason: 'AT_VOICE_ENABLED is not true' });
     }
     return;
@@ -250,6 +250,17 @@ async function sendAdminVoiceAlerts(
     console.error('[notification] Admin Voice call failures:', failures.join('; '));
     throw new Error(`Admin Voice call failed for ${failures.length} recipient(s)`);
   }
+}
+
+function failedNotificationChannels(
+  results: PromiseSettledResult<void>[],
+  labels: string[]
+): string[] {
+  return results.flatMap((result, index) =>
+    result.status === 'rejected'
+      ? [`${labels[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`]
+      : []
+  );
 }
 
 function sessionTypeLabel(
@@ -299,49 +310,69 @@ async function handleAppointment(payload: unknown): Promise<void> {
       ? `Reason: ${reason}`
       : 'Your appointment has been cancelled.';
     const prefs = await getUserPreferences(recipientId);
-    await sendPushIfEnabled(
-      recipientId,
-      'Appointment Cancelled',
-      body,
-      event.eventType,
-      prefs
-    );
-    await sendEmailIfEnabled(
-      recipientId,
-      'Your appointment has been cancelled',
-      appointmentCancelledTemplate(
-        patientName,
-        therapistName,
-        cancelled.slotStart,
-        reason
+    const results = await Promise.allSettled([
+      sendPushIfEnabled(
+        recipientId,
+        'Appointment Cancelled',
+        body,
+        event.eventType,
+        prefs
       ),
-      event.eventType,
-      prefs
-    );
+      sendEmailIfEnabled(
+        recipientId,
+        'Your appointment has been cancelled',
+        appointmentCancelledTemplate(
+          patientName,
+          therapistName,
+          cancelled.slotStart,
+          reason
+        ),
+        event.eventType,
+        prefs
+      ),
+      sendSmsIfEnabled(
+        recipientId,
+        'Your MINDORA appointment has been cancelled. Sign in to view the details.',
+        event.eventType,
+        prefs
+      ),
+    ]);
+    const failures = failedNotificationChannels(results, ['push', 'email', 'sms']);
+    if (failures.length) throw new Error(`Appointment cancellation notifications failed: ${failures.join('; ')}`);
     return;
   }
 
   if (event.eventType === 'appointment.confirmed') {
     const confirmed = event as AppointmentConfirmedEvent;
     const prefs = await getUserPreferences(confirmed.patientId);
-    await sendPushIfEnabled(
-      confirmed.patientId,
-      'Appointment Confirmed',
-      'Your appointment has been confirmed.',
-      event.eventType,
-      prefs
-    );
-    await sendEmailIfEnabled(
-      confirmed.patientId,
-      'Your appointment has been confirmed',
-      appointmentConfirmedTemplate(
-        patientName,
-        therapistName,
-        confirmed.slotStart
+    const results = await Promise.allSettled([
+      sendPushIfEnabled(
+        confirmed.patientId,
+        'Appointment Confirmed',
+        'Your appointment has been confirmed.',
+        event.eventType,
+        prefs
       ),
-      event.eventType,
-      prefs
-    );
+      sendEmailIfEnabled(
+        confirmed.patientId,
+        'Your appointment has been confirmed',
+        appointmentConfirmedTemplate(
+          patientName,
+          therapistName,
+          confirmed.slotStart
+        ),
+        event.eventType,
+        prefs
+      ),
+      sendSmsIfEnabled(
+        confirmed.patientId,
+        'Your MINDORA appointment has been confirmed. Sign in to view the details.',
+        event.eventType,
+        prefs
+      ),
+    ]);
+    const failures = failedNotificationChannels(results, ['push', 'email', 'sms']);
+    if (failures.length) throw new Error(`Appointment confirmation notifications failed: ${failures.join('; ')}`);
     return;
   }
 
@@ -372,6 +403,12 @@ async function handleAppointment(payload: unknown): Promise<void> {
         event.eventType,
         prefs
       ),
+      sendSmsIfEnabled(
+        booked.patientId,
+        'Your MINDORA appointment has been booked and is pending confirmation. Sign in to view the details.',
+        event.eventType,
+        prefs
+      ),
       sendAdminEmailAlerts(
         adminEmails,
         'MINDORA — New appointment booking',
@@ -386,11 +423,13 @@ async function handleAppointment(payload: unknown): Promise<void> {
         booked.eventId
       ),
     ]);
-    const failures = results.flatMap((result, index) =>
-      result.status === 'rejected'
-        ? [`${['patient-push', 'patient-email', 'operations-email', 'operations-sms'][index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`]
-        : []
-    );
+    const failures = failedNotificationChannels(results, [
+      'patient-push',
+      'patient-email',
+      'patient-sms',
+      'operations-email',
+      'operations-sms',
+    ]);
     if (failures.length) {
       throw new Error(`Appointment booking notifications failed: ${failures.join('; ')}`);
     }

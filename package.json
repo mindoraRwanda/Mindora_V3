@@ -2,7 +2,7 @@
   "name": "mindora_v3",
   "version": "1.0.0",
   "private": true,
-  "description": "Mindora V3 monorepo — mental health platform microservices",
+  "description": "Mindora V3 monorepo \u2014 mental health platform microservices",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -57,10 +57,10 @@
   "packageManager": "npm@10.9.2",
   "overrides": {
     "axios": "^1.20.0",
-    "joi": "^18.2.9",
+    "joi": "^18.3.1",
     "africastalking": {
       "axios": "1.20.0",
-      "joi": "18.2.9"
+      "joi": "18.3.1"
     },
     "vite": "7.3.6"
   },
@@ -70,7 +70,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "ioredis": "^5.11.1",
-    "joi": "^18.2.9",
+    "joi": "^18.3.1",
     "mongoose": "^9.6.3",
     "resend": "^6.29.0",
     "socket.io": "^4.8.3"

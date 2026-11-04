@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express';
 import { timingSafeEqual } from 'node:crypto';
 import { finishNotificationAttempt, logNotification } from '../notificationLogger.js';
+import { voiceWebhookLimiter } from '../middleware/rate-limit.js';
 
 export const voiceWebhooksRouter = Router();
 
@@ -18,8 +19,8 @@ function isAuthorizedWebhook(req: Request): boolean {
 }
 
 function escapeXml(value: string): string {
-  return value.replace(/[&<>\"']/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&apos;',
+  return value.replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
   })[char] ?? char);
 }
 
@@ -28,7 +29,7 @@ function escapeXml(value: string): string {
  * recipient answers an outbound call. Configure the issued Voice number's
  * callback URL to this endpoint, including the AT_VOICE_WEBHOOK_TOKEN query.
  */
-voiceWebhooksRouter.post('/webhooks/voice/callback', (req, res) => {
+voiceWebhooksRouter.post('/webhooks/voice/callback', voiceWebhookLimiter, (req, res) => {
   if (!isAuthorizedWebhook(req)) {
     return res.status(401).type('text/plain').send('Unauthorized');
   }
@@ -39,7 +40,7 @@ voiceWebhooksRouter.post('/webhooks/voice/callback', (req, res) => {
 });
 
 /** Receives Voice call event updates; no patient message or transcript is logged. */
-voiceWebhooksRouter.post('/webhooks/voice/events', async (req, res) => {
+voiceWebhooksRouter.post('/webhooks/voice/events', voiceWebhookLimiter, async (req, res) => {
   if (!isAuthorizedWebhook(req)) {
     return res.status(401).type('text/plain').send('Unauthorized');
   }
