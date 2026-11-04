@@ -91,3 +91,5 @@ export {
   type TherapistApplicationSubmittedEvent,
   type TherapistApplicationSuspendedEvent,
 } from './therapist-application/index.js';
+
+export { authNotificationEventSchema, type AuthNotificationEvent } from './auth.js';

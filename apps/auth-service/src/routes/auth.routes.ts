@@ -4,7 +4,8 @@ import {
   setUserSuspended,
   verifyAccessToken,
 } from '@mindora/auth-middleware';
-import { publish } from '@mindora/queue';
+import { publish, publishToExchange } from '@mindora/queue';
+import { EXCHANGES } from '@mindora/events';
 import {
   analyticsRangeQuerySchema,
   forgotPasswordSchema,
@@ -17,7 +18,7 @@ import {
 import { Router, type Response } from 'express';
 import type { UserRole } from '../generated/prisma/index.js';
 import jwt from 'jsonwebtoken';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import passport from 'passport';
 import { config, isGoogleOAuthConfigured } from '../config.js';
 import {
@@ -37,6 +38,10 @@ import {
   deletePasswordResetToken,
   getPasswordResetUserId,
   storePasswordResetToken,
+  clearLoginFailures,
+  clearLoginLock,
+  getLoginLockRemainingSeconds,
+  recordLoginFailure,
 } from '../lib/redis.js';
 import {
   clearRefreshCookie,
@@ -138,19 +143,53 @@ authRouter.post(
     }
 
     const { email, password } = parsed.data;
-    const user = await prisma.user.findUnique({ where: { email } });
-
-    if (!user || !(await verifyPassword(user.passwordHash, password))) {
-      res.status(401).json({ message: 'Invalid credentials' });
+    const lockRemaining = await getLoginLockRemainingSeconds(email);
+    if (lockRemaining > 0) {
+      res.status(423).json({
+        message: 'Too many unsuccessful login attempts. Please try again in 15 minutes.',
+        retryAfterSeconds: lockRemaining,
+      });
       return;
     }
 
-    if (user.isActive === false) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    const validCredentials = Boolean(user && (await verifyPassword(user.passwordHash, password)));
+
+    if (!validCredentials) {
+      const failure = await recordLoginFailure(email);
+      if (failure.lockedNow && user) {
+        const lockedUntil = new Date(Date.now() + failure.retryAfterSeconds * 1000).toISOString();
+        try {
+          await publishToExchange(EXCHANGES.AUTH, 'account.locked', {
+            eventId: randomUUID(),
+            occurredAt: new Date().toISOString(),
+            eventType: 'account.locked',
+            recipientEmail: user.email,
+            lockedUntil,
+          });
+        } catch (error) {
+          console.error('[auth] Failed to queue account-lock notification:', error);
+        }
+      }
+      if (failure.locked) {
+        res.status(423).json({
+          message: 'Too many unsuccessful login attempts. Your account is temporarily locked for 15 minutes.',
+          retryAfterSeconds: failure.retryAfterSeconds,
+        });
+      } else {
+        res.status(401).json({ message: 'Invalid credentials' });
+      }
+      return;
+    }
+
+    await clearLoginFailures(email);
+
+    if (user!.isActive === false) {
       res.status(403).json({ message: 'Account suspended' });
       return;
     }
 
-    const { accessToken } = await issueAuthSession(res, user);
+    const { accessToken } = await issueAuthSession(res, user!);
     res.status(200).json({ accessToken });
   })
 );
@@ -275,8 +314,20 @@ authRouter.post(
       const resetToken = randomBytes(32).toString('base64url');
       const tokenHash = hashToken(resetToken);
       await storePasswordResetToken(tokenHash, user.id);
-      const resetUrl = `${config.appBaseUrl}/reset-password?token=${resetToken}`;
-      console.log(`[password-reset] Reset URL for ${email}: ${resetUrl}`);
+      const resetUrl = `${config.appBaseUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(resetToken)}`;
+      try {
+        await publishToExchange(EXCHANGES.AUTH, 'password.reset', {
+          eventId: randomUUID(),
+          occurredAt: new Date().toISOString(),
+          eventType: 'password.reset',
+          recipientEmail: user.email,
+          resetUrl,
+          expiresInMinutes: 15,
+        });
+      } catch (error) {
+        // Keep the public response generic to avoid revealing registered emails.
+        console.error('[auth] Failed to queue password reset email:', error);
+      }
     }
 
     res.status(200).json({
@@ -314,6 +365,8 @@ authRouter.post(
     });
 
     await deletePasswordResetToken(tokenHash);
+    const resetUser = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+    if (resetUser?.email) await clearLoginLock(resetUser.email);
     await prisma.refreshToken.updateMany({
       where: { userId, revoked: false },
       data: { revoked: true },
