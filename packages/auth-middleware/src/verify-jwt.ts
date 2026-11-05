@@ -4,7 +4,6 @@ import { isTokenBlacklisted, isUserSuspended } from './redis.js';
 import type {
   AuthMiddlewareOptions,
   AuthenticatedRequest,
-  AuthUser,
 } from './types.js';
 
 const DEFAULT_REDIS_URL = 'redis://localhost:6379';
