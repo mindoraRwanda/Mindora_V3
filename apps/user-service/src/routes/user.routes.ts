@@ -679,7 +679,8 @@ userRouter.put(
 userRouter.get(
   '/therapists',
   authenticatedRouteLimiter,
-  verifyJwt,
+  // Public directory data is limited to approved profiles. Application, document,
+  // booking and dashboard routes remain authenticated and role-protected.
   asyncHandler(async (req, res) => {
     const parsed = therapistListQuerySchema.safeParse(req.query);
     if (!parsed.success) {
