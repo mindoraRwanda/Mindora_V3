@@ -1,9 +1,12 @@
 function resolveAppBaseUrl(): string {
   const isProduction = process.env.NODE_ENV === 'production';
   const configured = process.env.APP_BASE_URL?.trim();
-  const value = configured || (isProduction ? undefined : 'http://localhost:3000');
+  const value =
+    configured || (isProduction ? undefined : 'http://localhost:3000');
   if (!value) {
-    throw new Error('APP_BASE_URL must be configured in production for password reset links');
+    throw new Error(
+      'APP_BASE_URL must be configured in production for password reset links'
+    );
   }
 
   let parsed: URL;
@@ -13,7 +16,11 @@ function resolveAppBaseUrl(): string {
     throw new Error('APP_BASE_URL must be a valid absolute URL');
   }
 
-  if (isProduction && (parsed.protocol !== 'https:' || ['localhost', '127.0.0.1'].includes(parsed.hostname))) {
+  if (
+    isProduction &&
+    (parsed.protocol !== 'https:' ||
+      ['localhost', '127.0.0.1'].includes(parsed.hostname))
+  ) {
     throw new Error('APP_BASE_URL must be a public HTTPS URL in production');
   }
 

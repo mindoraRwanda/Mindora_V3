@@ -1,9 +1,11 @@
 # MINDORA Conversational Therapy Module — Update Notes
 
 ## Supplied source reviewed
+
 This update uses the user-supplied `mindora-conv-therapy-module-main.zip`, which contains a FastAPI/Python chatbot backend, a separate React test frontend, Ollama/Llama integration, Qdrant retrieval, emotion analysis and a local mental-health knowledge index. It is not assumed to be identical to the GitHub repository named `MindoraVersionTwo`; that repository identity should be confirmed by MINDORA if they are separate deployments.
 
 ## Changes in this update
+
 - Added a deterministic, lightweight crisis pre-filter that runs before LLM inference.
 - Added a consistent immediate supportive response for explicit high-risk disclosures.
 - Added asynchronous service-to-service event forwarding to the MINDORA V3 notification pipeline.
@@ -16,14 +18,17 @@ This update uses the user-supplied `mindora-conv-therapy-module-main.zip`, which
 - Replaced the committed PostgreSQL password in the Docker Compose file with required environment variables.
 
 ## Service integration
+
 Configure `MINDORA_CRISIS_WEBHOOK_URL` to the MINDORA V3 AI integration service route:
 `/api/v1/ai/internal/chatbot-crisis-events`
 Configure the same high-entropy `MINDORA_CRISIS_WEBHOOK_TOKEN` in both services. The webhook is optional in local development; without it, the chatbot still displays the immediate safety response, but automated staff notifications are not forwarded to MINDORA V3.
 
 ## Clinical safety gate
+
 The technical signal detector is not a validated clinical instrument. A MINDORA clinical/safeguarding lead must approve the taxonomy, thresholds, user-facing content, local contacts, staff recipients, service hours and escalation protocol before production activation. The chatbot does not hardcode unverified hotline or emergency numbers.
 
 ## Known limitations
+
 - Full dependency installation and runtime inference were not executed in this build environment; the pinned Python dependency set includes large machine-learning dependencies and requires an appropriate supported Python/runtime environment.
 - Live Ollama, Qdrant, database and Node webhook connectivity were not tested against a running MINDORA deployment.
 - The supplied chat module's existing database schema stores chat messages and emotion logs. Review encryption, retention and access policy before production use.

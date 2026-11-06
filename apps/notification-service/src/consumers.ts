@@ -125,9 +125,17 @@ function configuredList(name: string): string[] {
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[char] ?? char);
+  return value.replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[char] ?? char
+  );
 }
 
 async function sendAdminEmailAlerts(
@@ -141,27 +149,39 @@ async function sendAdminEmailAlerts(
     throw new Error('No MINDORA operations email recipient is configured');
   }
   const failures: string[] = [];
-  await Promise.all(recipients.map(async (recipient) => {
-    const dedupeKey = eventId ? `${eventId}:email:${recipient}` : undefined;
-    if (dedupeKey) {
-      const claimed = await claimNotificationAttempt({
-        dedupeKey, userId: 'mindora-admin', eventType, channel: 'email',
-      });
-      if (!claimed) return;
-    }
-    try {
-      const sent = await sendEmail(recipient, subject, html);
-      if (!sent) throw new Error('Resend is not initialized or email was skipped');
-      if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'delivered');
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : 'unknown error';
-      if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'failed', reason);
-      failures.push(`${recipient}: ${reason}`);
-    }
-  }));
+  await Promise.all(
+    recipients.map(async (recipient) => {
+      const dedupeKey = eventId ? `${eventId}:email:${recipient}` : undefined;
+      if (dedupeKey) {
+        const claimed = await claimNotificationAttempt({
+          dedupeKey,
+          userId: 'mindora-admin',
+          eventType,
+          channel: 'email',
+        });
+        if (!claimed) return;
+      }
+      try {
+        const sent = await sendEmail(recipient, subject, html);
+        if (!sent)
+          throw new Error('Resend is not initialized or email was skipped');
+        if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'delivered');
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'unknown error';
+        if (dedupeKey)
+          await finishNotificationAttempt(dedupeKey, 'failed', reason);
+        failures.push(`${recipient}: ${reason}`);
+      }
+    })
+  );
   if (failures.length) {
-    console.error('[notification] Admin email delivery failures:', failures.join('; '));
-    throw new Error(`Admin alert email delivery failed for ${failures.length} recipient(s)`);
+    console.error(
+      '[notification] Admin email delivery failures:',
+      failures.join('; ')
+    );
+    throw new Error(
+      `Admin alert email delivery failed for ${failures.length} recipient(s)`
+    );
   }
 }
 
@@ -172,40 +192,63 @@ async function sendAdminSmsAlerts(
   eventId?: string
 ): Promise<void> {
   if (recipients.length === 0) {
-    console.warn(`[notification] No recipient configured for ${eventType}; SMS skipped`);
+    console.warn(
+      `[notification] No recipient configured for ${eventType}; SMS skipped`
+    );
     return;
   }
   if (process.env.SMS_ENABLED !== 'true') {
-    console.warn(`[notification] SMS_ENABLED is not true; ${eventType} SMS skipped`);
+    console.warn(
+      `[notification] SMS_ENABLED is not true; ${eventType} SMS skipped`
+    );
     for (const _phone of recipients) {
-      await logNotification({ userId: 'mindora-admin', eventType, channel: 'sms', status: 'skipped', failureReason: 'SMS_ENABLED is not true' });
+      await logNotification({
+        userId: 'mindora-admin',
+        eventType,
+        channel: 'sms',
+        status: 'skipped',
+        failureReason: 'SMS_ENABLED is not true',
+      });
     }
     return;
   }
   if (!process.env.AT_API_KEY || !process.env.AT_USERNAME) {
-    throw new Error(`Africa's Talking credentials are missing for ${eventType} SMS`);
+    throw new Error(
+      `Africa's Talking credentials are missing for ${eventType} SMS`
+    );
   }
   const failures: string[] = [];
-  await Promise.all(recipients.map(async (phone) => {
-    const dedupeKey = eventId ? `${eventId}:sms:${phone}` : undefined;
-    if (dedupeKey) {
-      const claimed = await claimNotificationAttempt({
-        dedupeKey, userId: 'mindora-admin', eventType, channel: 'sms',
-      });
-      if (!claimed) return;
-    }
-    try {
-      await sendSms('mindora-admin', message, phone, eventType);
-      if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'delivered');
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : 'unknown error';
-      if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'failed', reason);
-      failures.push(`${phone}: ${reason}`);
-    }
-  }));
+  await Promise.all(
+    recipients.map(async (phone) => {
+      const dedupeKey = eventId ? `${eventId}:sms:${phone}` : undefined;
+      if (dedupeKey) {
+        const claimed = await claimNotificationAttempt({
+          dedupeKey,
+          userId: 'mindora-admin',
+          eventType,
+          channel: 'sms',
+        });
+        if (!claimed) return;
+      }
+      try {
+        await sendSms('mindora-admin', message, phone, eventType);
+        if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'delivered');
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'unknown error';
+        if (dedupeKey)
+          await finishNotificationAttempt(dedupeKey, 'failed', reason);
+        failures.push(`${phone}: ${reason}`);
+      }
+    })
+  );
   if (failures.length) {
-    console.error('[notification] Admin SMS delivery failures:', failures.join('; '));
-    throw new Error(`Admin SMS delivery failed for ${failures.length} recipient(s)`);
+    console.error(
+      '[notification] Admin SMS delivery failures:',
+      failures.join('; ')
+    );
+    throw new Error(
+      `Admin SMS delivery failed for ${failures.length} recipient(s)`
+    );
   }
 }
 
@@ -215,40 +258,68 @@ async function sendAdminVoiceAlerts(
   eventType: string
 ): Promise<void> {
   if (recipients.length === 0) {
-    console.warn(`[notification] No recipient configured for ${eventType}; Voice skipped`);
+    console.warn(
+      `[notification] No recipient configured for ${eventType}; Voice skipped`
+    );
     return;
   }
   if (process.env.AT_VOICE_ENABLED !== 'true') {
-    console.warn(`[notification] AT_VOICE_ENABLED is not true; ${eventType} Voice skipped`);
+    console.warn(
+      `[notification] AT_VOICE_ENABLED is not true; ${eventType} Voice skipped`
+    );
     for (const _phone of recipients) {
-      await logNotification({ userId: 'mindora-admin', eventType, channel: 'voice', status: 'skipped', failureReason: 'AT_VOICE_ENABLED is not true' });
+      await logNotification({
+        userId: 'mindora-admin',
+        eventType,
+        channel: 'voice',
+        status: 'skipped',
+        failureReason: 'AT_VOICE_ENABLED is not true',
+      });
     }
     return;
   }
 
   const failures: string[] = [];
-  await Promise.all(recipients.map(async (phone) => {
-    const dedupeKey = `${eventId}:voice:${phone}`;
-    const claimed = await claimNotificationAttempt({
-      dedupeKey, userId: 'mindora-admin', eventType, channel: 'voice',
-    });
-    if (!claimed) return;
-    try {
-      const result = await sendVoiceCall(phone, eventId);
-      if (!result.accepted) {
-        await finishNotificationAttempt(dedupeKey, 'skipped', 'Voice provider is not enabled');
-        return;
+  await Promise.all(
+    recipients.map(async (phone) => {
+      const dedupeKey = `${eventId}:voice:${phone}`;
+      const claimed = await claimNotificationAttempt({
+        dedupeKey,
+        userId: 'mindora-admin',
+        eventType,
+        channel: 'voice',
+      });
+      if (!claimed) return;
+      try {
+        const result = await sendVoiceCall(phone, eventId);
+        if (!result.accepted) {
+          await finishNotificationAttempt(
+            dedupeKey,
+            'skipped',
+            'Voice provider is not enabled'
+          );
+          return;
+        }
+        await finishNotificationAttempt(
+          dedupeKey,
+          'accepted',
+          "Call request accepted by Africa's Talking; final call outcome is reported through the configured Voice events callback."
+        );
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'unknown error';
+        await finishNotificationAttempt(dedupeKey, 'failed', reason);
+        failures.push(`${phone}: ${reason}`);
       }
-      await finishNotificationAttempt(dedupeKey, 'accepted', "Call request accepted by Africa's Talking; final call outcome is reported through the configured Voice events callback.");
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : 'unknown error';
-      await finishNotificationAttempt(dedupeKey, 'failed', reason);
-      failures.push(`${phone}: ${reason}`);
-    }
-  }));
+    })
+  );
   if (failures.length) {
-    console.error('[notification] Admin Voice call failures:', failures.join('; '));
-    throw new Error(`Admin Voice call failed for ${failures.length} recipient(s)`);
+    console.error(
+      '[notification] Admin Voice call failures:',
+      failures.join('; ')
+    );
+    throw new Error(
+      `Admin Voice call failed for ${failures.length} recipient(s)`
+    );
   }
 }
 
@@ -258,7 +329,9 @@ function failedNotificationChannels(
 ): string[] {
   return results.flatMap((result, index) =>
     result.status === 'rejected'
-      ? [`${labels[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`]
+      ? [
+          `${labels[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+        ]
       : []
   );
 }
@@ -337,8 +410,15 @@ async function handleAppointment(payload: unknown): Promise<void> {
         prefs
       ),
     ]);
-    const failures = failedNotificationChannels(results, ['push', 'email', 'sms']);
-    if (failures.length) throw new Error(`Appointment cancellation notifications failed: ${failures.join('; ')}`);
+    const failures = failedNotificationChannels(results, [
+      'push',
+      'email',
+      'sms',
+    ]);
+    if (failures.length)
+      throw new Error(
+        `Appointment cancellation notifications failed: ${failures.join('; ')}`
+      );
     return;
   }
 
@@ -371,8 +451,15 @@ async function handleAppointment(payload: unknown): Promise<void> {
         prefs
       ),
     ]);
-    const failures = failedNotificationChannels(results, ['push', 'email', 'sms']);
-    if (failures.length) throw new Error(`Appointment confirmation notifications failed: ${failures.join('; ')}`);
+    const failures = failedNotificationChannels(results, [
+      'push',
+      'email',
+      'sms',
+    ]);
+    if (failures.length)
+      throw new Error(
+        `Appointment confirmation notifications failed: ${failures.join('; ')}`
+      );
     return;
   }
 
@@ -431,7 +518,9 @@ async function handleAppointment(payload: unknown): Promise<void> {
       'operations-sms',
     ]);
     if (failures.length) {
-      throw new Error(`Appointment booking notifications failed: ${failures.join('; ')}`);
+      throw new Error(
+        `Appointment booking notifications failed: ${failures.join('; ')}`
+      );
     }
   }
 }
@@ -506,7 +595,13 @@ async function handleAi(payload: unknown): Promise<void> {
   // per-recipient idempotency records prevent successful channels from being
   // re-sent when RabbitMQ retries an event because another channel failed.
   const channelResults = await Promise.allSettled([
-    sendAdminEmailAlerts(adminEmails, subject, html, crisis.eventId, 'ai.crisis.admin.email'),
+    sendAdminEmailAlerts(
+      adminEmails,
+      subject,
+      html,
+      crisis.eventId,
+      'ai.crisis.admin.email'
+    ),
     sendAdminSmsAlerts(
       adminPhones,
       `URGENT MINDORA crisis alert level ${crisis.crisisLevel}. A safety event requires attention. Review the restricted admin console.`,
@@ -517,11 +612,15 @@ async function handleAi(payload: unknown): Promise<void> {
   ]);
   const failures = channelResults.flatMap((result, index) =>
     result.status === 'rejected'
-      ? [`${['email', 'sms', 'voice'][index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`]
+      ? [
+          `${['email', 'sms', 'voice'][index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+        ]
       : []
   );
   if (failures.length) {
-    throw new Error(`One or more crisis notification channels failed: ${failures.join('; ')}`);
+    throw new Error(
+      `One or more crisis notification channels failed: ${failures.join('; ')}`
+    );
   }
 }
 
@@ -548,7 +647,8 @@ async function handleAuth(payload: unknown): Promise<void> {
         eventType: event.eventType,
         channel: 'email',
         status: 'accepted',
-        failureReason: 'Provider accepted request; mailbox delivery is not confirmed',
+        failureReason:
+          'Provider accepted request; mailbox delivery is not confirmed',
       });
       return;
     } catch (error) {
@@ -568,7 +668,10 @@ async function handleAuth(payload: unknown): Promise<void> {
     'MINDORA account temporarily locked',
     `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;color:#15242c"><h1>Account temporarily locked</h1><p>We detected five unsuccessful sign-in attempts for your MINDORA account.</p><p>For your protection, sign-in is blocked for 15 minutes, until ${escapeHtml(event.lockedUntil)}.</p><p>If this was not you, reset your password and contact MINDORA support.</p></div>`
   );
-  if (!sent) throw new Error('Account lock notification email provider is not initialized');
+  if (!sent)
+    throw new Error(
+      'Account lock notification email provider is not initialized'
+    );
 }
 
 async function handleMood(payload: unknown): Promise<void> {
@@ -694,7 +797,12 @@ export async function startConsumers(): Promise<void> {
 
   await subscribeWithRetry(EXCHANGES.AI, NOTIFICATION_QUEUES.AI, handleAi);
 
-  await subscribeWithRetry(EXCHANGES.AUTH, NOTIFICATION_QUEUES.AUTH, handleAuth, 'topic');
+  await subscribeWithRetry(
+    EXCHANGES.AUTH,
+    NOTIFICATION_QUEUES.AUTH,
+    handleAuth,
+    'topic'
+  );
 
   await subscribeWithRetry(
     EXCHANGES.THERAPIST_APPLICATIONS,

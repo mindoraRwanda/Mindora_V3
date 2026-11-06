@@ -4,7 +4,8 @@ import { PrismaClient } from './generated/prisma/index.js';
 export const prisma = new PrismaClient();
 
 export type NotificationChannel = 'push' | 'email' | 'sms' | 'voice';
-export type NotificationStatus = 'delivered' | 'failed' | 'skipped' | 'processing' | 'accepted';
+export type NotificationStatus =
+  'delivered' | 'failed' | 'skipped' | 'processing' | 'accepted';
 
 function hashDedupeKey(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -66,11 +67,17 @@ export async function claimNotificationAttempt(entry: {
     });
     return true;
   } catch (error) {
-    const isUniqueConflict = typeof error === 'object' && error !== null &&
-      'code' in error && error.code === 'P2002';
+    const isUniqueConflict =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2002';
     if (!isUniqueConflict) {
       // Fail open: an idempotency-database outage must never suppress a crisis alert.
-      console.error('[notification-log] Could not claim idempotency key; attempting delivery without durable dedupe:', error);
+      console.error(
+        '[notification-log] Could not claim idempotency key; attempting delivery without durable dedupe:',
+        error
+      );
       return true;
     }
   }
@@ -80,14 +87,24 @@ export async function claimNotificationAttempt(entry: {
       where: { dedupeKey: storedDedupeKey },
     });
     if (!existing) return true;
-    if (existing.status === 'delivered' || existing.status === 'accepted') return false;
+    if (existing.status === 'delivered' || existing.status === 'accepted')
+      return false;
 
     const stale = Date.now() - existing.createdAt.getTime() > 5 * 60 * 1000;
     if (existing.status === 'processing' && !stale) return false;
-    if (existing.status !== 'failed' && existing.status !== 'skipped' && existing.status !== 'processing') return false;
+    if (
+      existing.status !== 'failed' &&
+      existing.status !== 'skipped' &&
+      existing.status !== 'processing'
+    )
+      return false;
 
     const reclaimed = await prisma.notification_logs.updateMany({
-      where: { id: existing.id, status: existing.status, createdAt: existing.createdAt },
+      where: {
+        id: existing.id,
+        status: existing.status,
+        createdAt: existing.createdAt,
+      },
       data: {
         status: 'processing',
         attempts: { increment: 1 },
@@ -98,7 +115,10 @@ export async function claimNotificationAttempt(entry: {
     });
     return reclaimed.count === 1;
   } catch (error) {
-    console.error('[notification-log] Could not inspect idempotency key; attempting delivery:', error);
+    console.error(
+      '[notification-log] Could not inspect idempotency key; attempting delivery:',
+      error
+    );
     return true;
   }
 }
@@ -125,6 +145,9 @@ export async function finishNotificationAttempt(
       },
     });
   } catch (err) {
-    console.error('[notification-log] Failed to finalize delivery attempt:', err);
+    console.error(
+      '[notification-log] Failed to finalize delivery attempt:',
+      err
+    );
   }
 }

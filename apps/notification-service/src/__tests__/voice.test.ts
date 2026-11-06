@@ -18,7 +18,9 @@ describe("Africa's Talking Voice service", () => {
   });
 
   it('submits an outbound call from the issued Voice number', async () => {
-    call.mockResolvedValueOnce({ entries: [{ status: 'Queued', sessionId: 'ATV-test' }] });
+    call.mockResolvedValueOnce({
+      entries: [{ status: 'Queued', sessionId: 'ATV-test' }],
+    });
 
     const result = await sendVoiceCall('+250700000001', 'event-123');
 
@@ -26,12 +28,16 @@ describe("Africa's Talking Voice service", () => {
     expect(call).toHaveBeenCalledWith({
       callFrom: '+250700000000',
       callTo: '+250700000001',
-      clientRequestId: expect.stringMatching(/^mindora-event-123-[0-9a-f]{10}$/),
+      clientRequestId: expect.stringMatching(
+        /^mindora-event-123-[0-9a-f]{10}$/
+      ),
     });
   });
 
   it('rejects recipients that are not valid E.164 numbers', async () => {
-    await expect(sendVoiceCall('0783000000', 'event-123')).rejects.toThrow('E.164');
+    await expect(sendVoiceCall('0783000000', 'event-123')).rejects.toThrow(
+      'E.164'
+    );
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -44,6 +50,8 @@ describe("Africa's Talking Voice service", () => {
 
   it('surfaces provider API errors', async () => {
     call.mockResolvedValueOnce({ errorMessage: 'Invalid caller ID' });
-    await expect(sendVoiceCall('+250700000001', 'event-123')).rejects.toThrow('Invalid caller ID');
+    await expect(sendVoiceCall('+250700000001', 'event-123')).rejects.toThrow(
+      'Invalid caller ID'
+    );
   });
 });

@@ -39,7 +39,6 @@ This file records the changes and the configuration/verification still required 
 - Production credentials (Resend, Africa's Talking, Redis, RabbitMQ, PostgreSQL, object storage) were not supplied and must be set in deployment secrets.
 - Before go-live, run database migrations and regenerate Prisma clients on the target runtime, then run integration tests against staging services.
 
-
 ## Updated delivery addendum — 1 November 2026
 
 - Crisis email, SMS and Voice calls are attempted independently using `Promise.allSettled`; failure in one provider does not prevent the other channels being attempted.

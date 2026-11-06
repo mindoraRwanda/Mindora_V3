@@ -92,7 +92,8 @@ router.post(
         ? ` MINDORA-approved resources: ${approvedClinicalResources.join('; ')}.`
         : '';
       const safetyResponse =
-        "I'm really glad you told me. Your safety matters, and you deserve support right now. If you may act on these thoughts, have already hurt yourself, or cannot stay safe, please contact local emergency services or go to the nearest emergency department now. If possible, move away from anything you could use to hurt yourself and stay with someone you trust while you get help. For general MINDORA support during published business hours (Monday to Friday, 9:00 AM–5:00 PM), call +250 783 974-066 or email info@mindora.rw (stated response time within 24 hours). These are general support contacts, not emergency services or a 24/7 crisis hotline. For therapist follow-up when safe, visit https://app.mindora.rw/therapists." + approvedResourcesText;
+        "I'm really glad you told me. Your safety matters, and you deserve support right now. If you may act on these thoughts, have already hurt yourself, or cannot stay safe, please contact local emergency services or go to the nearest emergency department now. If possible, move away from anything you could use to hurt yourself and stay with someone you trust while you get help. For general MINDORA support during published business hours (Monday to Friday, 9:00 AM–5:00 PM), call +250 783 974-066 or email info@mindora.rw (stated response time within 24 hours). These are general support contacts, not emergency services or a 24/7 crisis hotline. For therapist follow-up when safe, visit https://app.mindora.rw/therapists." +
+        approvedResourcesText;
 
       // Store only encrypted message/response content; the event carries a
       // bounded excerpt so the authorised response team can triage promptly.
@@ -112,7 +113,10 @@ router.post(
           });
           interactionId = storedInteraction.id;
         } catch (error) {
-          console.error('[pre-filter] Failed to store encrypted crisis interaction:', error);
+          console.error(
+            '[pre-filter] Failed to store encrypted crisis interaction:',
+            error
+          );
         }
       }
 
@@ -127,15 +131,30 @@ router.post(
             take: 4,
             select: { user_message: true, ai_response: true },
           });
-          conversationExcerpt = recent.reverse().map((row) => {
-            let userMessage = '[Unable to decrypt earlier message]';
-            let assistantMessage = '[Unable to decrypt earlier response]';
-            try { userMessage = decrypt(row.user_message); } catch { /* keep safe marker */ }
-            try { assistantMessage = decrypt(row.ai_response); } catch { /* keep safe marker */ }
-            return `User: ${userMessage.slice(0, 700)}\nMINDORA: ${assistantMessage.slice(0, 700)}`;
-          }).join('\n\n').slice(0, 5000);
+          conversationExcerpt = recent
+            .reverse()
+            .map((row) => {
+              let userMessage = '[Unable to decrypt earlier message]';
+              let assistantMessage = '[Unable to decrypt earlier response]';
+              try {
+                userMessage = decrypt(row.user_message);
+              } catch {
+                /* keep safe marker */
+              }
+              try {
+                assistantMessage = decrypt(row.ai_response);
+              } catch {
+                /* keep safe marker */
+              }
+              return `User: ${userMessage.slice(0, 700)}\nMINDORA: ${assistantMessage.slice(0, 700)}`;
+            })
+            .join('\n\n')
+            .slice(0, 5000);
         } catch (error) {
-          console.error('[pre-filter] Could not collect bounded crisis transcript:', error);
+          console.error(
+            '[pre-filter] Could not collect bounded crisis transcript:',
+            error
+          );
         }
       }
 

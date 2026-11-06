@@ -11,23 +11,37 @@ export { blacklistToken, isTokenBlacklisted, passwordResetKey };
 
 const LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60;
 const LOGIN_LOCK_SECONDS = 15 * 60;
-const emailKey = (email: string) => createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
-const loginFailuresKey = (email: string) => `auth:login:failures:${emailKey(email)}`;
-const loginLockedKey = (email: string) => `auth:login:locked:${emailKey(email)}`;
+const emailKey = (email: string) =>
+  createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
+const loginFailuresKey = (email: string) =>
+  `auth:login:failures:${emailKey(email)}`;
+const loginLockedKey = (email: string) =>
+  `auth:login:locked:${emailKey(email)}`;
 
-export async function getLoginLockRemainingSeconds(email: string): Promise<number> {
+export async function getLoginLockRemainingSeconds(
+  email: string
+): Promise<number> {
   const client = getRedisClient(config.redisUrl);
   const ttl = await client.ttl(loginLockedKey(email));
   return ttl > 0 ? ttl : 0;
 }
 
-export async function recordLoginFailure(email: string): Promise<{ locked: boolean; lockedNow: boolean; retryAfterSeconds: number }> {
+export async function recordLoginFailure(
+  email: string
+): Promise<{ locked: boolean; lockedNow: boolean; retryAfterSeconds: number }> {
   const client = getRedisClient(config.redisUrl);
   const key = loginFailuresKey(email);
   const count = await client.incr(key);
   if (count === 1) await client.expire(key, LOGIN_FAILURE_WINDOW_SECONDS);
   if (count >= 5) {
-    const lockedNow = (await client.set(loginLockedKey(email), '1', 'EX', LOGIN_LOCK_SECONDS, 'NX')) === 'OK';
+    const lockedNow =
+      (await client.set(
+        loginLockedKey(email),
+        '1',
+        'EX',
+        LOGIN_LOCK_SECONDS,
+        'NX'
+      )) === 'OK';
     await client.del(key);
     return { locked: true, lockedNow, retryAfterSeconds: LOGIN_LOCK_SECONDS };
   }

@@ -445,7 +445,7 @@ services:
       USER_SERVICE_URL: http://user-service:3002
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       RESEND_EMAIL_API_KEY: ${RESEND_EMAIL_API_KEY:-}
-      RESEND_FROM_EMAIL: "${RESEND_FROM_EMAIL:-Mindora <onboarding@resend.dev>}"
+      RESEND_FROM_EMAIL: '${RESEND_FROM_EMAIL:-Mindora <onboarding@resend.dev>}'
       FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
       AT_API_KEY: ${AT_API_KEY:-}
       AT_USERNAME: ${AT_USERNAME:-}

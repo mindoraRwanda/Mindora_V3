@@ -116,8 +116,13 @@ async function createConversation(accessToken: string): Promise<string> {
     15_000
   );
   const body = (await res.json()) as { id?: unknown };
-  if ((typeof body.id !== 'number' && typeof body.id !== 'string') || String(body.id).trim() === '') {
-    throw new ChatbotApiError('Therapy chatbot returned an invalid conversation id');
+  if (
+    (typeof body.id !== 'number' && typeof body.id !== 'string') ||
+    String(body.id).trim() === ''
+  ) {
+    throw new ChatbotApiError(
+      'Therapy chatbot returned an invalid conversation id'
+    );
   }
   return String(body.id);
 }
@@ -248,7 +253,9 @@ async function sendMessage(
     typeof body.content !== 'string' ||
     typeof body.timestamp !== 'string'
   ) {
-    throw new ChatbotApiError('Therapy chatbot returned an invalid message payload');
+    throw new ChatbotApiError(
+      'Therapy chatbot returned an invalid message payload'
+    );
   }
   return {
     id: String(body.id),

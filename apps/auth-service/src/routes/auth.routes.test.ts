@@ -88,7 +88,8 @@ vi.mock('../lib/redis.js', () => ({
   deletePasswordResetToken: (...args: unknown[]) => mockDeleteReset(...args),
   isTokenBlacklisted: (...args: unknown[]) => mockIsBlacklisted(...args),
   blacklistToken: (...args: unknown[]) => mockBlacklistToken(...args),
-  getLoginLockRemainingSeconds: (...args: unknown[]) => mockLockRemaining(...args),
+  getLoginLockRemainingSeconds: (...args: unknown[]) =>
+    mockLockRemaining(...args),
   recordLoginFailure: (...args: unknown[]) => mockRecordLoginFailure(...args),
   clearLoginFailures: (...args: unknown[]) => mockClearLoginFailures(...args),
   clearLoginLock: (...args: unknown[]) => mockClearLoginLock(...args),
@@ -222,7 +223,11 @@ describe('POST /login', () => {
     mockRefreshCreate.mockResolvedValue({ id: 'refresh-1' });
     mockIsBlacklisted.mockResolvedValue(false);
     mockLockRemaining.mockResolvedValue(0);
-    mockRecordLoginFailure.mockResolvedValue({ locked: false, lockedNow: false, retryAfterSeconds: 0 });
+    mockRecordLoginFailure.mockResolvedValue({
+      locked: false,
+      lockedNow: false,
+      retryAfterSeconds: 0,
+    });
     mockClearLoginFailures.mockResolvedValue(undefined);
     mockClearLoginLock.mockResolvedValue(undefined);
     mockPublishToExchange.mockResolvedValue(undefined);
@@ -323,12 +328,28 @@ describe('POST /login', () => {
 
   it('locks a user after the fifth invalid attempt and emits a security notification', async () => {
     const passwordHash = await hashPassword('securePass1');
-    mockFindUnique.mockResolvedValue({ id: 'user-123', email: 'patient@example.com', passwordHash, role: 'PATIENT', isActive: true });
-    mockRecordLoginFailure.mockResolvedValue({ locked: true, lockedNow: true, retryAfterSeconds: 900 });
+    mockFindUnique.mockResolvedValue({
+      id: 'user-123',
+      email: 'patient@example.com',
+      passwordHash,
+      role: 'PATIENT',
+      isActive: true,
+    });
+    mockRecordLoginFailure.mockResolvedValue({
+      locked: true,
+      lockedNow: true,
+      retryAfterSeconds: 900,
+    });
     const app = createApp();
-    const response = await request(app).post('/login').send({ email: 'patient@example.com', password: 'wrong-password' });
+    const response = await request(app)
+      .post('/login')
+      .send({ email: 'patient@example.com', password: 'wrong-password' });
     expect(response.status).toBe(423);
-    expect(mockPublishToExchange).toHaveBeenCalledWith(expect.any(String), 'account.locked', expect.objectContaining({ recipientEmail: 'patient@example.com' }));
+    expect(mockPublishToExchange).toHaveBeenCalledWith(
+      expect.any(String),
+      'account.locked',
+      expect.objectContaining({ recipientEmail: 'patient@example.com' })
+    );
   });
 
   it('rejects login for a suspended account with 403', async () => {

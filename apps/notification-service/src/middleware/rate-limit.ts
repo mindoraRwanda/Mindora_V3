@@ -18,7 +18,6 @@ export const authenticatedRouteLimiter = rateLimit({
   message: { message: 'Too many requests' },
 });
 
-
 // Provider webhooks are externally reachable. Keep a separate limiter from
 // authenticated user routes so a burst of callback traffic cannot consume
 // the user's notification API budget. Express trusts one Kong proxy hop in

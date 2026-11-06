@@ -13,7 +13,9 @@ const mocks = vi.hoisted(() => ({
   logNotification: vi.fn().mockResolvedValue(undefined),
   getUserName: vi.fn().mockResolvedValue('Test User'),
   getUserPreferences: vi.fn().mockResolvedValue({
-    fcmToken: null, email: 'patient@example.com', phoneNumber: null,
+    fcmToken: null,
+    email: 'patient@example.com',
+    phoneNumber: null,
     notificationPreferences: { push: true, email: true, sms: false },
   }),
 }));
@@ -42,7 +44,10 @@ vi.mock('../notificationLogger.js', () => ({
 
 vi.mock('../preferences.js', () => ({
   getUserPreferences: mocks.getUserPreferences,
-  isChannelEnabled: (prefs: { push: boolean; email: boolean; sms: boolean }, channel: 'push' | 'email' | 'sms') => prefs[channel],
+  isChannelEnabled: (
+    prefs: { push: boolean; email: boolean; sms: boolean },
+    channel: 'push' | 'email' | 'sms'
+  ) => prefs[channel],
 }));
 
 import { startConsumers, SUBSCRIBED_EXCHANGES } from '../consumers.js';
@@ -477,17 +482,19 @@ describe('mood and AI handlers', () => {
     mocks.sendSms.mockResolvedValueOnce(undefined);
     mocks.sendVoiceCall.mockResolvedValueOnce({ accepted: true });
 
-    await expect(capturedHandler(EXCHANGES.AI)({
-      eventId: '714ccdf3-af66-48be-b051-1eedfc17d1a6',
-      occurredAt: '2026-11-01T00:00:00Z',
-      userId: 'afdaad18-1241-47c8-a633-f912fa3f9d03',
-      sessionId: null,
-      crisisLevel: 4,
-      timestamp: '2026-11-01T00:00:00Z',
-      messageExcerpt: 'I have already hurt myself',
-      conversationExcerpt: 'User disclosed recent self-harm',
-      interactionId: 'b4a9da11-4ce5-44e1-a8bc-f2f2e26c56c3',
-    })).rejects.toThrow('One or more crisis notification channels failed');
+    await expect(
+      capturedHandler(EXCHANGES.AI)({
+        eventId: '714ccdf3-af66-48be-b051-1eedfc17d1a6',
+        occurredAt: '2026-11-01T00:00:00Z',
+        userId: 'afdaad18-1241-47c8-a633-f912fa3f9d03',
+        sessionId: null,
+        crisisLevel: 4,
+        timestamp: '2026-11-01T00:00:00Z',
+        messageExcerpt: 'I have already hurt myself',
+        conversationExcerpt: 'User disclosed recent self-harm',
+        interactionId: 'b4a9da11-4ce5-44e1-a8bc-f2f2e26c56c3',
+      })
+    ).rejects.toThrow('One or more crisis notification channels failed');
 
     expect(mocks.sendSms).toHaveBeenCalledTimes(1);
     expect(mocks.sendVoiceCall).toHaveBeenCalledTimes(1);
@@ -499,19 +506,23 @@ describe('mood and AI handlers', () => {
     process.env.SMS_ENABLED = 'true';
     process.env.AT_API_KEY = 'test-key';
     process.env.AT_USERNAME = 'sandbox';
-    mocks.sendSms.mockRejectedValueOnce(new Error('Africa Talking unavailable'));
+    mocks.sendSms.mockRejectedValueOnce(
+      new Error('Africa Talking unavailable')
+    );
 
-    await expect(capturedHandler(EXCHANGES.AI)({
-      eventId: 'c53e8830-e8b5-42e7-b9b2-11b7e341c521',
-      occurredAt: '2026-11-01T00:00:00Z',
-      userId: '029ff388-2f20-486e-aeda-e54916f4f4cd',
-      sessionId: null,
-      crisisLevel: 3,
-      timestamp: '2026-11-01T00:00:00Z',
-      messageExcerpt: 'I am thinking about suicide',
-      conversationExcerpt: 'User asked for urgent support',
-      interactionId: '80a54a15-5ea8-4856-96b6-bfce49f7d668',
-    })).rejects.toThrow('One or more crisis notification channels failed');
+    await expect(
+      capturedHandler(EXCHANGES.AI)({
+        eventId: 'c53e8830-e8b5-42e7-b9b2-11b7e341c521',
+        occurredAt: '2026-11-01T00:00:00Z',
+        userId: '029ff388-2f20-486e-aeda-e54916f4f4cd',
+        sessionId: null,
+        crisisLevel: 3,
+        timestamp: '2026-11-01T00:00:00Z',
+        messageExcerpt: 'I am thinking about suicide',
+        conversationExcerpt: 'User asked for urgent support',
+        interactionId: '80a54a15-5ea8-4856-96b6-bfce49f7d668',
+      })
+    ).rejects.toThrow('One or more crisis notification channels failed');
 
     expect(mocks.sendEmail).toHaveBeenCalled();
   });
@@ -528,21 +539,22 @@ describe('mood and AI handlers', () => {
     mocks.sendSms.mockRejectedValueOnce(new Error('SMS unavailable'));
     mocks.sendVoiceCall.mockResolvedValueOnce({ accepted: true });
 
-    await expect(capturedHandler(EXCHANGES.AI)({
-      eventId: '0e7552ba-f172-49c0-8111-a10e63bbb720',
-      occurredAt: '2026-11-01T00:00:00Z',
-      userId: '69fce016-7e17-4f42-91a4-45878f42b4f8',
-      sessionId: null,
-      crisisLevel: 5,
-      timestamp: '2026-11-01T00:00:00Z',
-      messageExcerpt: 'I may hurt myself tonight',
-      conversationExcerpt: 'User indicated immediate danger',
-      interactionId: 'cef162d9-cd61-4c1b-a200-bdd8d7450446',
-    })).rejects.toThrow('One or more crisis notification channels failed');
+    await expect(
+      capturedHandler(EXCHANGES.AI)({
+        eventId: '0e7552ba-f172-49c0-8111-a10e63bbb720',
+        occurredAt: '2026-11-01T00:00:00Z',
+        userId: '69fce016-7e17-4f42-91a4-45878f42b4f8',
+        sessionId: null,
+        crisisLevel: 5,
+        timestamp: '2026-11-01T00:00:00Z',
+        messageExcerpt: 'I may hurt myself tonight',
+        conversationExcerpt: 'User indicated immediate danger',
+        interactionId: 'cef162d9-cd61-4c1b-a200-bdd8d7450446',
+      })
+    ).rejects.toThrow('One or more crisis notification channels failed');
 
     expect(mocks.sendEmail).toHaveBeenCalled();
     expect(mocks.sendSms).toHaveBeenCalled();
     expect(mocks.sendVoiceCall).toHaveBeenCalled();
   });
-
 });

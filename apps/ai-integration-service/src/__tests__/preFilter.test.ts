@@ -32,7 +32,6 @@ describe('runPreFilter', () => {
     expect(await runPreFilter('I want to die!!!')).toBe(3);
   });
 
-
   it.each([
     ['I am thinking about suicide', 5],
     ['I keep thinking about suicide', 4],
@@ -46,16 +45,21 @@ describe('runPreFilter', () => {
     ['I do not trust myself to stay safe', 5],
     ['I am afraid I will hurt myself', 5],
     ['I wish I was dead', 3],
-  ])('detects varied English crisis disclosure: %s', async (message, expected) => {
-    expect(await runPreFilter(message)).toBe(expected);
-  });
+  ])(
+    'detects varied English crisis disclosure: %s',
+    async (message, expected) => {
+      expect(await runPreFilter(message)).toBe(expected);
+    }
+  );
 
   it('does not classify neutral possession of a kitchen knife as self-harm by itself', async () => {
     expect(await runPreFilter('I have a knife to prepare dinner')).toBe(0);
   });
 
   it('does not flag a neutral discussion of suicide prevention as a personal crisis disclosure', async () => {
-    expect(await runPreFilter('My favourite film is about suicide prevention')).toBe(0);
+    expect(
+      await runPreFilter('My favourite film is about suicide prevention')
+    ).toBe(0);
   });
 
   it('empty string returns 0', async () => {

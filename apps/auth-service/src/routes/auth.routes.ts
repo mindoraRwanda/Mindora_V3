@@ -146,19 +146,24 @@ authRouter.post(
     const lockRemaining = await getLoginLockRemainingSeconds(email);
     if (lockRemaining > 0) {
       res.status(423).json({
-        message: 'Too many unsuccessful login attempts. Please try again in 15 minutes.',
+        message:
+          'Too many unsuccessful login attempts. Please try again in 15 minutes.',
         retryAfterSeconds: lockRemaining,
       });
       return;
     }
 
     const user = await prisma.user.findUnique({ where: { email } });
-    const validCredentials = Boolean(user && (await verifyPassword(user.passwordHash, password)));
+    const validCredentials = Boolean(
+      user && (await verifyPassword(user.passwordHash, password))
+    );
 
     if (!validCredentials) {
       const failure = await recordLoginFailure(email);
       if (failure.lockedNow && user) {
-        const lockedUntil = new Date(Date.now() + failure.retryAfterSeconds * 1000).toISOString();
+        const lockedUntil = new Date(
+          Date.now() + failure.retryAfterSeconds * 1000
+        ).toISOString();
         try {
           await publishToExchange(EXCHANGES.AUTH, 'account.locked', {
             eventId: randomUUID(),
@@ -168,12 +173,16 @@ authRouter.post(
             lockedUntil,
           });
         } catch (error) {
-          console.error('[auth] Failed to queue account-lock notification:', error);
+          console.error(
+            '[auth] Failed to queue account-lock notification:',
+            error
+          );
         }
       }
       if (failure.locked) {
         res.status(423).json({
-          message: 'Too many unsuccessful login attempts. Your account is temporarily locked for 15 minutes.',
+          message:
+            'Too many unsuccessful login attempts. Your account is temporarily locked for 15 minutes.',
           retryAfterSeconds: failure.retryAfterSeconds,
         });
       } else {
@@ -328,9 +337,12 @@ authRouter.post(
         });
       } catch (error) {
         // Do not leave a usable token when storage or email enqueue fails.
-        if (tokenStored) await deletePasswordResetToken(tokenHash).catch(() => undefined);
+        if (tokenStored)
+          await deletePasswordResetToken(tokenHash).catch(() => undefined);
         const errorName = error instanceof Error ? error.name : 'UnknownError';
-        console.error(`[auth] Password reset request could not be queued (${errorName}); no recipient or token logged`);
+        console.error(
+          `[auth] Password reset request could not be queued (${errorName}); no recipient or token logged`
+        );
       }
     }
 
@@ -338,7 +350,8 @@ authRouter.post(
     // does not claim that an email was sent: delivery happens asynchronously
     // and can still fail at the provider.
     res.status(202).json({
-      message: 'If an account matches this address, a password reset message may be sent. This response does not confirm email delivery.',
+      message:
+        'If an account matches this address, a password reset message may be sent. This response does not confirm email delivery.',
     });
   })
 );
@@ -372,7 +385,10 @@ authRouter.post(
     });
 
     await deletePasswordResetToken(tokenHash);
-    const resetUser = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+    const resetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
     if (resetUser?.email) await clearLoginLock(resetUser.email);
     await prisma.refreshToken.updateMany({
       where: { userId, revoked: false },

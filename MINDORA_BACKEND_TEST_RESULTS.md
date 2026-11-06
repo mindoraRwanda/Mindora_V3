@@ -2,20 +2,20 @@
 
 Date: 4 November 2026
 
-| Validation | Result | Scope |
-|---|---:|---|
-| JSON parsing | PASS | 39 JSON files |
-| YAML parsing | PASS | 14 YAML files |
-| TypeScript transpile syntax | PASS | 223 TS/TSX files; syntax diagnostics only |
-| JavaScript syntax | PASS | 6 JS files via `node --check` |
-| Python syntax | PASS | 24 Python files via AST parse |
-| Reported lint-pattern scan | PASS | Targeted annotations from PR #77 |
-| Bearer parser regression guard | PASS | Static source assertion and test added |
-| Voice webhook route limiter | PASS | Both routes attach dedicated limiter |
-| CI Compose infra-only startup | PASS | Workflow source assertion |
-| Workspace test build ordering | PASS | Turbo task configuration assertion |
-| Joi dependency/override/lock alignment | PASS | `18.3.1` in root dependency, overrides, lockfile |
-| No `.env` / private-key files | PASS | Source-tree file scan |
+| Validation                             | Result | Scope                                            |
+| -------------------------------------- | -----: | ------------------------------------------------ |
+| JSON parsing                           |   PASS | 39 JSON files                                    |
+| YAML parsing                           |   PASS | 14 YAML files                                    |
+| TypeScript transpile syntax            |   PASS | 223 TS/TSX files; syntax diagnostics only        |
+| JavaScript syntax                      |   PASS | 6 JS files via `node --check`                    |
+| Python syntax                          |   PASS | 24 Python files via AST parse                    |
+| Reported lint-pattern scan             |   PASS | Targeted annotations from PR #77                 |
+| Bearer parser regression guard         |   PASS | Static source assertion and test added           |
+| Voice webhook route limiter            |   PASS | Both routes attach dedicated limiter             |
+| CI Compose infra-only startup          |   PASS | Workflow source assertion                        |
+| Workspace test build ordering          |   PASS | Turbo task configuration assertion               |
+| Joi dependency/override/lock alignment |   PASS | `18.3.1` in root dependency, overrides, lockfile |
+| No `.env` / private-key files          |   PASS | Source-tree file scan                            |
 
 **Static checks: 17/17 passed.**
 

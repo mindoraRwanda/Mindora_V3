@@ -72,8 +72,15 @@ describe('private Python chatbot crisis webhook', () => {
       .send(validPayload);
 
     expect(response.status).toBe(202);
-    expect(response.body).toEqual({ accepted: true, eventId: validPayload.eventId });
-    expect(mockChannel.assertExchange).toHaveBeenCalledWith('mindora.ai', 'fanout', { durable: true });
+    expect(response.body).toEqual({
+      accepted: true,
+      eventId: validPayload.eventId,
+    });
+    expect(mockChannel.assertExchange).toHaveBeenCalledWith(
+      'mindora.ai',
+      'fanout',
+      { durable: true }
+    );
     expect(mockChannel.publish).toHaveBeenCalledOnce();
     expect(mockChannel.waitForConfirms).toHaveBeenCalledOnce();
     expect(mockChannel.close).toHaveBeenCalledOnce();

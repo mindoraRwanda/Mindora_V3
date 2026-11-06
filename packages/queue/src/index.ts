@@ -65,16 +65,24 @@ export async function publishToExchange(
     // messages, which could otherwise make a password-reset request appear
     // accepted while no notification consumer can ever receive it.
     channel.on('return', (message) => {
-      returnedMessage = message.fields.replyText || 'message was not routed to a queue';
+      returnedMessage =
+        message.fields.replyText || 'message was not routed to a queue';
     });
-    channel.publish(exchange, routingKey, Buffer.from(JSON.stringify(payload)), {
-      persistent: true,
-      contentType: 'application/json',
-      mandatory: true,
-    });
+    channel.publish(
+      exchange,
+      routingKey,
+      Buffer.from(JSON.stringify(payload)),
+      {
+        persistent: true,
+        contentType: 'application/json',
+        mandatory: true,
+      }
+    );
     await channel.waitForConfirms();
     if (returnedMessage) {
-      throw new Error(`RabbitMQ did not route event to a queue: ${returnedMessage}`);
+      throw new Error(
+        `RabbitMQ did not route event to a queue: ${returnedMessage}`
+      );
     }
   } finally {
     await channel.close();
