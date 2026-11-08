@@ -13,6 +13,15 @@ import { decrypt, encrypt } from '../lib/crypto.js';
 import { asyncHandler } from '../middleware/async-handler.js';
 import { chatRouteLimiter } from '../middleware/rate-limit.js';
 
+function isUuid(
+  value: unknown
+): value is `${string}-${string}-${string}-${string}-${string}` {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  );
+}
+
 const router = Router();
 
 async function publishCrisisEvent(
@@ -66,7 +75,7 @@ router.post(
 
     const userId = req.user?.userId;
     const email = req.user?.email;
-    const resolvedSessionId = typeof sessionId === 'string' ? sessionId : null;
+    const resolvedSessionId = isUuid(sessionId) ? sessionId : null;
 
     const crisisLevel = await runPreFilter(message, userId);
 
@@ -79,7 +88,7 @@ router.post(
       // receive a 500 error instead of the crisis helpline message — the worst possible
       // failure mode for this code path. The .catch ensures the error is logged without
       // propagating to the response flow.
-      let interactionId = randomUUID();
+      let interactionId: string = randomUUID();
       const crisisSessionId = resolvedSessionId ?? randomUUID();
       const approvedClinicalResources =
         process.env.CRISIS_CONTACTS_APPROVED === 'true'
