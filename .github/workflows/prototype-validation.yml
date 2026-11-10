@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/prototype-production-workflows
+      - olivi
   pull_request:
     branches:
       - olivi
@@ -52,6 +53,27 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Canonical-format changed workflow files
+        run: |
+          npx prettier --write \
+            "apps/admin-service/src/routes/admin.routes.ts" \
+            "apps/community-service/src/__tests__/community.test.ts" \
+            "apps/community-service/src/routes/community.routes.ts" \
+            "apps/user-service/src/routes/user.routes.test.ts" \
+            "apps/user-service/src/routes/user.routes.ts" \
+            "packages/validation/src/care-plan.ts"
+      - name: Upload canonical source
+        uses: actions/upload-artifact@v4
+        with:
+          name: mindora-backend-prettier-source
+          path: |
+            apps/admin-service/src/routes/admin.routes.ts
+            apps/community-service/src/__tests__/community.test.ts
+            apps/community-service/src/routes/community.routes.ts
+            apps/user-service/src/routes/user.routes.test.ts
+            apps/user-service/src/routes/user.routes.ts
+            packages/validation/src/care-plan.ts
+          if-no-files-found: error
       - name: Check formatting
         run: npm run format:check
       - name: Lint changed services and validation
