@@ -6,7 +6,12 @@ import {
 } from '@mindora/validation';
 import { authenticate, requireRole } from '@mindora/auth-middleware';
 import type { AuthenticatedRequest } from '@mindora/auth-middleware';
-import { CommunityGroup, CommunityMembership, Post, Comment } from '../models/index.js';
+import {
+  CommunityGroup,
+  CommunityMembership,
+  Post,
+  Comment,
+} from '../models/index.js';
 import type { IPost } from '../models/Post.js';
 import mongoose from 'mongoose';
 import { encryptUserId, decryptUserId } from '../utils/encryption.js';
@@ -224,7 +229,6 @@ router.get(
   })
 );
 
-
 /**
  * Join the authenticated user's community membership. The compound unique
  * index makes repeated requests idempotent and prevents memberCount inflation.
@@ -241,8 +245,10 @@ router.post(
       return res.status(400).json({ error: 'Invalid group ID' });
     }
 
-    const group = await CommunityGroup.findById(groupId).select('_id memberCount');
-    if (!group) return res.status(404).json({ error: 'Community group not found' });
+    const group =
+      await CommunityGroup.findById(groupId).select('_id memberCount');
+    if (!group)
+      return res.status(404).json({ error: 'Community group not found' });
 
     let inserted = false;
     try {
@@ -258,9 +264,14 @@ router.post(
     }
 
     if (inserted) {
-      await CommunityGroup.updateOne({ _id: group._id }, { $inc: { memberCount: 1 } });
+      await CommunityGroup.updateOne(
+        { _id: group._id },
+        { $inc: { memberCount: 1 } }
+      );
     }
-    const current = await CommunityGroup.findById(group._id).select('memberCount');
+    const current = await CommunityGroup.findById(group._id).select(
+      'memberCount'
+    );
     return res.status(200).json({
       joined: true,
       memberCount: current?.memberCount ?? group.memberCount,
@@ -284,17 +295,24 @@ router.delete(
       return res.status(400).json({ error: 'Invalid group ID' });
     }
 
-    const group = await CommunityGroup.findById(groupId).select('_id memberCount');
-    if (!group) return res.status(404).json({ error: 'Community group not found' });
+    const group =
+      await CommunityGroup.findById(groupId).select('_id memberCount');
+    if (!group)
+      return res.status(404).json({ error: 'Community group not found' });
 
-    const removed = await CommunityMembership.deleteOne({ groupId: group._id, userId });
+    const removed = await CommunityMembership.deleteOne({
+      groupId: group._id,
+      userId,
+    });
     if (removed.deletedCount > 0) {
       await CommunityGroup.updateOne(
         { _id: group._id, memberCount: { $gt: 0 } },
         { $inc: { memberCount: -1 } }
       );
     }
-    const current = await CommunityGroup.findById(group._id).select('memberCount');
+    const current = await CommunityGroup.findById(group._id).select(
+      'memberCount'
+    );
     return res.status(200).json({
       joined: false,
       memberCount: current?.memberCount ?? group.memberCount,
@@ -315,9 +333,14 @@ router.get(
       return res.status(400).json({ error: 'Invalid group ID' });
     }
 
-    const group = await CommunityGroup.findById(groupId).select('_id memberCount');
-    if (!group) return res.status(404).json({ error: 'Community group not found' });
-    const membership = await CommunityMembership.exists({ groupId: group._id, userId });
+    const group =
+      await CommunityGroup.findById(groupId).select('_id memberCount');
+    if (!group)
+      return res.status(404).json({ error: 'Community group not found' });
+    const membership = await CommunityMembership.exists({
+      groupId: group._id,
+      userId,
+    });
     return res.status(200).json({
       joined: membership !== null,
       memberCount: group.memberCount,

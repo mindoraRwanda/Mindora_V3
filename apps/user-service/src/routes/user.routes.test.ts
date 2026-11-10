@@ -7,7 +7,8 @@ vi.hoisted(() => {
   process.env.JWT_SECRET = 'mindora-dev-jwt-secret-change-in-production';
   process.env.JWT_ISSUER = 'mindora-auth';
   process.env.NODE_ENV = 'test';
-  process.env.THERAPIST_CARE_PLAN_ENCRYPTION_KEY = 'unit-test-care-plan-encryption-key-32-characters';
+  process.env.THERAPIST_CARE_PLAN_ENCRYPTION_KEY =
+    'unit-test-care-plan-encryption-key-32-characters';
 });
 
 vi.mock('ioredis', () => {
@@ -128,14 +129,20 @@ describe('Therapist care plans', () => {
   });
 
   it('creates an encrypted draft only for a therapist with an appointment relationship', async () => {
-    mockHttpGet.mockResolvedValue({ ok: true, status: 200, data: { hasRelationship: true } });
-    mockCarePlanCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
-      id: 'plan-1',
-      ...data,
-      patientAcknowledgedAt: null,
-      createdAt: new Date('2026-11-10T10:00:00.000Z'),
-      updatedAt: new Date('2026-11-10T10:00:00.000Z'),
-    }));
+    mockHttpGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { hasRelationship: true },
+    });
+    mockCarePlanCreate.mockImplementation(
+      async ({ data }: { data: Record<string, unknown> }) => ({
+        id: 'plan-1',
+        ...data,
+        patientAcknowledgedAt: null,
+        createdAt: new Date('2026-11-10T10:00:00.000Z'),
+        updatedAt: new Date('2026-11-10T10:00:00.000Z'),
+      })
+    );
 
     const app = createApp();
     const response = await request(app)
@@ -145,7 +152,12 @@ describe('Therapist care plans', () => {
         patientId: '11111111-1111-4111-8111-111111111111',
         title: 'Stress management goals',
         goals: ['Build a regular sleep routine'],
-        milestones: [{ title: 'Review sleep routine', dueDate: '2026-11-20T00:00:00.000Z' }],
+        milestones: [
+          {
+            title: 'Review sleep routine',
+            dueDate: '2026-11-20T00:00:00.000Z',
+          },
+        ],
         reviewDate: '2026-11-30T00:00:00.000Z',
       });
 
@@ -163,7 +175,11 @@ describe('Therapist care plans', () => {
   });
 
   it('does not create a care plan without a verified therapist-patient relationship', async () => {
-    mockHttpGet.mockResolvedValue({ ok: true, status: 200, data: { hasRelationship: false } });
+    mockHttpGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { hasRelationship: false },
+    });
     const app = createApp();
     const response = await request(app)
       .post('/care-plans')
@@ -181,14 +197,20 @@ describe('Therapist care plans', () => {
   it('allows the owning patient to acknowledge a saved care-plan draft', async () => {
     const patientId = '11111111-1111-4111-8111-111111111111';
     const createdAt = new Date('2026-11-10T10:00:00.000Z');
-    mockHttpGet.mockResolvedValue({ ok: true, status: 200, data: { hasRelationship: true } });
-    mockCarePlanCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
-      id: 'plan-1',
-      ...data,
-      patientAcknowledgedAt: null,
-      createdAt,
-      updatedAt: createdAt,
-    }));
+    mockHttpGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { hasRelationship: true },
+    });
+    mockCarePlanCreate.mockImplementation(
+      async ({ data }: { data: Record<string, unknown> }) => ({
+        id: 'plan-1',
+        ...data,
+        patientAcknowledgedAt: null,
+        createdAt,
+        updatedAt: createdAt,
+      })
+    );
 
     const app = createApp();
     const created = await request(app)
@@ -211,13 +233,15 @@ describe('Therapist care plans', () => {
       createdAt,
       updatedAt: createdAt,
     });
-    mockCarePlanUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
-      id: 'plan-1',
-      ...stored,
-      ...data,
-      createdAt,
-      updatedAt: new Date('2026-11-10T10:01:00.000Z'),
-    }));
+    mockCarePlanUpdate.mockImplementation(
+      async ({ data }: { data: Record<string, unknown> }) => ({
+        id: 'plan-1',
+        ...stored,
+        ...data,
+        createdAt,
+        updatedAt: new Date('2026-11-10T10:01:00.000Z'),
+      })
+    );
 
     const response = await request(app)
       .post('/care-plans/plan-1/acknowledge')
@@ -226,7 +250,8 @@ describe('Therapist care plans', () => {
     expect(response.status).toBe(200);
     expect(response.body.carePlan.status).toBe('ACTIVE');
     expect(response.body.carePlan.patientAcknowledgedAt).toBeTruthy();
-  });});
+  });
+});
 
 describe('GET /me', () => {
   beforeEach(() => {

@@ -1,4 +1,9 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import {
   analyticsRangeQuerySchema,
@@ -820,7 +825,6 @@ userRouter.get(
   })
 );
 
-
 // ---------------------------------------------------------------------------
 // Therapist care-plan drafts — encrypted goal-setting content only.
 // The therapist must have an existing appointment relationship with the
@@ -835,7 +839,9 @@ userRouter.post(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || authReq.user.role !== 'THERAPIST') {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires THERAPIST role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
@@ -849,7 +855,9 @@ userRouter.post(
     }
 
     const { patientId, ...payload } = parsed.data;
-    if (!(await therapistHasPatientRelationship(authReq.user.userId, patientId))) {
+    if (
+      !(await therapistHasPatientRelationship(authReq.user.userId, patientId))
+    ) {
       res.status(403).json({ message: "Not this patient's therapist" });
       return;
     }
@@ -858,7 +866,9 @@ userRouter.post(
     try {
       encryptedPayload = encryptCarePlan(payload);
     } catch {
-      res.status(503).json({ message: 'Care-plan encryption is not configured' });
+      res
+        .status(503)
+        .json({ message: 'Care-plan encryption is not configured' });
       return;
     }
 
@@ -882,16 +892,27 @@ userRouter.get(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || authReq.user.role !== 'THERAPIST') {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires THERAPIST role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
-    const patientId = typeof req.query.patientId === 'string' ? req.query.patientId : undefined;
-    if (patientId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(patientId)) {
+    const patientId =
+      typeof req.query.patientId === 'string' ? req.query.patientId : undefined;
+    if (
+      patientId &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        patientId
+      )
+    ) {
       res.status(400).json({ message: 'Invalid patientId' });
       return;
     }
-    if (patientId && !(await therapistHasPatientRelationship(authReq.user.userId, patientId))) {
+    if (
+      patientId &&
+      !(await therapistHasPatientRelationship(authReq.user.userId, patientId))
+    ) {
       res.status(403).json({ message: "Not this patient's therapist" });
       return;
     }
@@ -908,7 +929,12 @@ userRouter.get(
     try {
       res.status(200).json({ carePlans: records.map(publicCarePlan) });
     } catch {
-      res.status(503).json({ message: 'Care-plan encryption key is unavailable or data could not be decrypted' });
+      res
+        .status(503)
+        .json({
+          message:
+            'Care-plan encryption key is unavailable or data could not be decrypted',
+        });
     }
   })
 );
@@ -920,7 +946,9 @@ userRouter.get(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || authReq.user.role !== 'PATIENT') {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires PATIENT role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires PATIENT role' });
       return;
     }
 
@@ -936,7 +964,12 @@ userRouter.get(
     try {
       res.status(200).json({ carePlans: records.map(publicCarePlan) });
     } catch {
-      res.status(503).json({ message: 'Care-plan encryption key is unavailable or data could not be decrypted' });
+      res
+        .status(503)
+        .json({
+          message:
+            'Care-plan encryption key is unavailable or data could not be decrypted',
+        });
     }
   })
 );
@@ -948,7 +981,9 @@ userRouter.patch(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || authReq.user.role !== 'THERAPIST') {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires THERAPIST role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
@@ -971,10 +1006,18 @@ userRouter.patch(
 
     let encryptedPayload: string;
     try {
-      const merged = { ...decryptCarePlan(record.encryptedPayload), ...parsed.data };
+      const merged = {
+        ...decryptCarePlan(record.encryptedPayload),
+        ...parsed.data,
+      };
       encryptedPayload = encryptCarePlan(merged);
     } catch {
-      res.status(503).json({ message: 'Care-plan encryption is unavailable or stored data could not be decrypted' });
+      res
+        .status(503)
+        .json({
+          message:
+            'Care-plan encryption is unavailable or stored data could not be decrypted',
+        });
       return;
     }
 
@@ -998,7 +1041,9 @@ userRouter.post(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || authReq.user.role !== 'PATIENT') {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires PATIENT role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires PATIENT role' });
       return;
     }
 
@@ -1010,7 +1055,9 @@ userRouter.post(
       return;
     }
     if (record.status !== 'DRAFT') {
-      res.status(409).json({ message: 'Only a draft care plan can be acknowledged' });
+      res
+        .status(409)
+        .json({ message: 'Only a draft care plan can be acknowledged' });
       return;
     }
 
@@ -1024,7 +1071,12 @@ userRouter.post(
     try {
       res.status(200).json({ carePlan: publicCarePlan(updated) });
     } catch {
-      res.status(503).json({ message: 'Care-plan encryption key is unavailable or data could not be decrypted' });
+      res
+        .status(503)
+        .json({
+          message:
+            'Care-plan encryption key is unavailable or data could not be decrypted',
+        });
     }
   })
 );

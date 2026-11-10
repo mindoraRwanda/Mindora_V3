@@ -2,7 +2,12 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
 import mongoose from 'mongoose';
 import app from '../app.js';
-import { CommunityGroup, CommunityMembership, Post, Report } from '../models/index.js';
+import {
+  CommunityGroup,
+  CommunityMembership,
+  Post,
+  Report,
+} from '../models/index.js';
 import { encryptUserId } from '../utils/encryption.js';
 
 const request = supertest(app);
@@ -256,12 +261,18 @@ describe('community membership', () => {
       memberCount: 0,
     });
     const groupPath = '/api/v1/community/groups/' + group._id + '/join';
-    const first = await request.post(groupPath).set('Authorization', authHeader);
-    const second = await request.post(groupPath).set('Authorization', authHeader);
+    const first = await request
+      .post(groupPath)
+      .set('Authorization', authHeader);
+    const second = await request
+      .post(groupPath)
+      .set('Authorization', authHeader);
     expect(first.status).toBe(200);
     expect(first.body.joined).toBe(true);
     expect(second.body.memberCount).toBe(1);
-    expect(await CommunityMembership.countDocuments({ groupId: group._id })).toBe(1);
+    expect(
+      await CommunityMembership.countDocuments({ groupId: group._id })
+    ).toBe(1);
     expect((await CommunityGroup.findById(group._id))?.memberCount).toBe(1);
   });
 
@@ -275,17 +286,25 @@ describe('community membership', () => {
     });
     const groupPath = '/api/v1/community/groups/' + group._id + '/join';
     await request.post(groupPath).set('Authorization', authHeader);
-    const first = await request.delete(groupPath).set('Authorization', authHeader);
-    const second = await request.delete(groupPath).set('Authorization', authHeader);
+    const first = await request
+      .delete(groupPath)
+      .set('Authorization', authHeader);
+    const second = await request
+      .delete(groupPath)
+      .set('Authorization', authHeader);
     expect(first.status).toBe(200);
     expect(first.body.joined).toBe(false);
     expect(second.body.memberCount).toBe(0);
-    expect(await CommunityMembership.countDocuments({ groupId: group._id })).toBe(0);
+    expect(
+      await CommunityMembership.countDocuments({ groupId: group._id })
+    ).toBe(0);
     expect((await CommunityGroup.findById(group._id))?.memberCount).toBe(0);
   });
 
   it('requires authentication and validates group ids', async () => {
-    const unauthenticated = await request.post('/api/v1/community/groups/invalid/join');
+    const unauthenticated = await request.post(
+      '/api/v1/community/groups/invalid/join'
+    );
     expect(unauthenticated.status).toBe(401);
     const invalidId = await request
       .post('/api/v1/community/groups/not-an-object-id/join')

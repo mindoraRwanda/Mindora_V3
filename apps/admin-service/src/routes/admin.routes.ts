@@ -849,17 +849,30 @@ adminRouter.get(
   asyncHandler(async (req, res) => {
     const page = Number(req.query.page ?? 1);
     const limit = Number(req.query.limit ?? 20);
-    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
-    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+    const status =
+      typeof req.query.status === 'string' ? req.query.status : undefined;
+    if (
+      !Number.isInteger(page) ||
+      page < 1 ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 50
+    ) {
       res.status(400).json({ message: 'Invalid pagination parameters' });
       return;
     }
-    if (status && !['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED'].includes(status)) {
+    if (
+      status &&
+      !['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED'].includes(status)
+    ) {
       res.status(400).json({ message: 'Invalid appointment status' });
       return;
     }
 
-    const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+    const query = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
     if (status) query.set('status', status);
     const response = await httpClient.get<{
       appointments: {

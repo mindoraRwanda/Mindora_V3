@@ -16,10 +16,11 @@ export const createCarePlanSchema = carePlanContentSchema.extend({
   patientId: z.string().uuid(),
 });
 
-export const updateCarePlanSchema = carePlanContentSchema.partial().refine(
-  (value) => Object.keys(value).length > 0,
-  { message: 'At least one care plan field must be supplied' }
-);
+export const updateCarePlanSchema = carePlanContentSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'At least one care plan field must be supplied',
+  });
 
 export type CreateCarePlanDto = z.infer<typeof createCarePlanSchema>;
 export type UpdateCarePlanDto = z.infer<typeof updateCarePlanSchema>;
