@@ -927,8 +927,7 @@ userRouter.get(
     const records = await prisma.therapistCarePlan.findMany({
       where: {
         patientId: authReq.user.userId,
-        status: 'ACTIVE',
-        patientAcknowledgedAt: { not: null },
+        status: { in: ['DRAFT', 'ACTIVE'] },
       },
       orderBy: { updatedAt: 'desc' },
       take: 100,
