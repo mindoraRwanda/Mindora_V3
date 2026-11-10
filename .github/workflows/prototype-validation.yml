@@ -17,7 +17,7 @@ on:
       - '.github/workflows/prototype-validation.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: prototype-validation-${{ github.ref }}
@@ -85,6 +85,21 @@ jobs:
           done
       - name: Build changed services and dependencies
         run: npx turbo run build --filter=@mindora/validation --filter=@mindora/user-service --filter=@mindora/appointment-service --filter=@mindora/community-service --filter=@mindora/admin-service
+      - name: Commit canonical formatting
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/prototype-production-workflows'
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add apps/admin-service/src/routes/admin.routes.ts \
+              apps/community-service/src/__tests__/community.test.ts \
+              apps/community-service/src/routes/community.routes.ts \
+              apps/user-service/src/routes/user.routes.test.ts \
+              apps/user-service/src/routes/user.routes.ts \
+              packages/validation/src/care-plan.ts
+            git commit -m "style: canonical format prototype backend workflows"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
 
   test:
     name: Test live workflow APIs
