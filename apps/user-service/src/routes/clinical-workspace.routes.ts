@@ -453,11 +453,9 @@ clinicalWorkspaceRouter.post(
         .status(200)
         .json({ prescriptionDraft: publicPrescriptionDraft(updated) });
     } catch {
-      res
-        .status(503)
-        .json({
-          message: 'Archived prescription draft could not be decrypted',
-        });
+      res.status(503).json({
+        message: 'Archived prescription draft could not be decrypted',
+      });
     }
   })
 );
@@ -499,12 +497,10 @@ clinicalWorkspaceRouter.post(
       return;
     }
     if (!relationship) {
-      res
-        .status(403)
-        .json({
-          message:
-            'You can only send medication updates to a therapist you have seen',
-        });
+      res.status(403).json({
+        message:
+          'You can only send medication updates to a therapist you have seen',
+      });
       return;
     }
 
