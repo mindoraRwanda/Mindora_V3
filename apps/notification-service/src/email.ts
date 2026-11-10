@@ -8,14 +8,45 @@ let resend: Resend | null = null;
 let fromAddress =
   process.env.RESEND_FROM_EMAIL?.trim() || 'Mindora <onboarding@resend.dev>';
 
+type SafeProviderDiagnostic = {
+  code: string;
+  statusCode?: number;
+  message?: string;
+};
+
+function safeProviderDiagnostic(error: unknown): SafeProviderDiagnostic {
+  const value =
+    typeof error === 'object' && error !== null
+      ? (error as Record<string, unknown>)
+      : {};
+  const code =
+    typeof value.name === 'string'
+      ? value.name.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48) ||
+        'ProviderError'
+      : 'ProviderError';
+  const statusCode =
+    typeof value.statusCode === 'number' ? value.statusCode : undefined;
+  const rawMessage =
+    typeof value.message === 'string' ? value.message : undefined;
+  const message = rawMessage
+    ?.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/re_[A-Za-z0-9_-]+/g, '[redacted]')
+    .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+    .slice(0, 180);
+
+  return {
+    code,
+    ...(statusCode === undefined ? {} : { statusCode }),
+    ...(message ? { message } : {}),
+  };
+}
+
 function safeErrorCode(error: unknown): string {
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'name' in error &&
-    typeof error.name === 'string'
-  )
-    return error.name;
+  if (typeof error === 'object' && error !== null) {
+    const value = error as Record<string, unknown>;
+    if (typeof value.code === 'string') return value.code;
+    if (typeof value.name === 'string') return value.name;
+  }
   return 'ProviderError';
 }
 
@@ -97,11 +128,17 @@ export async function sendEmail(
   });
 
   if (error) {
-    console.error(
-      '[email] Resend provider request failed:',
-      safeErrorCode(error)
-    );
-    throw new Error('EMAIL_PROVIDER_SEND_FAILED');
+    const diagnostic = safeProviderDiagnostic(error);
+    console.error('[email] Resend provider request failed:', diagnostic);
+    const deliveryError = new Error('EMAIL_PROVIDER_SEND_FAILED') as Error & {
+      code: string;
+    };
+    deliveryError.code = [
+      'RESEND',
+      diagnostic.code,
+      diagnostic.statusCode ?? 'UNKNOWN_STATUS',
+    ].join('_');
+    throw deliveryError;
   }
 
   console.log(
