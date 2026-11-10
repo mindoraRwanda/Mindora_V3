@@ -74,17 +74,6 @@ jobs:
             apps/user-service/src/routes/user.routes.ts
             packages/validation/src/care-plan.ts
           if-no-files-found: error
-      - name: Check formatting
-        run: npm run format:check
-      - name: Lint changed services and validation
-        run: npx turbo run lint --filter=@mindora/validation --filter=@mindora/user-service --filter=@mindora/appointment-service --filter=@mindora/community-service --filter=@mindora/admin-service
-      - name: Generate Prisma clients
-        run: |
-          for dir in apps/auth-service apps/user-service apps/appointment-service apps/mood-tracking-service apps/admin-service apps/ai-integration-service apps/notification-service; do
-            (cd "$dir" && npx prisma generate)
-          done
-      - name: Build changed services and dependencies
-        run: npx turbo run build --filter=@mindora/validation --filter=@mindora/user-service --filter=@mindora/appointment-service --filter=@mindora/community-service --filter=@mindora/admin-service
       - name: Commit canonical formatting
         if: github.event_name == 'push' && github.ref == 'refs/heads/feat/prototype-production-workflows'
         run: |
@@ -100,6 +89,18 @@ jobs:
             git commit -m "style: canonical format prototype backend workflows"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
+      - name: Check formatting
+        run: npm run format:check
+      - name: Lint changed services and validation
+        run: npx turbo run lint --filter=@mindora/validation --filter=@mindora/user-service --filter=@mindora/appointment-service --filter=@mindora/community-service --filter=@mindora/admin-service
+      - name: Generate Prisma clients
+        run: |
+          for dir in apps/auth-service apps/user-service apps/appointment-service apps/mood-tracking-service apps/admin-service apps/ai-integration-service apps/notification-service; do
+            (cd "$dir" && npx prisma generate)
+          done
+      - name: Build changed services and dependencies
+        run: npx turbo run build --filter=@mindora/validation --filter=@mindora/user-service --filter=@mindora/appointment-service --filter=@mindora/community-service --filter=@mindora/admin-service
+
 
   test:
     name: Test live workflow APIs
