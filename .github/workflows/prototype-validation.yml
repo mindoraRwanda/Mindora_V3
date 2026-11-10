@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - feat/prototype-production-workflows
+      - fix/resend-safe-diagnostics
       - olivi
   pull_request:
     branches:
@@ -15,6 +16,7 @@ on:
       - 'apps/community-service/**'
       - 'apps/appointment-service/**'
       - 'apps/admin-service/**'
+      - 'apps/notification-service/**'
       - 'packages/validation/**'
       - '.github/workflows/prototype-validation.yml'
 
@@ -95,7 +97,7 @@ jobs:
       - name: Check formatting
         run: npm run format:check
       - name: Lint changed services and validation
-        run: npx turbo run lint --filter=@mindora/validation --filter=@mindora/user-service --filter=@mindora/appointment-service --filter=@mindora/community-service --filter=@mindora/admin-service
+        run: npx turbo run lint --filter=@mindora/validation --filter=@mindora/user-service --filter=@mindora/appointment-service --filter=@mindora/community-service --filter=@mindora/admin-service --filter=@mindora/notification-service
       - name: Generate Prisma clients
         run: |
           for dir in apps/auth-service apps/user-service apps/appointment-service apps/mood-tracking-service apps/admin-service apps/ai-integration-service apps/notification-service; do
