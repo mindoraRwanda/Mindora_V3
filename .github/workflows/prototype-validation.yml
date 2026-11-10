@@ -89,7 +89,6 @@ jobs:
               apps/user-service/src/routes/user.routes.test.ts \
               apps/user-service/src/routes/user.routes.ts \
               packages/validation/src/care-plan.ts \
-              .github/workflows/prototype-validation.yml
             git commit -m "style: canonical format prototype backend workflows"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
