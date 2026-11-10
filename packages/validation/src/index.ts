@@ -103,3 +103,14 @@ export {
   type UpdateTherapistApplicationDto,
   type UploadDocumentTypeDto,
 } from './therapist-application.js';
+
+export {
+  createMedicationUpdateSchema,
+  createPrescriptionDraftSchema,
+  reviewMedicationUpdateSchema,
+  updatePrescriptionDraftSchema,
+  type CreateMedicationUpdateDto,
+  type CreatePrescriptionDraftDto,
+  type ReviewMedicationUpdateDto,
+  type UpdatePrescriptionDraftDto,
+} from './clinical-workspace.js';
