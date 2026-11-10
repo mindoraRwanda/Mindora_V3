@@ -29,9 +29,9 @@ function safeProviderDiagnostic(error: unknown): SafeProviderDiagnostic {
   const rawMessage =
     typeof value.message === 'string' ? value.message : undefined;
   const message = rawMessage
-    ?.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '[email]')
+    ?.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
     .replace(/re_[A-Za-z0-9_-]+/g, '[redacted]')
-    .replace(/Bearer\\s+\\S+/gi, 'Bearer [redacted]')
+    .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
     .slice(0, 180);
 
   return {
