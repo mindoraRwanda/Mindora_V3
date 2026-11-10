@@ -7,6 +7,7 @@ vi.hoisted(() => {
   process.env.JWT_SECRET = 'mindora-dev-jwt-secret-change-in-production';
   process.env.JWT_ISSUER = 'mindora-auth';
   process.env.NODE_ENV = 'test';
+  process.env.THERAPIST_CARE_PLAN_ENCRYPTION_KEY = 'unit-test-care-plan-encryption-key-32-characters';
 });
 
 vi.mock('ioredis', () => {
@@ -24,6 +25,10 @@ vi.mock('ioredis', () => {
   return { default: Redis, Redis };
 });
 
+const mockCarePlanCreate = vi.fn();
+const mockCarePlanFindMany = vi.fn();
+const mockCarePlanFindUnique = vi.fn();
+const mockCarePlanUpdate = vi.fn();
 const mockPatientFindUnique = vi.fn();
 const mockPatientUpdate = vi.fn();
 const mockTherapistFindUnique = vi.fn();
@@ -37,6 +42,12 @@ const mockHttpGet = vi.fn();
 
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
+    therapistCarePlan: {
+      create: (...args: unknown[]) => mockCarePlanCreate(...args),
+      findMany: (...args: unknown[]) => mockCarePlanFindMany(...args),
+      findUnique: (...args: unknown[]) => mockCarePlanFindUnique(...args),
+      update: (...args: unknown[]) => mockCarePlanUpdate(...args),
+    },
     patientProfile: {
       findUnique: (...args: unknown[]) => mockPatientFindUnique(...args),
       update: (...args: unknown[]) => mockPatientUpdate(...args),
@@ -86,6 +97,14 @@ function patientToken() {
   );
 }
 
+function therapistToken() {
+  return jwt.sign(
+    { sub: 'therapist-1', email: 'therapist@example.com', role: 'THERAPIST' },
+    process.env.JWT_SECRET!,
+    { expiresIn: '15m', issuer: process.env.JWT_ISSUER, jwtid: randomUUID() }
+  );
+}
+
 function serviceToken() {
   return jwt.sign(
     {
@@ -101,6 +120,104 @@ function serviceToken() {
     }
   );
 }
+
+describe('Therapist care plans', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  it('creates an encrypted draft only for a therapist with an appointment relationship', async () => {
+    mockHttpGet.mockResolvedValue({ ok: true, status: 200, data: { hasRelationship: true } });
+    mockCarePlanCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: 'plan-1',
+      ...data,
+      patientAcknowledgedAt: null,
+      createdAt: new Date('2026-11-10T10:00:00.000Z'),
+      updatedAt: new Date('2026-11-10T10:00:00.000Z'),
+    }));
+
+    const app = createApp();
+    const response = await request(app)
+      .post('/care-plans')
+      .set('Authorization', `Bearer ${therapistToken()}`)
+      .send({
+        patientId: '11111111-1111-4111-8111-111111111111',
+        title: 'Stress management goals',
+        goals: ['Build a regular sleep routine'],
+        milestones: [{ title: 'Review sleep routine', dueDate: '2026-11-20T00:00:00.000Z' }],
+        reviewDate: '2026-11-30T00:00:00.000Z',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.carePlan).toMatchObject({
+      id: 'plan-1',
+      status: 'DRAFT',
+      title: 'Stress management goals',
+      goals: ['Build a regular sleep routine'],
+    });
+    const stored = mockCarePlanCreate.mock.calls[0][0].data;
+    expect(stored.encryptedPayload).not.toContain('Stress management goals');
+    expect(stored.therapistId).toBe('therapist-1');
+    expect(mockHttpGet).toHaveBeenCalled();
+  });
+
+  it('does not create a care plan without a verified therapist-patient relationship', async () => {
+    mockHttpGet.mockResolvedValue({ ok: true, status: 200, data: { hasRelationship: false } });
+    const app = createApp();
+    const response = await request(app)
+      .post('/care-plans')
+      .set('Authorization', `Bearer ${therapistToken()}`)
+      .send({
+        patientId: '11111111-1111-4111-8111-111111111111',
+        title: 'Goals',
+        goals: ['Goal one'],
+      });
+
+    expect(response.status).toBe(403);
+    expect(mockCarePlanCreate).not.toHaveBeenCalled();
+  });
+
+  it('allows only the owning patient to acknowledge a draft', async () => {
+    mockCarePlanFindUnique.mockResolvedValue({
+      id: 'plan-1',
+      therapistId: 'therapist-1',
+      patientId: 'patient-1',
+      encryptedPayload: 'encrypted-placeholder',
+      status: 'DRAFT',
+      patientAcknowledgedAt: null,
+    });
+    mockCarePlanUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: 'plan-1',
+      therapistId: 'therapist-1',
+      patientId: 'patient-1',
+      encryptedPayload: 'encrypted-placeholder',
+      status: data.status,
+      patientAcknowledgedAt: data.patientAcknowledgedAt,
+      createdAt: new Date('2026-11-10T10:00:00.000Z'),
+      updatedAt: new Date('2026-11-10T10:01:00.000Z'),
+    }));
+
+    // The payload is encrypted with the dedicated test key below. Use a
+    // valid encrypted payload by first creating a plan in the previous route.
+    mockCarePlanFindUnique.mockResolvedValueOnce({
+      id: 'plan-1',
+      therapistId: 'therapist-1',
+      patientId: 'patient-1',
+      encryptedPayload: 'invalid:invalid:invalid',
+      status: 'DRAFT',
+      patientAcknowledgedAt: null,
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .post('/care-plans/plan-1/acknowledge')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(503);
+    expect(mockCarePlanUpdate).not.toHaveBeenCalled();
+  });
+});
 
 describe('GET /me', () => {
   beforeEach(() => {
