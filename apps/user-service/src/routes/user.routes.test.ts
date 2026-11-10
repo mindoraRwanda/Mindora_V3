@@ -81,10 +81,10 @@ vi.mock('@mindora/auth-middleware', async (importOriginal) => {
 
 import { createApp } from '../app.js';
 
-function patientToken() {
+function patientToken(userId = 'patient-1') {
   return jwt.sign(
     {
-      sub: 'patient-1',
+      sub: userId,
       email: 'patient@example.com',
       role: 'PATIENT',
     },
@@ -178,46 +178,55 @@ describe('Therapist care plans', () => {
     expect(mockCarePlanCreate).not.toHaveBeenCalled();
   });
 
-  it('allows only the owning patient to acknowledge a draft', async () => {
+  it('allows the owning patient to acknowledge a saved care-plan draft', async () => {
+    const patientId = '11111111-1111-4111-8111-111111111111';
+    const createdAt = new Date('2026-11-10T10:00:00.000Z');
+    mockHttpGet.mockResolvedValue({ ok: true, status: 200, data: { hasRelationship: true } });
+    mockCarePlanCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: 'plan-1',
+      ...data,
+      patientAcknowledgedAt: null,
+      createdAt,
+      updatedAt: createdAt,
+    }));
+
+    const app = createApp();
+    const created = await request(app)
+      .post('/care-plans')
+      .set('Authorization', `Bearer ${therapistToken()}`)
+      .send({
+        patientId,
+        title: 'Wellbeing goals',
+        goals: ['Build a regular routine'],
+        milestones: [],
+      });
+    expect(created.status).toBe(201);
+
+    const stored = mockCarePlanCreate.mock.calls[0][0].data;
     mockCarePlanFindUnique.mockResolvedValue({
       id: 'plan-1',
-      therapistId: 'therapist-1',
-      patientId: 'patient-1',
-      encryptedPayload: 'encrypted-placeholder',
+      ...stored,
       status: 'DRAFT',
       patientAcknowledgedAt: null,
+      createdAt,
+      updatedAt: createdAt,
     });
     mockCarePlanUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
       id: 'plan-1',
-      therapistId: 'therapist-1',
-      patientId: 'patient-1',
-      encryptedPayload: 'encrypted-placeholder',
-      status: data.status,
-      patientAcknowledgedAt: data.patientAcknowledgedAt,
-      createdAt: new Date('2026-11-10T10:00:00.000Z'),
+      ...stored,
+      ...data,
+      createdAt,
       updatedAt: new Date('2026-11-10T10:01:00.000Z'),
     }));
 
-    // The payload is encrypted with the dedicated test key below. Use a
-    // valid encrypted payload by first creating a plan in the previous route.
-    mockCarePlanFindUnique.mockResolvedValueOnce({
-      id: 'plan-1',
-      therapistId: 'therapist-1',
-      patientId: 'patient-1',
-      encryptedPayload: 'invalid:invalid:invalid',
-      status: 'DRAFT',
-      patientAcknowledgedAt: null,
-    });
-
-    const app = createApp();
     const response = await request(app)
       .post('/care-plans/plan-1/acknowledge')
-      .set('Authorization', `Bearer ${patientToken()}`);
+      .set('Authorization', `Bearer ${patientToken(patientId)}`);
 
-    expect(response.status).toBe(503);
-    expect(mockCarePlanUpdate).not.toHaveBeenCalled();
-  });
-});
+    expect(response.status).toBe(200);
+    expect(response.body.carePlan.status).toBe('ACTIVE');
+    expect(response.body.carePlan.patientAcknowledgedAt).toBeTruthy();
+  });});
 
 describe('GET /me', () => {
   beforeEach(() => {
