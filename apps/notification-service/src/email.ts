@@ -130,9 +130,9 @@ export async function sendEmail(
   if (error) {
     const diagnostic = safeProviderDiagnostic(error);
     console.error('[email] Resend provider request failed:', diagnostic);
-    const deliveryError = new Error(
-      'EMAIL_PROVIDER_SEND_FAILED'
-    ) as Error & { code: string };
+    const deliveryError = new Error('EMAIL_PROVIDER_SEND_FAILED') as Error & {
+      code: string;
+    };
     deliveryError.code = [
       'RESEND',
       diagnostic.code,
