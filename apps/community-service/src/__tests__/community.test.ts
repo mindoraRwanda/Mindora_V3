@@ -344,6 +344,8 @@ describe('POST /api/v1/community/groups/:id/posts', () => {
       memberCount: 0,
     });
 
+    await CommunityMembership.create({ groupId: group._id, userId: 'test-user-123' });
+
     const response = await request
       .post(`/api/v1/community/groups/${group._id}/posts`)
       .set('Authorization', authHeader)
@@ -371,6 +373,8 @@ describe('POST /api/v1/community/groups/:id/posts', () => {
       memberCount: 0,
     });
 
+    await CommunityMembership.create({ groupId: group._id, userId: 'test-user-123' });
+
     const response = await request
       .post(`/api/v1/community/groups/${group._id}/posts`)
       .set('Authorization', authHeader)
@@ -384,6 +388,26 @@ describe('POST /api/v1/community/groups/:id/posts', () => {
     expect(response.body.author).not.toBeNull();
     expect(response.body.author.userId).toBe('test-user-123');
     expect(response.body.content.type).toBe('doc');
+  });
+
+  it('rejects post creation by a user who has not joined the group', async () => {
+    const group = await CommunityGroup.create({
+      name: 'Member-only Group',
+      description: 'A group requiring membership before posting',
+      category: 'GENERAL',
+      isAnonymous: false,
+      memberCount: 0,
+    });
+    const response = await request
+      .post(`/api/v1/community/groups/${group._id}/posts`)
+      .set('Authorization', authHeader)
+      .send({
+        content: tipTapContent('This post should be rejected.'),
+        isAnonymous: false,
+      });
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('Join this community before creating a post');
+    expect(await Post.countDocuments({ communityId: group._id })).toBe(0);
   });
 
   it('returns 400 when content is a plain string instead of TipTap JSON', async () => {
