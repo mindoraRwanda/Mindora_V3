@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - feat/prototype-production-workflows
+      - prototype-clinical-workspace-backend
       - olivi
   pull_request:
     branches:
