@@ -929,12 +929,10 @@ userRouter.get(
     try {
       res.status(200).json({ carePlans: records.map(publicCarePlan) });
     } catch {
-      res
-        .status(503)
-        .json({
-          message:
-            'Care-plan encryption key is unavailable or data could not be decrypted',
-        });
+      res.status(503).json({
+        message:
+          'Care-plan encryption key is unavailable or data could not be decrypted',
+      });
     }
   })
 );
@@ -964,12 +962,10 @@ userRouter.get(
     try {
       res.status(200).json({ carePlans: records.map(publicCarePlan) });
     } catch {
-      res
-        .status(503)
-        .json({
-          message:
-            'Care-plan encryption key is unavailable or data could not be decrypted',
-        });
+      res.status(503).json({
+        message:
+          'Care-plan encryption key is unavailable or data could not be decrypted',
+      });
     }
   })
 );
@@ -1012,12 +1008,10 @@ userRouter.patch(
       };
       encryptedPayload = encryptCarePlan(merged);
     } catch {
-      res
-        .status(503)
-        .json({
-          message:
-            'Care-plan encryption is unavailable or stored data could not be decrypted',
-        });
+      res.status(503).json({
+        message:
+          'Care-plan encryption is unavailable or stored data could not be decrypted',
+      });
       return;
     }
 
@@ -1071,12 +1065,10 @@ userRouter.post(
     try {
       res.status(200).json({ carePlan: publicCarePlan(updated) });
     } catch {
-      res
-        .status(503)
-        .json({
-          message:
-            'Care-plan encryption key is unavailable or data could not be decrypted',
-        });
+      res.status(503).json({
+        message:
+          'Care-plan encryption key is unavailable or data could not be decrypted',
+      });
     }
   })
 );

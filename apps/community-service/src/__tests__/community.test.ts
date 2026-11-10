@@ -344,7 +344,10 @@ describe('POST /api/v1/community/groups/:id/posts', () => {
       memberCount: 0,
     });
 
-    await CommunityMembership.create({ groupId: group._id, userId: 'test-user-123' });
+    await CommunityMembership.create({
+      groupId: group._id,
+      userId: 'test-user-123',
+    });
 
     const response = await request
       .post(`/api/v1/community/groups/${group._id}/posts`)
@@ -373,7 +376,10 @@ describe('POST /api/v1/community/groups/:id/posts', () => {
       memberCount: 0,
     });
 
-    await CommunityMembership.create({ groupId: group._id, userId: 'test-user-123' });
+    await CommunityMembership.create({
+      groupId: group._id,
+      userId: 'test-user-123',
+    });
 
     const response = await request
       .post(`/api/v1/community/groups/${group._id}/posts`)
@@ -406,7 +412,9 @@ describe('POST /api/v1/community/groups/:id/posts', () => {
         isAnonymous: false,
       });
     expect(response.status).toBe(403);
-    expect(response.body.error).toBe('Join this community before creating a post');
+    expect(response.body.error).toBe(
+      'Join this community before creating a post'
+    );
     expect(await Post.countDocuments({ communityId: group._id })).toBe(0);
   });
 

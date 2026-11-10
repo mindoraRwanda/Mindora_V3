@@ -439,9 +439,14 @@ router.post(
       return res.status(401).json({ error: 'User ID not found in token' });
     }
 
-    const membership = await CommunityMembership.exists({ groupId: group._id, userId });
+    const membership = await CommunityMembership.exists({
+      groupId: group._id,
+      userId,
+    });
     if (!membership) {
-      return res.status(403).json({ error: 'Join this community before creating a post' });
+      return res
+        .status(403)
+        .json({ error: 'Join this community before creating a post' });
     }
 
     const encryptedAuthorId = encryptUserId(userId);
