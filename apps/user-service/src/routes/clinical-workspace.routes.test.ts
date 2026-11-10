@@ -142,7 +142,7 @@ describe('Clinical workspace', () => {
 
     const app = createApp();
     const response = await request(app)
-      .post('/prescription-drafts')
+      .post('/api/v1/users/prescription-drafts')
       .set('Authorization', `Bearer ${therapistToken()}`)
       .send({
         patientId,
@@ -196,7 +196,7 @@ describe('Clinical workspace', () => {
 
     const app = createApp();
     const response = await request(app)
-      .post('/prescription-drafts')
+      .post('/api/v1/users/prescription-drafts')
       .set('Authorization', `Bearer ${therapistToken()}`)
       .send({
         patientId,
@@ -214,7 +214,7 @@ describe('Clinical workspace', () => {
   it('prevents patients from creating therapist-only prescription drafts', async () => {
     const app = createApp();
     const response = await request(app)
-      .post('/prescription-drafts')
+      .post('/api/v1/users/prescription-drafts')
       .set('Authorization', `Bearer ${patientToken()}`)
       .send({
         patientId,
@@ -240,7 +240,7 @@ describe('Clinical workspace', () => {
 
     const app = createApp();
     const response = await request(app)
-      .post('/medication-updates')
+      .post('/api/v1/users/medication-updates')
       .set('Authorization', `Bearer ${patientToken()}`)
       .send({
         therapistId,
@@ -283,7 +283,7 @@ describe('Clinical workspace', () => {
 
     const app = createApp();
     const response = await request(app)
-      .post('/medication-updates')
+      .post('/api/v1/users/medication-updates')
       .set('Authorization', `Bearer ${patientToken()}`)
       .send({
         therapistId: otherTherapistId,
@@ -303,7 +303,7 @@ describe('Clinical workspace', () => {
     try {
       const app = createApp();
       const response = await request(app)
-        .post('/prescription-drafts')
+        .post('/api/v1/users/prescription-drafts')
         .set('Authorization', `Bearer ${therapistToken()}`)
         .send({
           patientId,
@@ -323,7 +323,7 @@ describe('Clinical workspace', () => {
   it('does not expose an endpoint to issue or dispense a prescription draft', async () => {
     const app = createApp();
     const response = await request(app)
-      .post('/prescription-drafts/44444444-4444-4444-8444-444444444444/issue')
+      .post('/api/v1/users/prescription-drafts/44444444-4444-4444-8444-444444444444/issue')
       .set('Authorization', `Bearer ${therapistToken()}`);
 
     expect(response.status).toBe(404);
