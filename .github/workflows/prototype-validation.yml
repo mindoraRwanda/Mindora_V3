@@ -66,6 +66,7 @@ jobs:
             "apps/user-service/src/routes/user.routes.test.ts" \
             "apps/user-service/src/routes/user.routes.ts" \
             "packages/validation/src/care-plan.ts" \
+            "apps/notification-service/src/email.ts" \
             ".github/workflows/prototype-validation.yml"
       - name: Upload canonical source
         uses: actions/upload-artifact@v4
@@ -78,11 +79,12 @@ jobs:
             apps/user-service/src/routes/user.routes.test.ts
             apps/user-service/src/routes/user.routes.ts
             packages/validation/src/care-plan.ts
+          apps/notification-service/src/email.ts
           if-no-files-found: error
       - name: Commit canonical formatting
-        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/prototype-production-workflows'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/prototype-production-workflows' || github.ref == 'refs/heads/fix/resend-safe-diagnostics')
         run: |
-          if [[ -n "$(git status --porcelain -- apps/admin-service/src/routes/admin.routes.ts apps/community-service/src apps/user-service/src packages/validation/src/care-plan.ts)" ]]; then
+          if [[ -n "$(git status --porcelain -- apps/admin-service/src/routes/admin.routes.ts apps/community-service/src apps/user-service/src packages/validation/src/care-plan.ts apps/notification-service/src/email.ts)" ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add apps/admin-service/src/routes/admin.routes.ts \
@@ -90,7 +92,8 @@ jobs:
               apps/community-service/src/routes/community.routes.ts \
               apps/user-service/src/routes/user.routes.test.ts \
               apps/user-service/src/routes/user.routes.ts \
-              packages/validation/src/care-plan.ts
+              packages/validation/src/care-plan.ts \
+              apps/notification-service/src/email.ts
             git commit -m "style: canonical format prototype backend workflows"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
@@ -104,7 +107,7 @@ jobs:
             (cd "$dir" && npx prisma generate)
           done
       - name: Build changed services and dependencies
-        run: npx turbo run build --filter=@mindora/validation --filter=@mindora/user-service --filter=@mindora/appointment-service --filter=@mindora/community-service --filter=@mindora/admin-service
+        run: npx turbo run build --filter=@mindora/validation --filter=@mindora/user-service --filter=@mindora/appointment-service --filter=@mindora/community-service --filter=@mindora/admin-service --filter=@mindora/notification-service
 
 
   test:
