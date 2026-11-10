@@ -828,8 +828,8 @@ userRouter.get(
 // ---------------------------------------------------------------------------
 // Therapist care-plan drafts — encrypted goal-setting content only.
 // The therapist must have an existing appointment relationship with the
-// patient. Drafts are hidden from the patient until the patient acknowledges
-// them. Diagnosis, medication instructions and prescriptions are out of scope.
+// patient. The assigned patient can review drafts; a plan becomes active only
+// after patient acknowledgement. Diagnosis, medication instructions and prescriptions are out of scope.
 // ---------------------------------------------------------------------------
 
 userRouter.post(
