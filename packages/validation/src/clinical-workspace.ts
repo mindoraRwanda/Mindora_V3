@@ -26,7 +26,13 @@ export const updatePrescriptionDraftSchema = z
 export const createMedicationUpdateSchema = z.object({
   therapistId: z.string().uuid(),
   medicationName: z.string().trim().min(1).max(160),
-  updateType: z.enum(['STARTED', 'STOPPED', 'CHANGED', 'SIDE_EFFECT', 'QUESTION']),
+  updateType: z.enum([
+    'STARTED',
+    'STOPPED',
+    'CHANGED',
+    'SIDE_EFFECT',
+    'QUESTION',
+  ]),
   note: z.string().trim().max(2000).default(''),
 });
 
@@ -35,7 +41,15 @@ export const reviewMedicationUpdateSchema = z.object({
   reviewNote: z.string().trim().max(2000).default(''),
 });
 
-export type CreatePrescriptionDraftDto = z.infer<typeof createPrescriptionDraftSchema>;
-export type UpdatePrescriptionDraftDto = z.infer<typeof updatePrescriptionDraftSchema>;
-export type CreateMedicationUpdateDto = z.infer<typeof createMedicationUpdateSchema>;
-export type ReviewMedicationUpdateDto = z.infer<typeof reviewMedicationUpdateSchema>;
+export type CreatePrescriptionDraftDto = z.infer<
+  typeof createPrescriptionDraftSchema
+>;
+export type UpdatePrescriptionDraftDto = z.infer<
+  typeof updatePrescriptionDraftSchema
+>;
+export type CreateMedicationUpdateDto = z.infer<
+  typeof createMedicationUpdateSchema
+>;
+export type ReviewMedicationUpdateDto = z.infer<
+  typeof reviewMedicationUpdateSchema
+>;

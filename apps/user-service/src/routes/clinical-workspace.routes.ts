@@ -82,7 +82,11 @@ function clinicalEncryptionKey(purpose: string): Buffer {
 
 function encryptClinicalPayload(payload: unknown, purpose: string): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', clinicalEncryptionKey(purpose), iv);
+  const cipher = createCipheriv(
+    'aes-256-gcm',
+    clinicalEncryptionKey(purpose),
+    iv
+  );
   const ciphertext = Buffer.concat([
     cipher.update(JSON.stringify(payload), 'utf8'),
     cipher.final(),
@@ -206,7 +210,9 @@ clinicalWorkspaceRouter.post(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || !requireRole(authReq, 'THERAPIST')) {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires THERAPIST role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
@@ -225,7 +231,9 @@ clinicalWorkspaceRouter.post(
       patientId
     );
     if (relationship === null) {
-      res.status(503).json({ message: 'Appointment relationship service unavailable' });
+      res
+        .status(503)
+        .json({ message: 'Appointment relationship service unavailable' });
       return;
     }
     if (!relationship) {
@@ -240,7 +248,9 @@ clinicalWorkspaceRouter.post(
         'prescription-draft-v1'
       );
     } catch {
-      res.status(503).json({ message: 'Prescription draft encryption is not configured' });
+      res
+        .status(503)
+        .json({ message: 'Prescription draft encryption is not configured' });
       return;
     }
 
@@ -264,9 +274,13 @@ clinicalWorkspaceRouter.post(
     });
 
     try {
-      res.status(201).json({ prescriptionDraft: publicPrescriptionDraft(draft) });
+      res
+        .status(201)
+        .json({ prescriptionDraft: publicPrescriptionDraft(draft) });
     } catch {
-      res.status(503).json({ message: 'Prescription draft could not be decrypted' });
+      res
+        .status(503)
+        .json({ message: 'Prescription draft could not be decrypted' });
     }
   })
 );
@@ -278,11 +292,14 @@ clinicalWorkspaceRouter.get(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || !requireRole(authReq, 'THERAPIST')) {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires THERAPIST role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
-    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const status =
+      typeof req.query.status === 'string' ? req.query.status : undefined;
     if (status && status !== 'DRAFT' && status !== 'ARCHIVED') {
       res.status(400).json({ message: 'Invalid prescription draft status' });
       return;
@@ -305,7 +322,8 @@ clinicalWorkspaceRouter.get(
       });
     } catch {
       res.status(503).json({
-        message: 'Prescription draft encryption key is unavailable or stored data is invalid',
+        message:
+          'Prescription draft encryption key is unavailable or stored data is invalid',
       });
     }
   })
@@ -318,7 +336,9 @@ clinicalWorkspaceRouter.patch(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || !requireRole(authReq, 'THERAPIST')) {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires THERAPIST role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
@@ -355,7 +375,8 @@ clinicalWorkspaceRouter.patch(
       );
     } catch {
       res.status(503).json({
-        message: 'Prescription draft encryption is unavailable or stored data is invalid',
+        message:
+          'Prescription draft encryption is unavailable or stored data is invalid',
       });
       return;
     }
@@ -376,9 +397,13 @@ clinicalWorkspaceRouter.patch(
     });
 
     try {
-      res.status(200).json({ prescriptionDraft: publicPrescriptionDraft(updated) });
+      res
+        .status(200)
+        .json({ prescriptionDraft: publicPrescriptionDraft(updated) });
     } catch {
-      res.status(503).json({ message: 'Updated prescription draft could not be decrypted' });
+      res
+        .status(503)
+        .json({ message: 'Updated prescription draft could not be decrypted' });
     }
   })
 );
@@ -390,7 +415,9 @@ clinicalWorkspaceRouter.post(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || !requireRole(authReq, 'THERAPIST')) {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires THERAPIST role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
@@ -422,9 +449,15 @@ clinicalWorkspaceRouter.post(
     });
 
     try {
-      res.status(200).json({ prescriptionDraft: publicPrescriptionDraft(updated) });
+      res
+        .status(200)
+        .json({ prescriptionDraft: publicPrescriptionDraft(updated) });
     } catch {
-      res.status(503).json({ message: 'Archived prescription draft could not be decrypted' });
+      res
+        .status(503)
+        .json({
+          message: 'Archived prescription draft could not be decrypted',
+        });
     }
   })
 );
@@ -439,7 +472,9 @@ clinicalWorkspaceRouter.post(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || !requireRole(authReq, 'PATIENT')) {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires PATIENT role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires PATIENT role' });
       return;
     }
 
@@ -458,11 +493,18 @@ clinicalWorkspaceRouter.post(
       authReq.user.userId
     );
     if (relationship === null) {
-      res.status(503).json({ message: 'Appointment relationship service unavailable' });
+      res
+        .status(503)
+        .json({ message: 'Appointment relationship service unavailable' });
       return;
     }
     if (!relationship) {
-      res.status(403).json({ message: 'You can only send medication updates to a therapist you have seen' });
+      res
+        .status(403)
+        .json({
+          message:
+            'You can only send medication updates to a therapist you have seen',
+        });
       return;
     }
 
@@ -473,7 +515,9 @@ clinicalWorkspaceRouter.post(
         'medication-update-v1'
       );
     } catch {
-      res.status(503).json({ message: 'Medication update encryption is not configured' });
+      res
+        .status(503)
+        .json({ message: 'Medication update encryption is not configured' });
       return;
     }
 
@@ -497,9 +541,13 @@ clinicalWorkspaceRouter.post(
     });
 
     try {
-      res.status(201).json({ medicationUpdate: publicMedicationUpdate(update) });
+      res
+        .status(201)
+        .json({ medicationUpdate: publicMedicationUpdate(update) });
     } catch {
-      res.status(503).json({ message: 'Medication update could not be decrypted' });
+      res
+        .status(503)
+        .json({ message: 'Medication update could not be decrypted' });
     }
   })
 );
@@ -511,7 +559,9 @@ clinicalWorkspaceRouter.get(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || !requireRole(authReq, 'PATIENT')) {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires PATIENT role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires PATIENT role' });
       return;
     }
 
@@ -529,7 +579,8 @@ clinicalWorkspaceRouter.get(
       });
     } catch {
       res.status(503).json({
-        message: 'Medication update encryption key is unavailable or stored data is invalid',
+        message:
+          'Medication update encryption key is unavailable or stored data is invalid',
       });
     }
   })
@@ -542,11 +593,14 @@ clinicalWorkspaceRouter.get(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || !requireRole(authReq, 'THERAPIST')) {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires THERAPIST role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
-    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const status =
+      typeof req.query.status === 'string' ? req.query.status : undefined;
     if (
       status &&
       status !== 'PENDING' &&
@@ -574,7 +628,8 @@ clinicalWorkspaceRouter.get(
       });
     } catch {
       res.status(503).json({
-        message: 'Medication review encryption key is unavailable or stored data is invalid',
+        message:
+          'Medication review encryption key is unavailable or stored data is invalid',
       });
     }
   })
@@ -587,7 +642,9 @@ clinicalWorkspaceRouter.patch(
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     if (!authReq.user || !requireRole(authReq, 'THERAPIST')) {
-      res.status(authReq.user ? 403 : 401).json({ message: 'Requires THERAPIST role' });
+      res
+        .status(authReq.user ? 403 : 401)
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
@@ -608,7 +665,9 @@ clinicalWorkspaceRouter.patch(
       return;
     }
     if (existing.status === 'REVIEWED') {
-      res.status(409).json({ message: 'This medication update has already been reviewed' });
+      res
+        .status(409)
+        .json({ message: 'This medication update has already been reviewed' });
       return;
     }
 
@@ -624,7 +683,8 @@ clinicalWorkspaceRouter.patch(
       );
     } catch {
       res.status(503).json({
-        message: 'Medication review encryption is unavailable or stored data is invalid',
+        message:
+          'Medication review encryption is unavailable or stored data is invalid',
       });
       return;
     }
@@ -650,9 +710,13 @@ clinicalWorkspaceRouter.patch(
     });
 
     try {
-      res.status(200).json({ medicationUpdate: publicMedicationUpdate(updated) });
+      res
+        .status(200)
+        .json({ medicationUpdate: publicMedicationUpdate(updated) });
     } catch {
-      res.status(503).json({ message: 'Reviewed medication update could not be decrypted' });
+      res
+        .status(503)
+        .json({ message: 'Reviewed medication update could not be decrypted' });
     }
   })
 );

@@ -169,7 +169,9 @@ describe('Clinical workspace', () => {
     expect(saved.status).toBe('DRAFT');
     expect(mockHttpGet).toHaveBeenCalledWith(
       'http://kong.test',
-      expect.stringContaining(`/internal/appointments/relationship/${therapistId}/${patientId}`),
+      expect.stringContaining(
+        `/internal/appointments/relationship/${therapistId}/${patientId}`
+      ),
       expect.objectContaining({
         headers: { Authorization: 'Bearer service-token-test' },
       })
@@ -259,11 +261,15 @@ describe('Clinical workspace', () => {
 
     const saved = mockMedicationCreate.mock.calls[0][0].data;
     expect(saved.encryptedPayload).not.toContain('Medicine name for test');
-    expect(saved.encryptedPayload).not.toContain('A private patient note for testing');
+    expect(saved.encryptedPayload).not.toContain(
+      'A private patient note for testing'
+    );
     expect(saved.status).toBe('PENDING');
     expect(mockHttpGet).toHaveBeenCalledWith(
       'http://kong.test',
-      expect.stringContaining(`/internal/appointments/relationship/${therapistId}/${patientId}`),
+      expect.stringContaining(
+        `/internal/appointments/relationship/${therapistId}/${patientId}`
+      ),
       expect.any(Object)
     );
   });
