@@ -6,6 +6,7 @@ import {
   adminRejectApplicationSchema,
   adminRequestInfoApplicationSchema,
   analyticsRangeQuerySchema,
+  appointmentListQuerySchema,
   listAlertsQuerySchema,
   listAuditLogQuerySchema,
   listUsersQuerySchema,
