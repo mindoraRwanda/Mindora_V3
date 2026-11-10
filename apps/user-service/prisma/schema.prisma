@@ -190,3 +190,29 @@ model TherapistApplicationNote {
   @@index([applicationId])
   @@map("therapist_application_notes")
 }
+
+
+enum TherapistCarePlanStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+// Only goal-setting content is stored here. The payload (including title,
+// goals and milestone labels) is encrypted with a dedicated application key.
+// Patient and therapist ids are identifiers only; the relationship is
+// validated through Appointment Service before therapist access is granted.
+model TherapistCarePlan {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  therapistId           String                 @map("therapist_id") @db.Uuid
+  patientId             String                 @map("patient_id") @db.Uuid
+  encryptedPayload      String                 @map("encrypted_payload")
+  status                TherapistCarePlanStatus @default(DRAFT)
+  patientAcknowledgedAt DateTime?              @map("patient_acknowledged_at")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  @@index([therapistId, status, updatedAt])
+  @@index([patientId, status])
+  @@map("therapist_care_plans")
+}
