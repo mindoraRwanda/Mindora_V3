@@ -79,7 +79,7 @@ jobs:
             apps/user-service/src/routes/user.routes.test.ts
             apps/user-service/src/routes/user.routes.ts
             packages/validation/src/care-plan.ts
-          apps/notification-service/src/email.ts
+            apps/notification-service/src/email.ts
           if-no-files-found: error
       - name: Commit canonical formatting
         if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/prototype-production-workflows' || github.ref == 'refs/heads/fix/resend-safe-diagnostics')
