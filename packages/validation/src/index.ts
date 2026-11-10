@@ -1,4 +1,11 @@
 export {
+  carePlanContentSchema,
+  createCarePlanSchema,
+  updateCarePlanSchema,
+  type CreateCarePlanDto,
+  type UpdateCarePlanDto,
+} from './care-plan.js';
+export {
   forgotPasswordSchema,
   loginSchema,
   registerSchema,
