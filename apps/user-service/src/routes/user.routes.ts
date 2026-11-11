@@ -14,7 +14,10 @@ import {
   verifyJwt,
   type AuthenticatedRequest,
 } from '../middleware/authenticate.js';
-import { authenticatedRouteLimiter, publicDirectoryRouteLimiter } from '../middleware/rate-limit.js';
+import {
+  authenticatedRouteLimiter,
+  publicDirectoryRouteLimiter,
+} from '../middleware/rate-limit.js';
 import { Prisma } from '../generated/prisma/index.js';
 import { callService, httpClient } from '@mindora/http-client';
 
