@@ -165,6 +165,38 @@ export const openApiSpec = {
           },
         },
       },
+      PublicTherapistProfile: {
+        type: 'object',
+        required: [
+          'id', 'userId', 'userName', 'bio', 'timezone', 'languagePreference',
+          'specialisation', 'languages', 'isAcceptingPatients', 'photoUrl',
+        ],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          userId: { type: 'string', format: 'uuid' },
+          userName: { type: 'string', nullable: true },
+          bio: { type: 'string', nullable: true },
+          timezone: { type: 'string' },
+          languagePreference: { type: 'string' },
+          specialisation: { type: 'string', nullable: true },
+          languages: { type: 'array', items: { type: 'string' } },
+          isAcceptingPatients: { type: 'boolean', enum: [true] },
+          photoUrl: { type: 'string', nullable: true },
+        },
+      },
+      PublicTherapistListResponse: {
+        type: 'object',
+        required: ['therapists', 'total', 'page', 'limit'],
+        properties: {
+          therapists: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/PublicTherapistProfile' },
+          },
+          total: { type: 'integer' },
+          page: { type: 'integer' },
+          limit: { type: 'integer' },
+        },
+      },
       TherapistListResponse: {
         type: 'object',
         required: ['therapists', 'total', 'page', 'limit'],
@@ -456,7 +488,7 @@ export const openApiSpec = {
         responses: {
           '200': {
             description: 'Paginated public therapist directory',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/TherapistListResponse' } } },
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicTherapistListResponse' } } },
           },
           '400': { description: 'Invalid query parameters' },
           '429': { description: 'Rate limit exceeded' },
