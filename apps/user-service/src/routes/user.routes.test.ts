@@ -224,7 +224,8 @@ describe('GET /therapists/public', () => {
 
   it('is public and returns only approved therapist directory fields', async () => {
     const app = createApp();
-    const response = await request(app).get('/therapists/public?page=1&limit=10');
+    const response = await request(app)
+      .get('/therapists/public?page=1&limit=10');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
@@ -248,7 +249,9 @@ describe('GET /therapists/public', () => {
     });
     expect(response.body.therapists[0]).not.toHaveProperty('email');
     expect(response.body.therapists[0]).not.toHaveProperty('fcmToken');
-    expect(response.body.therapists[0]).not.toHaveProperty('notificationPreferences');
+    expect(response.body.therapists[0]).not.toHaveProperty(
+      'notificationPreferences'
+    );
     expect(response.body.therapists[0]).not.toHaveProperty('applicationId');
     expect(mockTherapistFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
