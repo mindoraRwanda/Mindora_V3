@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - feat/prototype-production-workflows
+      - prototype-clinical-workspace-backend
       - olivi
   pull_request:
     branches:
@@ -55,6 +56,11 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Check out pull-request source branch for formatting
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          git fetch origin "${{ github.event.pull_request.head.ref }}"
+          git checkout -B "${{ github.event.pull_request.head.ref }}" "origin/${{ github.event.pull_request.head.ref }}"
       - name: Canonical-format changed workflow files
         run: |
           npx prettier --write \
@@ -64,7 +70,11 @@ jobs:
             "apps/user-service/src/routes/user.routes.test.ts" \
             "apps/user-service/src/routes/user.routes.ts" \
             "packages/validation/src/care-plan.ts" \
+            "apps/user-service/src/routes/clinical-workspace.routes.ts" \
+            "apps/user-service/src/routes/clinical-workspace.routes.test.ts" \
+            "packages/validation/src/clinical-workspace.ts" \
             ".github/workflows/prototype-validation.yml"
+          npx prisma format --schema apps/user-service/prisma/schema.prisma
       - name: Upload canonical source
         uses: actions/upload-artifact@v4
         with:
@@ -76,11 +86,17 @@ jobs:
             apps/user-service/src/routes/user.routes.test.ts
             apps/user-service/src/routes/user.routes.ts
             packages/validation/src/care-plan.ts
+            apps/user-service/src/routes/clinical-workspace.routes.ts
+            apps/user-service/src/routes/clinical-workspace.routes.test.ts
+            packages/validation/src/clinical-workspace.ts
+            apps/user-service/prisma/schema.prisma
           if-no-files-found: error
       - name: Commit canonical formatting
-        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/prototype-production-workflows'
+        if: |
+          (github.event_name == 'push' && github.ref == 'refs/heads/feat/prototype-production-workflows') ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         run: |
-          if [[ -n "$(git status --porcelain -- apps/admin-service/src/routes/admin.routes.ts apps/community-service/src apps/user-service/src packages/validation/src/care-plan.ts)" ]]; then
+          if [[ -n "$(git status --porcelain -- apps/admin-service/src/routes/admin.routes.ts apps/community-service/src apps/user-service/src packages/validation/src/clinical-workspace.ts packages/validation/src/care-plan.ts)" ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add apps/admin-service/src/routes/admin.routes.ts \
@@ -88,9 +104,17 @@ jobs:
               apps/community-service/src/routes/community.routes.ts \
               apps/user-service/src/routes/user.routes.test.ts \
               apps/user-service/src/routes/user.routes.ts \
+              apps/user-service/src/routes/clinical-workspace.routes.ts \
+              apps/user-service/src/routes/clinical-workspace.routes.test.ts \
+              apps/user-service/prisma/schema.prisma \
+              packages/validation/src/clinical-workspace.ts \
               packages/validation/src/care-plan.ts
             git commit -m "style: canonical format prototype backend workflows"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
+            if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+              git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+            else
+              git push origin "HEAD:${GITHUB_REF_NAME}"
+            fi
           fi
       - name: Check formatting
         run: npm run format:check
