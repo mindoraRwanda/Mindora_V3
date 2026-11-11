@@ -2,7 +2,7 @@
   "name": "mindora_v3",
   "version": "1.0.0",
   "private": true,
-  "description": "Mindora V3 monorepo \u2014 mental health platform microservices",
+  "description": "Mindora V3 monorepo — mental health platform microservices",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -78,7 +78,7 @@
     "express": "^5.2.1",
     "ioredis": "^5.11.1",
     "joi": "^18.3.1",
-    "mongoose": "^9.6.3",
+    "mongoose": "^9.11.4",
     "resend": "^6.29.0",
     "socket.io": "^4.8.3"
   },
