@@ -96,11 +96,10 @@ jobs:
           (github.event_name == 'push' && github.ref == 'refs/heads/feat/prototype-production-workflows') ||
           (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         run: |
-          if [[ -n "$(git status --porcelain -- .github/workflows/prototype-validation.yml apps/admin-service/src/routes/admin.routes.ts apps/community-service/src apps/user-service/src packages/validation/src/clinical-workspace.ts packages/validation/src/care-plan.ts)" ]]; then
+          if [[ -n "$(git status --porcelain -- apps/admin-service/src/routes/admin.routes.ts apps/community-service/src apps/user-service/src packages/validation/src/clinical-workspace.ts packages/validation/src/care-plan.ts)" ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add .github/workflows/prototype-validation.yml \
-              apps/admin-service/src/routes/admin.routes.ts \
+            git add apps/admin-service/src/routes/admin.routes.ts \
               apps/community-service/src/__tests__/community.test.ts \
               apps/community-service/src/routes/community.routes.ts \
               apps/user-service/src/routes/user.routes.test.ts \
