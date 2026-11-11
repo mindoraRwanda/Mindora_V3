@@ -224,8 +224,9 @@ describe('GET /therapists/public', () => {
 
   it('is public and returns only approved therapist directory fields', async () => {
     const app = createApp();
-    const response = await request(app)
-      .get('/therapists/public?page=1&limit=10');
+    const response = await request(app).get(
+      '/therapists/public?page=1&limit=10'
+    );
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
