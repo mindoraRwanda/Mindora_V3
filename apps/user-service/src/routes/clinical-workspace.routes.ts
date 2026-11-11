@@ -299,8 +299,10 @@ clinicalWorkspaceRouter.get(
     }
 
     const status =
-      typeof req.query.status === 'string' ? req.query.status : undefined;
-    if (status && status !== 'DRAFT' && status !== 'ARCHIVED') {
+      req.query.status === 'DRAFT' || req.query.status === 'ARCHIVED'
+        ? req.query.status
+        : undefined;
+    if (req.query.status !== undefined && status === undefined) {
       res.status(400).json({ message: 'Invalid prescription draft status' });
       return;
     }
@@ -596,13 +598,12 @@ clinicalWorkspaceRouter.get(
     }
 
     const status =
-      typeof req.query.status === 'string' ? req.query.status : undefined;
-    if (
-      status &&
-      status !== 'PENDING' &&
-      status !== 'REVIEWED' &&
-      status !== 'FOLLOW_UP_REQUIRED'
-    ) {
+      req.query.status === 'PENDING' ||
+      req.query.status === 'REVIEWED' ||
+      req.query.status === 'FOLLOW_UP_REQUIRED'
+        ? req.query.status
+        : undefined;
+    if (req.query.status !== undefined && status === undefined) {
       res.status(400).json({ message: 'Invalid medication review status' });
       return;
     }
