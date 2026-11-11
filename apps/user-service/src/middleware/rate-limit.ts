@@ -23,3 +23,14 @@ export const documentDownloadRouteLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: 'Too many requests' },
 });
+
+
+// Public directory requests are rate-limited by IP because they do not carry
+// a user JWT. This route returns only the explicitly selected public DTO.
+export const publicDirectoryRouteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: isTest ? 10_000 : 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests' },
+});
