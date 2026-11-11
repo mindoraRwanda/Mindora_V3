@@ -440,6 +440,29 @@ export const openApiSpec = {
         },
       },
     },
+    '/therapists/public': {
+      get: {
+        tags: ['Therapists'],
+        summary: 'Public directory of approved therapists accepting patients',
+        description:
+          'Unauthenticated, paginated and filterable directory. Returns only display name, bio, timezone, languages, specialisation, profile photo and public booking identifier; never email, FCM tokens, notification preferences or application metadata.',
+        security: [],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 } },
+          { name: 'specialisation', in: 'query', schema: { type: 'string' } },
+          { name: 'language', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Paginated public therapist directory',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/TherapistListResponse' } } },
+          },
+          '400': { description: 'Invalid query parameters' },
+          '429': { description: 'Rate limit exceeded' },
+        },
+      },
+    },
     '/therapists': {
       get: {
         tags: ['Therapists'],
