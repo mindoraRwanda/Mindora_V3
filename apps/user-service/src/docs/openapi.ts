@@ -165,6 +165,48 @@ export const openApiSpec = {
           },
         },
       },
+      PublicTherapistProfile: {
+        type: 'object',
+        required: [
+          'id',
+          'userId',
+          'userName',
+          'bio',
+          'timezone',
+          'languagePreference',
+          'specialisation',
+          'languages',
+          'isAcceptingPatients',
+          'photoUrl',
+        ],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          userId: { type: 'string', format: 'uuid' },
+          userName: { type: 'string', nullable: true },
+          bio: { type: 'string', nullable: true },
+          timezone: { type: 'string' },
+          languagePreference: { type: 'string' },
+          specialisation: { type: 'string', nullable: true },
+          languages: { type: 'array', items: { type: 'string' } },
+          isAcceptingPatients: { type: 'boolean', enum: [true] },
+          photoUrl: { type: 'string', nullable: true },
+        },
+      },
+      PublicTherapistListResponse: {
+        type: 'object',
+        required: ['therapists', 'total', 'page', 'limit'],
+        properties: {
+          therapists: {
+            type: 'array',
+            items: {
+              $ref: '#/components/schemas/PublicTherapistProfile',
+            },
+          },
+          total: { type: 'integer' },
+          page: { type: 'integer' },
+          limit: { type: 'integer' },
+        },
+      },
       TherapistListResponse: {
         type: 'object',
         required: ['therapists', 'total', 'page', 'limit'],
@@ -436,6 +478,59 @@ export const openApiSpec = {
             },
           },
           '404': { $ref: '#/components/responses/NotFound' },
+          '429': { description: 'Rate limit exceeded' },
+        },
+      },
+    },
+    '/therapists/public': {
+      get: {
+        tags: ['Therapists'],
+        summary: 'Public directory of approved therapists accepting patients',
+        description:
+          'Unauthenticated, paginated and filterable directory. Returns only ' +
+          'display name, bio, timezone, languages, specialisation, profile photo ' +
+          'and public booking identifier; never email, FCM tokens, notification ' +
+          'preferences or application metadata.',
+        security: [],
+        parameters: [
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 50,
+              default: 10,
+            },
+          },
+          {
+            name: 'specialisation',
+            in: 'query',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'language',
+            in: 'query',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Paginated public therapist directory',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/PublicTherapistListResponse',
+                },
+              },
+            },
+          },
+          '400': { description: 'Invalid query parameters' },
           '429': { description: 'Rate limit exceeded' },
         },
       },

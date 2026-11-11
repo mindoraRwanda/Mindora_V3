@@ -14,7 +14,10 @@ import {
   verifyJwt,
   type AuthenticatedRequest,
 } from '../middleware/authenticate.js';
-import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
+import {
+  authenticatedRouteLimiter,
+  publicDirectoryRouteLimiter,
+} from '../middleware/rate-limit.js';
 import { Prisma } from '../generated/prisma/index.js';
 import { callService, httpClient } from '@mindora/http-client';
 
@@ -673,6 +676,76 @@ userRouter.put(
     res
       .status(400)
       .json({ message: 'Profile updates not supported for this role' });
+  })
+);
+
+// Public, read-only directory endpoint. Keep separate from the JWT-protected
+// /therapists route: the latter is for authenticated app clients. This DTO
+// explicitly excludes email, FCM tokens, notification preferences, roles,
+// application metadata and suspension state.
+userRouter.get(
+  '/therapists/public',
+  publicDirectoryRouteLimiter,
+  asyncHandler(async (req, res) => {
+    const parsed = therapistListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { page, limit, specialisation, language } = parsed.data;
+    const skip = (page - 1) * limit;
+    const where: Prisma.TherapistProfileWhereInput = {
+      isAcceptingPatients: true,
+      applicationStatus: 'APPROVED',
+      isSuspended: false,
+      ...(specialisation
+        ? { specialisation: { contains: specialisation, mode: 'insensitive' } }
+        : {}),
+      ...(language ? { languages: { has: language } } : {}),
+    };
+
+    const [profiles, total] = await Promise.all([
+      prisma.therapistProfile.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          userId: true,
+          userName: true,
+          bio: true,
+          timezone: true,
+          languagePreference: true,
+          specialisation: true,
+          languages: true,
+          isAcceptingPatients: true,
+          photoUrl: true,
+        },
+      }),
+      prisma.therapistProfile.count({ where }),
+    ]);
+
+    // Explicit projection protects the public contract if the Prisma model
+    // gains new columns in the future.
+    const therapists = profiles.map((profile) => ({
+      id: profile.id,
+      userId: profile.userId,
+      userName: profile.userName,
+      bio: profile.bio,
+      timezone: profile.timezone,
+      languagePreference: profile.languagePreference,
+      specialisation: profile.specialisation,
+      languages: profile.languages,
+      isAcceptingPatients: profile.isAcceptingPatients,
+      photoUrl: profile.photoUrl,
+    }));
+
+    res.status(200).json({ therapists, total, page, limit });
   })
 );
 
