@@ -195,6 +195,88 @@ describe('GET /therapists', () => {
   });
 });
 
+describe('GET /therapists/public', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockTherapistFindMany.mockResolvedValue([
+      {
+        id: 'profile-1',
+        userId: 'therapist-1',
+        userName: 'Dr. Public',
+        bio: 'Supports adults and couples.',
+        timezone: 'Africa/Kigali',
+        languagePreference: 'en',
+        specialisation: 'Anxiety',
+        languages: ['English', 'Kinyarwanda'],
+        isAcceptingPatients: true,
+        photoUrl: null,
+        email: 'private@example.com',
+        fcmToken: 'private-fcm-token',
+        notificationPreferences: { push: true, email: true, sms: true },
+        applicationStatus: 'APPROVED',
+        applicationId: 'private-application-id',
+        isSuspended: false,
+        role: 'THERAPIST',
+      },
+    ]);
+    mockTherapistCount.mockResolvedValue(1);
+  });
+
+  it('is public and returns only approved therapist directory fields', async () => {
+    const app = createApp();
+    const response = await request(app).get('/therapists/public?page=1&limit=10');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      therapists: [
+        {
+          id: 'profile-1',
+          userId: 'therapist-1',
+          userName: 'Dr. Public',
+          bio: 'Supports adults and couples.',
+          timezone: 'Africa/Kigali',
+          languagePreference: 'en',
+          specialisation: 'Anxiety',
+          languages: ['English', 'Kinyarwanda'],
+          isAcceptingPatients: true,
+          photoUrl: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 10,
+    });
+    expect(response.body.therapists[0]).not.toHaveProperty('email');
+    expect(response.body.therapists[0]).not.toHaveProperty('fcmToken');
+    expect(response.body.therapists[0]).not.toHaveProperty('notificationPreferences');
+    expect(response.body.therapists[0]).not.toHaveProperty('applicationId');
+    expect(mockTherapistFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          isAcceptingPatients: true,
+          applicationStatus: 'APPROVED',
+          isSuspended: false,
+        }),
+        select: expect.objectContaining({
+          id: true,
+          userId: true,
+          userName: true,
+          bio: true,
+          photoUrl: true,
+        }),
+      })
+    );
+  });
+
+  it('validates public directory filters', async () => {
+    const app = createApp();
+    const response = await request(app).get('/therapists/public?page=0');
+
+    expect(response.status).toBe(400);
+    expect(mockTherapistFindMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('GET /internal/users/analytics', () => {
   beforeEach(() => {
     vi.clearAllMocks();
