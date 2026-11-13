@@ -2,11 +2,11 @@ import { Resend } from 'resend';
 import { logNotification } from './notificationLogger.js';
 
 let resend: Resend | null = null;
-
-// Use a verified MINDORA sending domain in production. Resend's sandbox sender
-// is only suitable for development/testing and may restrict recipients.
+let brevoApiKey: string | null = null;
 let fromAddress =
   process.env.RESEND_FROM_EMAIL?.trim() || 'Mindora <onboarding@resend.dev>';
+let brevoFromEmail = '';
+let brevoFromName = 'MINDORA';
 
 function safeErrorCode(error: unknown): string {
   if (
@@ -19,31 +19,51 @@ function safeErrorCode(error: unknown): string {
   return 'ProviderError';
 }
 
-export function initResend(): void {
-  const apiKey = process.env.RESEND_EMAIL_API_KEY?.trim();
-  const configuredFrom = process.env.RESEND_FROM_EMAIL?.trim();
+/**
+ * Initializes the configured transactional email provider.
+ * Brevo is preferred when BREVO_API_KEY is present. Resend remains available
+ * as a backwards-compatible fallback for existing deployments.
+ */
+export function initEmailProvider(): void {
   const isProduction = process.env.NODE_ENV === 'production';
+  brevoApiKey = process.env.BREVO_API_KEY?.trim() || null;
+  brevoFromEmail = process.env.BREVO_FROM_EMAIL?.trim() || '';
+  brevoFromName = process.env.BREVO_FROM_NAME?.trim() || 'MINDORA';
 
-  if (
-    isProduction &&
-    (!apiKey ||
-      !configuredFrom ||
-      configuredFrom.includes('onboarding@resend.dev'))
-  ) {
+  const resendApiKey = process.env.RESEND_EMAIL_API_KEY?.trim();
+  const configuredResendFrom = process.env.RESEND_FROM_EMAIL?.trim();
+
+  if (brevoApiKey) {
+    if (!brevoFromEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(brevoFromEmail)) {
+      throw new Error(
+        'BREVO_FROM_EMAIL must be a valid verified sender email address'
+      );
+    }
+    console.log('[email] Brevo transactional email client initialized');
+    return;
+  }
+
+  if (isProduction && (!resendApiKey || !configuredResendFrom ||
+      configuredResendFrom.includes('onboarding@resend.dev'))) {
     throw new Error(
-      'Production email requires RESEND_EMAIL_API_KEY and a verified RESEND_FROM_EMAIL sender'
+      'Production email requires BREVO_API_KEY and BREVO_FROM_EMAIL, or a verified Resend configuration'
     );
   }
-  if (!apiKey) {
+
+  if (!resendApiKey) {
     console.warn(
-      '[email] RESEND_EMAIL_API_KEY is not configured — email notifications are disabled'
+      '[email] No transactional email provider configured — email notifications are disabled'
     );
     return;
   }
-  fromAddress = configuredFrom || fromAddress;
-  resend = new Resend(apiKey);
+
+  fromAddress = configuredResendFrom || fromAddress;
+  resend = new Resend(resendApiKey);
   console.log('[email] Resend email client initialized');
 }
+
+// Backwards-compatible export for any other module still using the old name.
+export const initResend = initEmailProvider;
 
 // Calls the same preferences endpoint for a display name, used to personalize
 // appointment emails instead of the generic 'Patient'/'[name pending]' role
@@ -72,9 +92,8 @@ export async function getUserName(userId: string): Promise<string | null> {
   }
 }
 
-// Returns whether an actual send attempt was made — false for the
-// 'Resend not initialized' skip case, true once we've reached Resend
-// (throws on a real delivery failure rather than returning false for that).
+// Returns whether an actual provider accepted the send request. This does not
+// claim final delivery to the recipient's mailbox.
 export async function sendEmail(
   to: string,
   subject: string,
@@ -84,8 +103,36 @@ export async function sendEmail(
     `[email] sendEmail requested (recipient redacted; subject="${subject}")`
   );
 
+  if (brevoApiKey) {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'api-key': brevoApiKey,
+      },
+      body: JSON.stringify({
+        sender: { name: brevoFromName, email: brevoFromEmail },
+        to: [{ email: to }],
+        subject,
+        htmlContent: htmlBody,
+      }),
+    });
+
+    if (!response.ok) {
+      // Do not log provider response bodies: they may contain personal data.
+      console.error('[email] Brevo provider request failed:', response.status);
+      throw new Error('EMAIL_PROVIDER_SEND_FAILED');
+    }
+
+    console.log(
+      '[email] Brevo accepted the email request; final mailbox delivery is not confirmed'
+    );
+    return true;
+  }
+
   if (!resend) {
-    console.warn('[email] Resend not initialized — email send skipped');
+    console.warn('[email] No email provider initialized — email send skipped');
     return false;
   }
 
@@ -139,7 +186,7 @@ export async function sendEmailToUser(
       eventType,
       channel: 'email',
       status: sent ? 'accepted' : 'skipped',
-      failureReason: sent ? undefined : 'Resend client not initialized',
+      failureReason: sent ? undefined : 'No email provider initialized',
     });
   } catch (err) {
     const failureCode = safeErrorCode(err);

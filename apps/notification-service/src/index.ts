@@ -3,7 +3,7 @@ import { connect } from '@mindora/queue';
 import { createApp } from './app.js';
 import { startConsumers, SUBSCRIBED_EXCHANGES } from './consumers.js';
 import { initFirebase } from './fcm.js';
-import { initResend } from './email.js';
+import { initEmailProvider } from './email.js';
 import { initSms } from './sms.js';
 import { initVoice } from './voice.js';
 import { setupRetryInfrastructure } from './retry.js';
@@ -13,7 +13,7 @@ const PORT = Number(process.env.PORT) || 3008;
 
 async function main(): Promise<void> {
   initFirebase();
-  initResend();
+  initEmailProvider();
   initSms();
   initVoice();
 
