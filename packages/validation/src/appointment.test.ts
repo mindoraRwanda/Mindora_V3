@@ -11,11 +11,15 @@ describe('bookAppointmentSchema session types', () => {
   it.each(['VIDEO', 'AUDIO', 'IN_PERSON', 'CHAT'] as const)(
     'accepts %s',
     (sessionType) => {
-      expect(bookAppointmentSchema.safeParse({ ...base, sessionType }).success).toBe(true);
+      expect(
+        bookAppointmentSchema.safeParse({ ...base, sessionType }).success
+      ).toBe(true);
     }
   );
 
   it('rejects unsupported session types', () => {
-    expect(bookAppointmentSchema.safeParse({ ...base, sessionType: 'PHONE' }).success).toBe(false);
+    expect(
+      bookAppointmentSchema.safeParse({ ...base, sessionType: 'PHONE' }).success
+    ).toBe(false);
   });
 });
