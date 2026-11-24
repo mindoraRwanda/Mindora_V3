@@ -280,7 +280,11 @@ authRouter.post(
 
       // Fire-and-forget: don't block the response on email delivery.
       sendPasswordResetEmail(email, resetUrl).catch((err) => {
-        console.error(`[password-reset] Failed to send email to ${email}:`, err);
+        console.error(
+          '[password-reset] Failed to send email to user %s:',
+          user.id,
+          err
+        );
       });
     }
 

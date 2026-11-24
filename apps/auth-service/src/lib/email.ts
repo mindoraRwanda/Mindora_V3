@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 
-const FROM = process.env.RESEND_FROM_ADDRESS ?? 'Mindora <onboarding@resend.dev>';
+const FROM =
+  process.env.RESEND_FROM_ADDRESS ?? 'Mindora <onboarding@resend.dev>';
 
 let resend: Resend | null = null;
 
@@ -24,7 +25,7 @@ export async function sendPasswordResetEmail(
     console.warn(
       `[auth/email] Resend not initialized — logging reset URL instead`
     );
-    console.log(`[password-reset] Reset URL for ${to}: ${resetUrl}`);
+    console.log('[password-reset] Reset URL (dev-only):', resetUrl);
     return;
   }
 
@@ -39,7 +40,7 @@ export async function sendPasswordResetEmail(
     throw new Error(`Resend delivery failed: ${error.message}`);
   }
 
-  console.log(`[auth/email] Password reset email sent to ${to}`);
+  console.log('[auth/email] Password reset email sent');
 }
 
 function passwordResetTemplate(resetUrl: string): string {
