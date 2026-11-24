@@ -2,6 +2,7 @@ import './env.js'; // must be first — loads .env before any module reads proce
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { connectRedis } from './lib/redis.js';
+import { initResend } from './lib/email.js';
 import { authenticate } from './middleware/authenticate.js';
 import type { AuthenticatedRequest } from '@mindora/auth-middleware';
 
@@ -13,6 +14,7 @@ async function start() {
   console.log(
     'Redis connected (auth:blacklist:{jti} ready for logout in Sprint 2)'
   );
+  initResend();
 
   const app = createApp();
   app.listen(config.port, () => {
