@@ -25,7 +25,7 @@ export const config = {
   // for localhost, where cookies already ignore the port.
   cookieDomain: process.env.COOKIE_DOMAIN || undefined,
   isProduction: process.env.NODE_ENV === 'production',
-  appBaseUrl: process.env.APP_BASE_URL ?? 'http://localhost:3001',
+  appBaseUrl: process.env.APP_BASE_URL ?? 'http://localhost:3000',
   // Where the browser lands after a successful Google OAuth callback. The
   // frontend route there does no token parsing — it just waits on its own
   // mount-time bootstrap (POST /refresh) to pick up the refreshToken cookie

@@ -20,6 +20,7 @@ import jwt from 'jsonwebtoken';
 import { randomBytes } from 'node:crypto';
 import passport from 'passport';
 import { config, isGoogleOAuthConfigured } from '../config.js';
+import { sendPasswordResetEmail } from '../lib/email.js';
 import {
   authenticate,
   type AuthenticatedRequest,
@@ -276,7 +277,11 @@ authRouter.post(
       const tokenHash = hashToken(resetToken);
       await storePasswordResetToken(tokenHash, user.id);
       const resetUrl = `${config.appBaseUrl}/reset-password?token=${resetToken}`;
-      console.log(`[password-reset] Reset URL for ${email}: ${resetUrl}`);
+
+      // Fire-and-forget: don't block the response on email delivery.
+      sendPasswordResetEmail(email, resetUrl).catch((err) => {
+        console.error(`[password-reset] Failed to send email to ${email}:`, err);
+      });
     }
 
     res.status(200).json({
