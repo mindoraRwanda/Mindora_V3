@@ -414,18 +414,6 @@ describe('mood and AI handlers', () => {
     expect(mocks.sendPushNotification).not.toHaveBeenCalled();
   });
 
-  it('does not send push for AI events — log only', async () => {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    await capturedHandler(EXCHANGES.AI)({
-      eventId: '714ccdf3-af66-48be-b051-1eedfc17d1a6',
-      occurredAt: '2024-01-01T00:00:00Z',
-      userId: 'afdaad18-1241-47c8-a633-f912fa3f9d03',
-      sessionId: null,
-      crisisLevel: 3,
-      timestamp: '2024-01-01T00:00:00Z',
-    });
-    expect(mocks.sendPushNotification).not.toHaveBeenCalled();
-  });
 });
 
 describe('AI crisis handler', () => {
@@ -478,7 +466,7 @@ describe('AI crisis handler', () => {
     mocks.sendEmail.mockRejectedValueOnce(new Error('Resend unavailable'));
 
     await expect(capturedHandler(EXCHANGES.AI)(crisisEvent)).rejects.toThrow(
-      'Crisis notification delivery failed'
+      'One or more crisis notification channels failed'
     );
 
     expect(mocks.sendEmail).toHaveBeenCalledOnce();
