@@ -31,6 +31,8 @@ const validPayload = {
   externalUserRef: 'legacy-user-7',
   crisisLevel: 5,
   messageExcerpt: 'I have already hurt myself',
+  interactionId: 'f406523f-a0fd-42e1-a488-9d97f903c679',
+  conversationExcerpt: 'User: I need urgent help',
 };
 
 describe('private Python chatbot crisis webhook', () => {
@@ -82,6 +84,16 @@ describe('private Python chatbot crisis webhook', () => {
       { durable: true }
     );
     expect(mockChannel.publish).toHaveBeenCalledOnce();
+    const published = JSON.parse(
+      mockChannel.publish.mock.calls[0][2].toString()
+    );
+    expect(published).toMatchObject({
+      eventId: validPayload.eventId,
+      interactionId: validPayload.interactionId,
+      messageExcerpt: validPayload.messageExcerpt,
+      conversationExcerpt: validPayload.conversationExcerpt,
+      source: 'python-chatbot',
+    });
     expect(mockChannel.waitForConfirms).toHaveBeenCalledOnce();
     expect(mockChannel.close).toHaveBeenCalledOnce();
   });
