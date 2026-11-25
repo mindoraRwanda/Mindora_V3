@@ -13,7 +13,7 @@ import type {
   AppointmentCancelledEvent,
 } from '@mindora/events';
 import { sendPushNotification } from './fcm.js';
-import { getUserName, sendCrisisAlertEmail, sendEmailToUser } from './email.js';
+import { getUserName, sendEmailToUser } from './email.js';
 import { sendSms } from './sms.js';
 import { logNotification } from './notificationLogger.js';
 import {
@@ -304,32 +304,13 @@ async function handleAi(payload: unknown): Promise<void> {
     );
   }
   const crisis = parsed.data;
-
-  // Patient SMS and clinical-team email are independent channels. A failure
-  // in one must never prevent the other from being attempted.
-  const smsTask = (async () => {
-    const prefs = await getUserPreferences(crisis.userId);
-    const smsBody =
-      `Mindora crisis alert: your recent session flagged a concern ` +
-      `(level ${crisis.crisisLevel}). A counsellor will reach out shortly.`;
-    await sendSmsIfEnabled(crisis.userId, smsBody, 'ai.crisis', prefs);
-  })();
-
-  const emailTask = sendCrisisAlertEmail({
-    eventId: crisis.eventId,
-    userId: crisis.userId,
-    sessionId: crisis.sessionId,
-    crisisLevel: crisis.crisisLevel,
-    occurredAt: crisis.occurredAt,
-    messageExcerpt: crisis.messageExcerpt,
-  });
-
-  const results = await Promise.allSettled([smsTask, emailTask]);
-  for (const result of results) {
-    if (result.status === 'rejected') {
-      console.error('[notification] Crisis channel failed:', result.reason);
-    }
-  }
+  const prefs = await getUserPreferences(crisis.userId);
+  await sendSmsIfEnabled(
+    crisis.userId,
+    `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`,
+    'ai.crisis',
+    prefs
+  );
 }
 
 async function handleMood(payload: unknown): Promise<void> {
