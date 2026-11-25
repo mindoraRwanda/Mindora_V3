@@ -87,7 +87,7 @@ router.post(
 
       res.status(200).json({
         response:
-          "I'm concerned about your safety right now. Please reach out to a crisis helpline immediately. In Rwanda: Umutima Counselling Centre +250 788 386 225. International: Crisis Text Line — text HOME to 741741. You are not alone.",
+          "I'm concerned about your safety right now. Please reach out to a crisis helpline immediately. In Rwanda: Umutima Counselling Centre +250 788 386 225. International: Crisis Text Line — text HOME to 741741. If you already work with a Mindora therapist, open Messages in your account to contact them. You are not alone.",
         crisisLevel: 5,
         sessionId: null,
       });
