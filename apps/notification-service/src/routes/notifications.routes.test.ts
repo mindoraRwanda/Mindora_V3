@@ -120,7 +120,7 @@ describe('GET /api/v1/notifications', () => {
       ],
     });
     expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId } })
+      expect.objectContaining({ where: { userId, channel: 'push' } })
     );
   });
 
