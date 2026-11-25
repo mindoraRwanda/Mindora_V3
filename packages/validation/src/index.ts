@@ -1,4 +1,21 @@
 export {
+  carePlanContentSchema,
+  createCarePlanSchema,
+  updateCarePlanSchema,
+  type CreateCarePlanDto,
+  type UpdateCarePlanDto,
+} from './care-plan.js';
+export {
+  createMedicationUpdateSchema,
+  createPrescriptionDraftSchema,
+  reviewMedicationUpdateSchema,
+  updatePrescriptionDraftSchema,
+  type CreateMedicationUpdateDto,
+  type CreatePrescriptionDraftDto,
+  type ReviewMedicationUpdateDto,
+  type UpdatePrescriptionDraftDto,
+} from './clinical-workspace.js';
+export {
   forgotPasswordSchema,
   loginSchema,
   registerSchema,
