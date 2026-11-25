@@ -1,7 +1,15 @@
 import { Resend } from 'resend';
 
+// Railway production configuration uses RESEND_FROM_EMAIL. Keep the older
+// RESEND_FROM_ADDRESS name as a backwards-compatible alias for existing
+// deployments. Never fall back to Resend's shared onboarding sender in
+// production: Resend only permits test recipients with that sender.
 const FROM =
-  process.env.RESEND_FROM_ADDRESS ?? 'Mindora <onboarding@resend.dev>';
+  process.env.RESEND_FROM_EMAIL ??
+  process.env.RESEND_FROM_ADDRESS ??
+  (process.env.NODE_ENV === 'production'
+    ? ''
+    : 'Mindora <onboarding@resend.dev>');
 
 let resend: Resend | null = null;
 
@@ -13,6 +21,14 @@ export function initResend(): void {
     );
     return;
   }
+
+  if (!FROM) {
+    console.error(
+      '[auth/email] RESEND_FROM_EMAIL is not set — password reset emails disabled'
+    );
+    return;
+  }
+
   resend = new Resend(apiKey);
   console.log('✓ Auth-service Resend client initialized');
 }
@@ -22,11 +38,10 @@ export async function sendPasswordResetEmail(
   resetUrl: string
 ): Promise<void> {
   if (!resend) {
-    console.warn(
-      `[auth/email] Resend not initialized — logging reset URL instead`
+    // Never log resetUrl: it contains a live, single-use credential.
+    throw new Error(
+      '[auth/email] Resend is not initialized; check the API key and verified sender configuration'
     );
-    console.log('[password-reset] Reset URL (dev-only):', resetUrl);
-    return;
   }
 
   const { error } = await resend.emails.send({
@@ -40,7 +55,7 @@ export async function sendPasswordResetEmail(
     throw new Error(`Resend delivery failed: ${error.message}`);
   }
 
-  console.log('[auth/email] Password reset email sent');
+  console.log('[auth/email] Password reset email accepted by Resend');
 }
 
 function passwordResetTemplate(resetUrl: string): string {
