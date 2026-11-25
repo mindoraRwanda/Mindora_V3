@@ -1020,6 +1020,50 @@ appointmentRouter.get(
   })
 );
 
+// INTERNAL SERVICE ENDPOINT — admin-service uses this read-only route to
+// display the platform appointment register. Only SERVICE-role JWTs may call it;
+// the public admin endpoint performs the ADMIN check before proxying here.
+appointmentRouter.get(
+  '/internal/appointments',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const parsed = appointmentListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { page, limit, status } = parsed.data;
+    const where = status ? { status } : {};
+    const [appointments, total] = await Promise.all([
+      prisma.appointment.findMany({
+        where,
+        orderBy: { slotStart: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.appointment.count({ where }),
+    ]);
+
+    res.status(200).json({
+      appointments: appointments.map(serializeAppointment),
+      total,
+      page,
+      limit,
+    });
+  })
+);
+
 // INTERNAL SERVICE ENDPOINT — same SERVICE-role convention as above.
 // Lets another service (currently: mood-tracking-service's therapist mood
 // report) verify that a therapist actually has a treatment relationship with
