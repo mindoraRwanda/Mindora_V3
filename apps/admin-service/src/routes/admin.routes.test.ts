@@ -1247,3 +1247,60 @@ describe('PUT /therapists/:id/reactivate', () => {
     });
   });
 });
+
+
+describe('GET /appointments', () => {
+  it('proxies the paginated appointment register using the internal service token', async () => {
+    mockHttpGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        appointments: [
+          {
+            id: 'appointment-1',
+            patientId: 'patient-1',
+            therapistId: 'therapist-1',
+            status: 'CONFIRMED',
+          },
+        ],
+        total: 1,
+        page: 2,
+        limit: 5,
+      },
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/appointments?status=CONFIRMED&page=2&limit=5')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.total).toBe(1);
+    expect(mockHttpGet).toHaveBeenCalledWith(
+      'http://localhost:8000',
+      '/internal/appointments?page=2&limit=5&status=CONFIRMED',
+      { headers: { Authorization: 'Bearer test-internal-service-token' } }
+    );
+  });
+
+  it('rejects non-admin callers before reaching Appointment Service', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/appointments')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockHttpGet).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 when Appointment Service is unavailable', async () => {
+    mockHttpGet.mockResolvedValue({ ok: false, status: 503, data: null });
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/appointments')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    expect(response.status).toBe(503);
+  });
+});
