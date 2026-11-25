@@ -13,11 +13,7 @@ import type {
   AppointmentCancelledEvent,
 } from '@mindora/events';
 import { sendPushNotification } from './fcm.js';
-import {
-  getUserName,
-  sendCrisisAlertEmail,
-  sendEmailToUser,
-} from './email.js';
+import { getUserName, sendCrisisAlertEmail, sendEmailToUser } from './email.js';
 import { sendSms } from './sms.js';
 import { logNotification } from './notificationLogger.js';
 import {
