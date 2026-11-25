@@ -48,7 +48,7 @@ screeningRouter.post(
         Number(index),
         value,
       ])
-    );
+    ) as Record<number, number>;
     const result = scoreScreening(parsed.data.instrumentId, answers);
 
     let answersEncrypted: string;
