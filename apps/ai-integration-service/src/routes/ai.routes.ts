@@ -36,10 +36,10 @@ async function publishCrisisEvent(
   const channel = await connection.createConfirmChannel();
   const eventId = randomUUID();
   try {
-    await channel.assertExchange(EXCHANGES.AI, "fanout", { durable: true });
+    await channel.assertExchange(EXCHANGES.AI, 'fanout', { durable: true });
     channel.publish(
       EXCHANGES.AI,
-      "",
+      '',
       Buffer.from(
         JSON.stringify({
           eventId,
@@ -51,10 +51,10 @@ async function publishCrisisEvent(
           messageExcerpt,
           conversationExcerpt,
           interactionId,
-          source: "web-chatbot",
+          source: 'web-chatbot',
         })
       ),
-      { persistent: true, contentType: "application/json" }
+      { persistent: true, contentType: 'application/json' }
     );
     await channel.waitForConfirms();
   } finally {
