@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
 import {
   requireRole,
   type AuthenticatedRequest,
@@ -14,10 +15,22 @@ import { chatRouteLimiter } from '../middleware/rate-limit.js';
 
 const router = Router();
 
+function isUuid(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    )
+  );
+}
+
 async function publishCrisisEvent(
   userId: string,
   crisisLevel: number,
-  sessionId: string | null
+  sessionId: string | null,
+  messageExcerpt: string,
+  interactionId: string,
+  conversationExcerpt: string
 ): Promise<void> {
   const connection = await connect();
   const channel = await connection.createChannel();
@@ -27,12 +40,16 @@ async function publishCrisisEvent(
     '',
     Buffer.from(
       JSON.stringify({
-        eventId: crypto.randomUUID(),
+        eventId: randomUUID(),
         occurredAt: new Date().toISOString(),
         userId,
         sessionId,
         crisisLevel,
         timestamp: new Date().toISOString(),
+        messageExcerpt,
+        conversationExcerpt,
+        interactionId,
+        source: 'web-chatbot',
       })
     ),
     { persistent: true, contentType: 'application/json' }
@@ -51,7 +68,6 @@ router.post(
       sessionId?: unknown;
     };
 
-    // Basic body validation — full Zod schema will be added with the AI provider integration
     if (typeof message !== 'string' || message.trim() === '') {
       res.status(400).json({ error: 'message must be a non-empty string' });
       return;
@@ -59,47 +75,123 @@ router.post(
 
     const userId = req.user?.userId;
     const email = req.user?.email;
-    const resolvedSessionId = typeof sessionId === 'string' ? sessionId : null;
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
 
+    const resolvedSessionId = isUuid(sessionId) ? sessionId : null;
     const crisisLevel = await runPreFilter(message, userId);
 
-    // Level 5 — immediate escalation; AI is never called under any circumstances
-    if (crisisLevel === 5) {
-      // INTENTIONAL fire-and-forget: do NOT await publishCrisisEvent.
-      // The safety response must reach the user even if RabbitMQ is down, restarting,
-      // or unreachable. Awaiting here would mean a broker outage causes the user to
-      // receive a 500 error instead of the crisis helpline message — the worst possible
-      // failure mode for this code path. The .catch ensures the error is logged without
-      // propagating to the response flow.
+    // Levels 3–5 receive an immediate supportive response; the generative model
+    // is bypassed so the safety message is not delayed by a provider call.
+    if (crisisLevel >= 3) {
+      const interactionSessionId = resolvedSessionId ?? randomUUID();
+      const approvedClinicalResources =
+        process.env.CRISIS_CONTACTS_APPROVED === 'true'
+          ? (process.env.CRISIS_APPROVED_RESOURCES ?? '')
+              .split(';')
+              .map((value) => value.trim())
+              .filter(Boolean)
+          : [];
+      const approvedResourcesText = approvedClinicalResources.length
+        ? ` MINDORA-approved resources: ${approvedClinicalResources.join('; ')}.`
+        : '';
+      const safetyResponse =
+        "I'm really glad you told me. Your safety matters, and you deserve support right now. If you may act on these thoughts, have already hurt yourself, or cannot stay safe, please contact local emergency services or go to the nearest emergency department now. If possible, move away from anything you could use to hurt yourself and stay with someone you trust while you get help. For general MINDORA support during published business hours (Monday to Friday, 9:00 AM–5:00 PM), call +250 783 974-066 or email info@mindora.rw (stated response time within 24 hours). These are general support contacts, not emergency services or a 24/7 crisis hotline. For therapist follow-up when safe, visit https://app.mindora.rw/therapists." +
+        approvedResourcesText;
+
+      let interactionId = randomUUID();
+      try {
+        const storedInteraction = await prisma.aiInteraction.create({
+          data: {
+            user_id: userId,
+            session_id: interactionSessionId,
+            user_message: encrypt(message),
+            ai_response: encrypt(safetyResponse),
+            input_flagged: true,
+            output_flagged: false,
+            crisis_level: crisisLevel,
+            response_ms: 0,
+          },
+        });
+        interactionId = storedInteraction.id;
+      } catch (error) {
+        console.error(
+          '[pre-filter] Failed to store encrypted crisis interaction:',
+          error
+        );
+      }
+
+      // The persisted conversation remains encrypted. Only a bounded excerpt
+      // is included in the restricted operations email for immediate triage.
+      let conversationExcerpt = '';
+      try {
+        const recent = await prisma.aiInteraction.findMany({
+          where: { user_id: userId, session_id: interactionSessionId },
+          orderBy: { created_at: 'desc' },
+          take: 4,
+          select: { user_message: true, ai_response: true },
+        });
+        conversationExcerpt = recent
+          .reverse()
+          .map((row) => {
+            let userMessage = '[Unable to decrypt earlier message]';
+            let assistantMessage = '[Unable to decrypt earlier response]';
+            try {
+              userMessage = decrypt(row.user_message);
+            } catch {
+              /* retain safe marker */
+            }
+            try {
+              assistantMessage = decrypt(row.ai_response);
+            } catch {
+              /* retain safe marker */
+            }
+            return `User: ${userMessage.slice(0, 700)}\nMINDORA: ${assistantMessage.slice(0, 700)}`;
+          })
+          .join('\n\n')
+          .slice(0, 5000);
+      } catch (error) {
+        console.error(
+          '[pre-filter] Could not collect bounded crisis transcript:',
+          error
+        );
+      }
+
       publishCrisisEvent(
-        userId ?? 'unknown',
+        userId,
         crisisLevel,
-        resolvedSessionId
-      ).catch((err) => {
+        interactionSessionId,
+        message.trim().slice(0, 1500),
+        interactionId,
+        conversationExcerpt
+      ).catch((error) => {
         console.error(
           '[pre-filter] Failed to publish crisis event to RabbitMQ:',
-          err
+          error
         );
       });
 
       res.status(200).json({
-        response:
-          "I'm concerned about your safety right now. Please reach out to a crisis helpline immediately. In Rwanda: Umutima Counselling Centre +250 788 386 225. International: Crisis Text Line — text HOME to 741741. You are not alone.",
-        crisisLevel: 5,
-        sessionId: null,
+        response: safetyResponse,
+        crisisLevel,
+        sessionId: interactionSessionId,
+        crisisSupport: {
+          generalMindoraPhone: '+250 783 974-066',
+          generalMindoraPhoneHours: 'Monday to Friday, 9:00 AM–5:00 PM',
+          generalMindoraEmail: 'info@mindora.rw',
+          generalMindoraEmailResponse: 'Within 24 hours',
+          isEmergencyService: false,
+          approvedClinicalResources,
+          mindoraTherapistDirectory: 'https://app.mindora.rw/therapists',
+        },
       });
       return;
     }
 
-    // TODO[clinical-review]: Levels 3 and 4 currently set inputFlagged and continue
-    // to the AI call. A formal escalation path for these levels — specifically whether
-    // Level 3 (passive ideation) and Level 4 (active ideation without plan) should
-    // trigger therapist SMS alerts, in-app safety check prompts, or modified AI system
-    // prompts — has NOT been defined yet and requires clinical review before go-live.
-    // See: AFSP Safe Messaging Guidelines, Columbia Suicide Severity Rating Scale (C-SSRS).
     const inputFlagged = crisisLevel >= 1;
-
-    if (!userId || !email) {
+    if (!email) {
       res.status(401).json({ message: 'Unauthorized' });
       return;
     }
