@@ -228,7 +228,7 @@ function publicCarePlan(record: CarePlanRecord) {
     patientId: record.patientId,
     ...decryptClinicalPayload<CarePlanPayload>(
       record.encryptedPayload,
-      "care-plan-v1"
+      'care-plan-v1'
     ),
     status: record.status,
     patientAcknowledgedAt: record.patientAcknowledgedAt?.toISOString() ?? null,
@@ -239,21 +239,21 @@ function publicCarePlan(record: CarePlanRecord) {
 
 // Therapist view: only care plans owned by the authenticated therapist.
 clinicalWorkspaceRouter.get(
-  "/care-plans",
+  '/care-plans',
   authenticatedRouteLimiter,
   verifyJwt,
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
-    if (!authReq.user || !requireRole(authReq, "THERAPIST")) {
+    if (!authReq.user || !requireRole(authReq, 'THERAPIST')) {
       res
         .status(authReq.user ? 403 : 401)
-        .json({ message: "Requires THERAPIST role" });
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
     const records = await prisma.therapistCarePlan.findMany({
       where: { therapistId: authReq.user.userId },
-      orderBy: { updatedAt: "desc" },
+      orderBy: { updatedAt: 'desc' },
       take: 100,
     });
 
@@ -266,29 +266,29 @@ clinicalWorkspaceRouter.get(
     } catch {
       res.status(503).json({
         message:
-          "Care plan encryption key is unavailable or stored data is invalid",
+          'Care plan encryption key is unavailable or stored data is invalid',
       });
     }
   })
 );
 
 clinicalWorkspaceRouter.post(
-  "/care-plans",
+  '/care-plans',
   authenticatedRouteLimiter,
   verifyJwt,
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
-    if (!authReq.user || !requireRole(authReq, "THERAPIST")) {
+    if (!authReq.user || !requireRole(authReq, 'THERAPIST')) {
       res
         .status(authReq.user ? 403 : 401)
-        .json({ message: "Requires THERAPIST role" });
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
     const parsed = createCarePlanSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
-        message: "Validation failed",
+        message: 'Validation failed',
         errors: parsed.error.flatten().fieldErrors,
       });
       return;
@@ -300,13 +300,13 @@ clinicalWorkspaceRouter.post(
     );
     if (relationship === null) {
       res.status(503).json({
-        message: "Could not verify the therapist-patient relationship",
+        message: 'Could not verify the therapist-patient relationship',
       });
       return;
     }
     if (!relationship) {
       res.status(403).json({
-        message: "Care plans can only be created for an assigned patient",
+        message: 'Care plans can only be created for an assigned patient',
       });
       return;
     }
@@ -314,10 +314,10 @@ clinicalWorkspaceRouter.post(
     let encryptedPayload: string;
     try {
       const { patientId: _patientId, ...payload } = parsed.data;
-      encryptedPayload = encryptClinicalPayload(payload, "care-plan-v1");
+      encryptedPayload = encryptClinicalPayload(payload, 'care-plan-v1');
     } catch {
       res.status(503).json({
-        message: "Care plan encryption is not configured",
+        message: 'Care plan encryption is not configured',
       });
       return;
     }
@@ -328,15 +328,15 @@ clinicalWorkspaceRouter.post(
           therapistId: authReq.user!.userId,
           patientId: parsed.data.patientId,
           encryptedPayload,
-          status: "DRAFT",
+          status: 'DRAFT',
         },
       });
 
       await writeClinicalAudit(tx, {
         actorId: authReq.user!.userId,
-        recordType: "CARE_PLAN",
+        recordType: 'CARE_PLAN',
         recordId: created.id,
-        actionType: "CARE_PLAN_CREATED",
+        actionType: 'CARE_PLAN_CREATED',
         metadata: { status: created.status },
       });
 
@@ -350,22 +350,22 @@ clinicalWorkspaceRouter.post(
 );
 
 clinicalWorkspaceRouter.patch(
-  "/care-plans/:id",
+  '/care-plans/:id',
   authenticatedRouteLimiter,
   verifyJwt,
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
-    if (!authReq.user || !requireRole(authReq, "THERAPIST")) {
+    if (!authReq.user || !requireRole(authReq, 'THERAPIST')) {
       res
         .status(authReq.user ? 403 : 401)
-        .json({ message: "Requires THERAPIST role" });
+        .json({ message: 'Requires THERAPIST role' });
       return;
     }
 
     const parsed = updateCarePlanSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
-        message: "Validation failed",
+        message: 'Validation failed',
         errors: parsed.error.flatten().fieldErrors,
       });
       return;
@@ -375,12 +375,12 @@ clinicalWorkspaceRouter.patch(
       where: { id: req.params.id as string },
     });
     if (!existing || existing.therapistId !== authReq.user.userId) {
-      res.status(404).json({ message: "Care plan not found" });
+      res.status(404).json({ message: 'Care plan not found' });
       return;
     }
-    if (existing.status === "ARCHIVED") {
+    if (existing.status === 'ARCHIVED') {
       res.status(409).json({
-        message: "Archived care plans cannot be edited",
+        message: 'Archived care plans cannot be edited',
       });
       return;
     }
@@ -389,15 +389,15 @@ clinicalWorkspaceRouter.patch(
     try {
       const current = decryptClinicalPayload<CarePlanPayload>(
         existing.encryptedPayload,
-        "care-plan-v1"
+        'care-plan-v1'
       );
       encryptedPayload = encryptClinicalPayload(
         { ...current, ...parsed.data },
-        "care-plan-v1"
+        'care-plan-v1'
       );
     } catch {
       res.status(503).json({
-        message: "Care plan encryption is unavailable or stored data is invalid",
+        message: 'Care plan encryption is unavailable or stored data is invalid',
       });
       return;
     }
@@ -407,16 +407,16 @@ clinicalWorkspaceRouter.patch(
         where: { id: existing.id },
         data: {
           encryptedPayload,
-          status: "DRAFT",
+          status: 'DRAFT',
           patientAcknowledgedAt: null,
         },
       });
 
       await writeClinicalAudit(tx, {
         actorId: authReq.user!.userId,
-        recordType: "CARE_PLAN",
+        recordType: 'CARE_PLAN',
         recordId: updated.id,
-        actionType: "CARE_PLAN_UPDATED",
+        actionType: 'CARE_PLAN_UPDATED',
         metadata: { status: updated.status, acknowledgementReset: true },
       });
 
@@ -430,21 +430,21 @@ clinicalWorkspaceRouter.patch(
 );
 
 clinicalWorkspaceRouter.get(
-  "/care-plans/mine",
+  '/care-plans/mine',
   authenticatedRouteLimiter,
   verifyJwt,
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
-    if (!authReq.user || !requireRole(authReq, "PATIENT")) {
+    if (!authReq.user || !requireRole(authReq, 'PATIENT')) {
       res
         .status(authReq.user ? 403 : 401)
-        .json({ message: "Requires PATIENT role" });
+        .json({ message: 'Requires PATIENT role' });
       return;
     }
 
     const records = await prisma.therapistCarePlan.findMany({
       where: { patientId: authReq.user.userId },
-      orderBy: { updatedAt: "desc" },
+      orderBy: { updatedAt: 'desc' },
       take: 100,
     });
 
@@ -457,22 +457,22 @@ clinicalWorkspaceRouter.get(
     } catch {
       res.status(503).json({
         message:
-          "Care plan encryption key is unavailable or stored data is invalid",
+          'Care plan encryption key is unavailable or stored data is invalid',
       });
     }
   })
 );
 
 clinicalWorkspaceRouter.post(
-  "/care-plans/:id/acknowledge",
+  '/care-plans/:id/acknowledge',
   authenticatedRouteLimiter,
   verifyJwt,
   asyncHandler(async (req, res) => {
     const authReq = req as AuthenticatedRequest;
-    if (!authReq.user || !requireRole(authReq, "PATIENT")) {
+    if (!authReq.user || !requireRole(authReq, 'PATIENT')) {
       res
         .status(authReq.user ? 403 : 401)
-        .json({ message: "Requires PATIENT role" });
+        .json({ message: 'Requires PATIENT role' });
       return;
     }
 
@@ -480,12 +480,12 @@ clinicalWorkspaceRouter.post(
       where: { id: req.params.id as string },
     });
     if (!existing || existing.patientId !== authReq.user.userId) {
-      res.status(404).json({ message: "Care plan not found" });
+      res.status(404).json({ message: 'Care plan not found' });
       return;
     }
-    if (existing.status === "ARCHIVED") {
+    if (existing.status === 'ARCHIVED') {
       res.status(409).json({
-        message: "Archived care plans cannot be acknowledged",
+        message: 'Archived care plans cannot be acknowledged',
       });
       return;
     }
@@ -496,14 +496,14 @@ clinicalWorkspaceRouter.post(
     );
     if (relationship === null) {
       res.status(503).json({
-        message: "Could not verify the therapist-patient relationship",
+        message: 'Could not verify the therapist-patient relationship',
       });
       return;
     }
     if (!relationship) {
       res.status(403).json({
         message:
-          "This care plan is no longer associated with an active care relationship",
+          'This care plan is no longer associated with an active care relationship',
       });
       return;
     }
@@ -513,15 +513,15 @@ clinicalWorkspaceRouter.post(
         where: { id: existing.id },
         data: {
           patientAcknowledgedAt: new Date(),
-          status: "ACTIVE",
+          status: 'ACTIVE',
         },
       });
 
       await writeClinicalAudit(tx, {
         actorId: authReq.user!.userId,
-        recordType: "CARE_PLAN",
+        recordType: 'CARE_PLAN',
         recordId: updated.id,
-        actionType: "CARE_PLAN_ACKNOWLEDGED",
+        actionType: 'CARE_PLAN_ACKNOWLEDGED',
         metadata: { status: updated.status },
       });
 
