@@ -1,3 +1,8 @@
+import { writeFile, mkdir } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import multer from 'multer';
 import { prisma } from '../lib/prisma.js';
 import {
   analyticsRangeQuerySchema,
@@ -17,6 +22,24 @@ import {
 import { authenticatedRouteLimiter } from '../middleware/rate-limit.js';
 import { Prisma } from '../generated/prisma/index.js';
 import { callService, httpClient } from '@mindora/http-client';
+
+const userModuleDir = dirname(fileURLToPath(import.meta.url));
+const therapistPhotosDir = resolve(
+  userModuleDir,
+  '../../public/therapist-photos'
+);
+
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Unsupported file type'));
+    }
+  },
+});
 
 export const userRouter = Router();
 
@@ -673,6 +696,47 @@ userRouter.put(
     res
       .status(400)
       .json({ message: 'Profile updates not supported for this role' });
+  })
+);
+
+// Upload or replace a therapist's profile photo. Saves to the same static
+// directory served by express.static('/photos') in app.ts.
+userRouter.post(
+  '/me/photo',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  photoUpload.single('photo'),
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.user || authReq.user.role !== 'THERAPIST') {
+      res
+        .status(403)
+        .json({ message: 'Only therapists can upload a profile photo' });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ message: 'No file provided' });
+      return;
+    }
+    const ext =
+      req.file.mimetype === 'image/png'
+        ? '.png'
+        : req.file.mimetype === 'image/webp'
+          ? '.webp'
+          : '.jpg';
+    const filename = `${randomUUID()}${ext}`;
+    await mkdir(therapistPhotosDir, { recursive: true });
+    await writeFile(resolve(therapistPhotosDir, filename), req.file.buffer);
+
+    const photosBaseUrl = process.env.PHOTOS_BASE_URL ?? '/api/v1/users/photos';
+    const photoUrl = `${photosBaseUrl}/${filename}`;
+
+    const profile = await prisma.therapistProfile.update({
+      where: { userId: authReq.user.userId },
+      data: { photoUrl },
+    });
+
+    res.status(200).json({ photoUrl: profile.photoUrl });
   })
 );
 
