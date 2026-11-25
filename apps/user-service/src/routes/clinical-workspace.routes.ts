@@ -395,7 +395,8 @@ clinicalWorkspaceRouter.patch(
       );
     } catch {
       res.status(503).json({
-        message: 'Care plan encryption is unavailable or stored data is invalid',
+        message:
+          'Care plan encryption is unavailable or stored data is invalid',
       });
       return;
     }
