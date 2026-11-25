@@ -512,7 +512,9 @@ function failedNotificationChannels(
     result.status === 'rejected'
       ? [
           `${labels[index]}: ${
-            result.reason instanceof Error ? result.reason.message : String(result.reason)
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason)
           }`,
         ]
       : []
