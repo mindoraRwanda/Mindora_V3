@@ -346,7 +346,7 @@ async function sendAdminEmailAlerts(
         const sent = await sendEmail(recipient, subject, html);
         if (!sent)
           throw new Error('Resend is not initialized or email was skipped');
-        if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'delivered');
+        if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'accepted');
       } catch (error) {
         const reason = error instanceof Error ? error.message : 'unknown error';
         if (dedupeKey)
