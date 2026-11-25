@@ -121,8 +121,7 @@ export async function sendCrisisAlertEmail(
     return { attempted: 0, sent: 0, failed: 0 };
   }
 
-  const includeExcerpt =
-    process.env.CRISIS_ALERT_INCLUDE_MESSAGE === 'true';
+  const includeExcerpt = process.env.CRISIS_ALERT_INCLUDE_MESSAGE === 'true';
   const excerpt =
     includeExcerpt && event.messageExcerpt
       ? escapeHtml(event.messageExcerpt.slice(0, 1500))
@@ -147,7 +146,11 @@ export async function sendCrisisAlertEmail(
 
   const results = await Promise.allSettled(
     recipients.map((to) =>
-      sendEmail(to, `[Mindora] Crisis escalation — level ${event.crisisLevel}`, html)
+      sendEmail(
+        to,
+        `[Mindora] Crisis escalation — level ${event.crisisLevel}`,
+        html
+      )
     )
   );
   const sent = results.filter(
@@ -156,7 +159,8 @@ export async function sendCrisisAlertEmail(
   const failed = results.length - sent;
 
   console.log(
-    `[crisis-alert] email attempts=${results.length}, accepted=${sent}, failed=${failed}`
+    `[crisis-alert] email attempts=${results.length}, accepted=${sent}, ` +
+      `failed=${failed}`
   );
 
   return { attempted: results.length, sent, failed };
