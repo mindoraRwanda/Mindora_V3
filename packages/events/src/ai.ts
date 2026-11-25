@@ -35,6 +35,8 @@ export interface AICrisisEvent {
   userId: string;
   sessionId: string | null;
   crisisLevel: number;
+  /** Short user-message excerpt for authorized clinical escalation only. */
+  messageExcerpt?: string;
   timestamp: string;
 }
 
@@ -44,5 +46,6 @@ export const aiCrisisEventSchema = z.object({
   userId: z.string().uuid(),
   sessionId: z.string().nullable(),
   crisisLevel: z.number(),
+  messageExcerpt: z.string().max(1500).optional(),
   timestamp: z.string().datetime(),
 });

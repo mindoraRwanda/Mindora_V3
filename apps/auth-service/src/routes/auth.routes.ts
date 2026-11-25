@@ -35,8 +35,7 @@ import { configureGoogleOAuth } from '../lib/google-oauth.js';
 import { getRequestCookie } from '../lib/cookies.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import {
-  deletePasswordResetToken,
-  getPasswordResetUserId,
+  consumePasswordResetToken,
   storePasswordResetToken,
 } from '../lib/redis.js';
 import {
@@ -309,7 +308,7 @@ authRouter.post(
 
     const { token, newPassword } = parsed.data;
     const tokenHash = hashToken(token);
-    const userId = await getPasswordResetUserId(tokenHash);
+    const userId = await consumePasswordResetToken(tokenHash);
 
     if (!userId) {
       res.status(400).json({ message: 'Invalid or expired reset token' });
@@ -322,7 +321,6 @@ authRouter.post(
       data: { passwordHash },
     });
 
-    await deletePasswordResetToken(tokenHash);
     await prisma.refreshToken.updateMany({
       where: { userId, revoked: false },
       data: { revoked: true },

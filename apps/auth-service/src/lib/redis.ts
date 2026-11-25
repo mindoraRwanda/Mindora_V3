@@ -25,11 +25,13 @@ export async function storePasswordResetToken(
   await client.set(passwordResetKey(tokenHash), userId, 'EX', 15 * 60);
 }
 
-export async function getPasswordResetUserId(
+// GETDEL makes reset-token consumption atomic: two concurrent reset requests
+// cannot both validate and use the same single-use credential.
+export async function consumePasswordResetToken(
   tokenHash: string
 ): Promise<string | null> {
   const client = getRedisClient(config.redisUrl);
-  return client.get(passwordResetKey(tokenHash));
+  return client.getdel(passwordResetKey(tokenHash));
 }
 
 export async function deletePasswordResetToken(
