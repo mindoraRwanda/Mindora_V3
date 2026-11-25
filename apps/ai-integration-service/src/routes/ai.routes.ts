@@ -100,11 +100,23 @@ router.post(
               .filter(Boolean)
           : [];
       const approvedResourcesText = approvedClinicalResources.length
-        ? ` MINDORA-approved resources: ${approvedClinicalResources.join('; ')}.`
+        ? ` MINDORA-approved resources: ${approvedClinicalResources.join(
+            '; '
+          )}.`
         : '';
-      const safetyResponse =
-        "I'm really glad you told me. Your safety matters, and you deserve support right now. If you may act on these thoughts, have already hurt yourself, or cannot stay safe, please contact local emergency services or go to the nearest emergency department now. If possible, move away from anything you could use to hurt yourself and stay with someone you trust while you get help. For general MINDORA support during published business hours (Monday to Friday, 9:00 AM–5:00 PM), call +250 783 974-066 or email info@mindora.rw (stated response time within 24 hours). These are general support contacts, not emergency services or a 24/7 crisis hotline. For therapist follow-up when safe, visit https://app.mindora.rw/therapists." +
-        approvedResourcesText;
+      const safetyResponse = [
+        "I'm really glad you told me. Your safety matters,",
+        'and you deserve support right now. If you may act on these thoughts,',
+        'have already hurt yourself, or cannot stay safe, please contact',
+        'local emergency services or go to the nearest emergency department now.',
+        'If possible, move away from anything you could use to hurt yourself',
+        'and stay with someone you trust while you get help.',
+        'For general MINDORA support during published business hours',
+        '(Monday to Friday, 9:00 AM–5:00 PM), call +250 783 974-066 or email',
+        'info@mindora.rw (stated response time within 24 hours). These are general',
+        'support contacts, not emergency services or a 24/7 crisis hotline.',
+        'For therapist follow-up when safe, visit https://app.mindora.rw/therapists.',
+      ].join(' ') + approvedResourcesText;
 
       let interactionId = randomUUID();
       try {
@@ -153,7 +165,10 @@ router.post(
             } catch {
               /* retain safe marker */
             }
-            return `User: ${userMessage.slice(0, 700)}\nMINDORA: ${assistantMessage.slice(0, 700)}`;
+            return [
+              `User: ${userMessage.slice(0, 700)}`,
+              `MINDORA: ${assistantMessage.slice(0, 700)}`,
+            ].join('\n');
           })
           .join('\n\n')
           .slice(0, 5000);
