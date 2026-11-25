@@ -818,3 +818,58 @@ describe('GET /dashboard', () => {
     expect(response.status).toBe(403);
   });
 });
+
+
+describe('GET /internal/appointments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBlacklisted.mockResolvedValue(false);
+  });
+
+  it('allows SERVICE callers to list appointments with pagination and status filters', async () => {
+    mockAppointmentFindMany.mockResolvedValue([sampleAppointment()]);
+    mockAppointmentCount.mockResolvedValue(1);
+
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/appointments?status=CONFIRMED&page=2&limit=5')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      total: 1,
+      page: 2,
+      limit: 5,
+      appointments: [{ id: appointmentId, patientId, therapistId }],
+    });
+    expect(mockAppointmentFindMany).toHaveBeenCalledWith({
+      where: { status: 'CONFIRMED' },
+      orderBy: { slotStart: 'desc' },
+      skip: 5,
+      take: 5,
+    });
+    expect(mockAppointmentCount).toHaveBeenCalledWith({
+      where: { status: 'CONFIRMED' },
+    });
+  });
+
+  it('rejects non-service callers', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/appointments')
+      .set('Authorization', `Bearer ${patientToken()}`);
+
+    expect(response.status).toBe(403);
+    expect(mockAppointmentFindMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid appointment status filters', async () => {
+    const app = createApp();
+    const response = await request(app)
+      .get('/internal/appointments?status=UNKNOWN')
+      .set('Authorization', `Bearer ${serviceToken()}`);
+
+    expect(response.status).toBe(400);
+    expect(mockAppointmentFindMany).not.toHaveBeenCalled();
+  });
+});
