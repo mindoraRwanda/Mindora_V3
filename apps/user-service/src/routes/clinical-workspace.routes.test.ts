@@ -13,6 +13,10 @@ vi.hoisted(() => {
   process.env.INTERNAL_SERVICE_TOKEN = 'service-token-test';
 });
 
+const mockCarePlanCreate = vi.fn();
+const mockCarePlanFindUnique = vi.fn();
+const mockCarePlanFindMany = vi.fn();
+const mockCarePlanUpdate = vi.fn();
 const mockPrescriptionCreate = vi.fn();
 const mockPrescriptionFindUnique = vi.fn();
 const mockPrescriptionFindMany = vi.fn();
@@ -44,6 +48,12 @@ vi.mock('ioredis', () => {
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
     $transaction: (...args: unknown[]) => mockTransaction(...args),
+    therapistCarePlan: {
+      create: (...args: unknown[]) => mockCarePlanCreate(...args),
+      findUnique: (...args: unknown[]) => mockCarePlanFindUnique(...args),
+      findMany: (...args: unknown[]) => mockCarePlanFindMany(...args),
+      update: (...args: unknown[]) => mockCarePlanUpdate(...args),
+    },
     therapistPrescriptionDraft: {
       create: (...args: unknown[]) => mockPrescriptionCreate(...args),
       findUnique: (...args: unknown[]) => mockPrescriptionFindUnique(...args),
@@ -99,6 +109,10 @@ const therapistToken = () => tokenFor('THERAPIST', therapistId);
 
 function makeTransactionClient() {
   return {
+    therapistCarePlan: {
+      create: mockCarePlanCreate,
+      update: mockCarePlanUpdate,
+    },
     therapistPrescriptionDraft: {
       create: mockPrescriptionCreate,
       update: mockPrescriptionUpdate,
@@ -127,6 +141,75 @@ describe('Clinical workspace', () => {
       const callback = args[0] as (tx: unknown) => Promise<unknown>;
       return callback(makeTransactionClient());
     });
+  });
+
+  it('creates an encrypted care plan for a therapist assigned patient', async () => {
+    const now = new Date('2026-11-10T10:00:00.000Z');
+    mockCarePlanCreate.mockImplementation(
+      async ({ data }: { data: Record<string, unknown> }) => ({
+        id: '66666666-6666-4666-8666-666666666666',
+        ...data,
+        patientAcknowledgedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+    );
+
+    const app = createApp();
+    const response = await request(app)
+      .post('/api/v1/users/care-plans')
+      .set('Authorization', `Bearer ${therapistToken()}`)
+      .send({
+        patientId,
+        title: 'Care plan title',
+        goals: ['Improve sleep routine'],
+        milestones: [{ title: 'Review sleep diary' }],
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.carePlan).toMatchObject({
+      patientId,
+      therapistId,
+      title: 'Care plan title',
+      goals: ['Improve sleep routine'],
+      status: 'DRAFT',
+      patientAcknowledgedAt: null,
+    });
+    const saved = mockCarePlanCreate.mock.calls[0][0].data;
+    expect(saved.encryptedPayload).not.toContain('Care plan title');
+    expect(saved.encryptedPayload).not.toContain('Improve sleep routine');
+    expect(mockAuditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: therapistId,
+          recordType: 'CARE_PLAN',
+          actionType: 'CARE_PLAN_CREATED',
+        }),
+      })
+    );
+  });
+
+  it('does not create a care plan when the therapist-patient relationship cannot be verified', async () => {
+    mockHttpGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { hasRelationship: false },
+    });
+
+    const app = createApp();
+    const response = await request(app)
+      .post('/api/v1/users/care-plans')
+      .set('Authorization', `Bearer ${therapistToken()}`)
+      .send({
+        patientId,
+        title: 'Care plan title',
+        goals: ['Improve sleep routine'],
+        milestones: [],
+      });
+
+    expect(response.status).toBe(403);
+    expect(mockCarePlanCreate).not.toHaveBeenCalled();
+    expect(mockAuditCreate).not.toHaveBeenCalled();
   });
 
   it('creates an encrypted therapist prescription draft only for an assigned patient', async () => {
