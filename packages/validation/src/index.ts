@@ -96,3 +96,9 @@ export {
   type UpdateTherapistApplicationDto,
   type UploadDocumentTypeDto,
 } from './therapist-application.js';
+export {
+  SCREENING_INSTRUMENTS,
+  screeningSubmissionSchema,
+  type ScreeningInstrumentId,
+  type ScreeningSubmissionDto,
+} from './screening.js';
