@@ -4,6 +4,7 @@ const { sendMock } = vi.hoisted(() => {
   process.env.NODE_ENV = 'test';
   process.env.RESEND_EMAIL_API_KEY = 're_test_password_reset';
   process.env.RESEND_FROM_EMAIL = 'Mindora <no-reply@mindora.rw>';
+
   return {
     sendMock: vi.fn().mockResolvedValue({ error: null }),
   };
@@ -27,7 +28,8 @@ describe('password reset email delivery', () => {
   });
 
   it('uses the Railway RESEND_FROM_EMAIL setting', async () => {
-    const resetUrl = 'https://app.mindora.rw/reset-password?token=one-time-token';
+    const resetUrl =
+      'https://app.mindora.rw/reset-password?token=one-time-token';
 
     await sendPasswordResetEmail('patient@example.com', resetUrl);
 
@@ -46,11 +48,13 @@ describe('password reset email delivery', () => {
       error: { message: 'domain is not verified' },
     });
 
-    await expect(
-      sendPasswordResetEmail(
-        'patient@example.com',
-        'https://app.mindora.rw/reset-password?token=one-time-token'
-      )
-    ).rejects.toThrow('Resend delivery failed: domain is not verified');
+    const delivery = sendPasswordResetEmail(
+      'patient@example.com',
+      'https://app.mindora.rw/reset-password?token=one-time-token'
+    );
+
+    await expect(delivery).rejects.toThrow(
+      'Resend delivery failed: domain is not verified'
+    );
   });
 });
