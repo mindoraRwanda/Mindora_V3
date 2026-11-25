@@ -113,6 +113,38 @@ export function appointmentCancelledTemplate(
   `;
 }
 
+export function appointmentBookedTherapistTemplate(
+  therapistName: string,
+  patientName: string,
+  scheduledAt: string,
+  sessionType: string
+): string {
+  return `
+    <div style="${BASE_STYLES}">
+      <h1 style="color: #6b46c1; margin-bottom: 8px;">New Appointment Request</h1>
+      <p style="margin-top: 0; color: #4a5568;">Hi ${therapistName},</p>
+      <p>You have a new appointment request from <strong>${patientName}</strong>.</p>
+      <table style="background: #f9f6ff; border-radius: 8px; padding: 16px 20px; width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 4px 0; color: #4a5568; font-size: 0.875rem; white-space: nowrap; width: 140px;">Date &amp; Time</td>
+          <td style="padding: 4px 0; font-weight: 600;">${formatDate(scheduledAt)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 0; color: #4a5568; font-size: 0.875rem;">Patient</td>
+          <td style="padding: 4px 0; font-weight: 600;">${patientName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 0; color: #4a5568; font-size: 0.875rem;">Session Type</td>
+          <td style="padding: 4px 0; font-weight: 600;">${sessionType}</td>
+        </tr>
+      </table>
+      <p style="color: #4a5568; font-size: 0.9rem;">Please log in to your Mindora dashboard to confirm or manage this appointment.</p>
+      ${DIVIDER}
+      ${FOOTER}
+    </div>
+  `;
+}
+
 export function therapistApplicationSubmittedTemplate(
   fullName: string
 ): string {

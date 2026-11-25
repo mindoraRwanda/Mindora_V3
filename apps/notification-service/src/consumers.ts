@@ -23,6 +23,7 @@ import {
 } from './preferences.js';
 import {
   appointmentBookedTemplate,
+  appointmentBookedTherapistTemplate,
   appointmentConfirmedTemplate,
   appointmentCancelledTemplate,
   therapistApplicationApprovedTemplate,
@@ -206,20 +207,44 @@ async function handleAppointment(payload: unknown): Promise<void> {
   if (event.eventType === 'appointment.booked') {
     const booked = event as AppointmentBookedEvent;
     const typeLabel = sessionTypeLabel(booked.sessionType);
-    const prefs = await getUserPreferences(booked.patientId);
+
+    // Notify patient
+    const patientPrefs = await getUserPreferences(booked.patientId);
     await sendPushIfEnabled(
       booked.patientId,
       'Appointment Booked',
       `${typeLabel} appointment scheduled.`,
       event.eventType,
-      prefs
+      patientPrefs
     );
     await sendEmailIfEnabled(
       booked.patientId,
       'Your appointment has been booked',
       appointmentBookedTemplate(patientName, therapistName, booked.slotStart),
       event.eventType,
-      prefs
+      patientPrefs
+    );
+
+    // Notify therapist
+    const therapistPrefs = await getUserPreferences(booked.therapistId);
+    await sendPushIfEnabled(
+      booked.therapistId,
+      'New Appointment Request',
+      `${patientName} booked a ${typeLabel.toLowerCase()} session.`,
+      event.eventType,
+      therapistPrefs
+    );
+    await sendEmailIfEnabled(
+      booked.therapistId,
+      'New appointment request from ' + patientName,
+      appointmentBookedTherapistTemplate(
+        therapistName,
+        patientName,
+        booked.slotStart,
+        typeLabel
+      ),
+      event.eventType,
+      therapistPrefs
     );
   }
 }
