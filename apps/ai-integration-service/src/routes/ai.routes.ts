@@ -17,7 +17,8 @@ const router = Router();
 async function publishCrisisEvent(
   userId: string,
   crisisLevel: number,
-  sessionId: string | null
+  sessionId: string | null,
+  messageExcerpt: string
 ): Promise<void> {
   const connection = await connect();
   const channel = await connection.createChannel();
@@ -32,6 +33,7 @@ async function publishCrisisEvent(
         userId,
         sessionId,
         crisisLevel,
+        messageExcerpt: messageExcerpt.slice(0, 1500),
         timestamp: new Date().toISOString(),
       })
     ),
@@ -74,7 +76,8 @@ router.post(
       publishCrisisEvent(
         userId ?? 'unknown',
         crisisLevel,
-        resolvedSessionId
+        resolvedSessionId,
+        message
       ).catch((err) => {
         console.error(
           '[pre-filter] Failed to publish crisis event to RabbitMQ:',
