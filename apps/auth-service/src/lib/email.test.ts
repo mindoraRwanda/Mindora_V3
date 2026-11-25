@@ -11,11 +11,11 @@ const { sendMock } = vi.hoisted(() => {
 });
 
 vi.mock('resend', () => ({
-  Resend: vi.fn(() => ({
-    emails: {
+  Resend: class {
+    emails = {
       send: sendMock,
-    },
-  })),
+    };
+  },
 }));
 
 import { initResend, sendPasswordResetEmail } from './email.js';
