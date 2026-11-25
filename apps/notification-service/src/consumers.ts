@@ -293,6 +293,52 @@ async function handleCommunity(payload: unknown): Promise<void> {
   );
 }
 
+/** Look up therapist IDs who have appointments with this patient. */
+async function getTherapistIdsForPatient(patientId: string): Promise<string[]> {
+  const base = process.env.APPOINTMENT_SERVICE_URL ?? 'http://localhost:8000';
+  try {
+    const res = await fetch(
+      `${base}/internal/appointments/patients/${encodeURIComponent(patientId)}/therapists`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as { therapistIds?: string[] };
+    return data.therapistIds ?? [];
+  } catch {
+    console.warn(
+      `[ai.crisis] Could not look up therapists for patient ${patientId}`
+    );
+    return [];
+  }
+}
+
+/** Look up admin user IDs from the user service. */
+async function getAdminUserIds(): Promise<string[]> {
+  const base = process.env.USER_SERVICE_URL ?? 'http://localhost:3002';
+  try {
+    const res = await fetch(
+      `${base}/internal/users?role=ADMIN&page=1&limit=50`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+        },
+      }
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      users?: { id: string }[];
+    };
+    return (data.users ?? []).map((u) => u.id);
+  } catch {
+    console.warn('[ai.crisis] Could not look up admin users');
+    return [];
+  }
+}
+
 async function handleAi(payload: unknown): Promise<void> {
   console.log(`[${EXCHANGES.AI}] received:`, JSON.stringify(payload));
 
@@ -304,13 +350,64 @@ async function handleAi(payload: unknown): Promise<void> {
     );
   }
   const crisis = parsed.data;
-  const prefs = await getUserPreferences(crisis.userId);
+
+  // SMS to the user (if SMS is enabled)
+  const userPrefs = await getUserPreferences(crisis.userId);
   await sendSmsIfEnabled(
     crisis.userId,
     `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`,
     'ai.crisis',
-    prefs
+    userPrefs
   );
+
+  // Push notification to the patient too (so it appears in their in-app feed)
+  await sendPushIfEnabled(
+    crisis.userId,
+    'Crisis Support',
+    'A counsellor has been notified and will reach out shortly.',
+    'ai.crisis',
+    userPrefs
+  );
+
+  const patientName = (await getUserName(crisis.userId)) ?? 'A patient';
+  const alertBody = `${patientName} triggered a crisis alert (level ${crisis.crisisLevel}). Please check on them immediately.`;
+
+  // Push + email to the patient's therapist(s)
+  const therapistIds = await getTherapistIdsForPatient(crisis.userId);
+  for (const therapistId of therapistIds) {
+    const prefs = await getUserPreferences(therapistId);
+    await sendPushIfEnabled(
+      therapistId,
+      'Crisis Alert',
+      alertBody,
+      'ai.crisis',
+      prefs
+    );
+    await sendEmailIfEnabled(
+      therapistId,
+      'Crisis alert — patient needs attention',
+      `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px;">
+        <h1 style="color: #c53030;">Crisis Alert</h1>
+        <p>${alertBody}</p>
+        <p>Please log in to your Mindora dashboard to follow up.</p>
+      </div>`,
+      'ai.crisis',
+      prefs
+    );
+  }
+
+  // Push notification to all admins (always)
+  const adminIds = await getAdminUserIds();
+  for (const adminId of adminIds) {
+    const prefs = await getUserPreferences(adminId);
+    await sendPushIfEnabled(
+      adminId,
+      'Crisis Alert',
+      alertBody,
+      'ai.crisis',
+      prefs
+    );
+  }
 }
 
 async function handleMood(payload: unknown): Promise<void> {
