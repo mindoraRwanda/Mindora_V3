@@ -440,7 +440,7 @@ describe('POST /reset-password', () => {
     vi.clearAllMocks();
   });
 
-  it('updates the password, consumes the token, and revokes existing refresh tokens', async () => {
+  it('updates password, consumes token, and revokes refresh tokens', async () => {
     mockConsumeReset.mockResolvedValue('user-123');
     mockUserUpdate.mockResolvedValue({ id: 'user-123' });
     mockRefreshUpdateMany.mockResolvedValue({ count: 2 });
@@ -464,16 +464,18 @@ describe('POST /reset-password', () => {
     const update = mockUserUpdate.mock.calls[0]?.[0] as {
       data: { passwordHash: string };
     };
-    expect(await verifyPassword(update.data.passwordHash, 'NewSecurePass1')).toBe(
-      true
+    const passwordMatches = await verifyPassword(
+      update.data.passwordHash,
+      'NewSecurePass1'
     );
+    expect(passwordMatches).toBe(true);
     expect(mockRefreshUpdateMany).toHaveBeenCalledWith({
       where: { userId: 'user-123', revoked: false },
       data: { revoked: true },
     });
   });
 
-  it('rejects an expired or already-used token without changing the password', async () => {
+  it('rejects expired or used tokens without changing the password', async () => {
     mockConsumeReset.mockResolvedValue(null);
 
     const app = createApp();
