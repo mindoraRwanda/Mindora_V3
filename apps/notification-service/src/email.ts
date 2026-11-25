@@ -54,10 +54,7 @@ export async function getUserName(userId: string): Promise<string | null> {
     const data = (await res.json()) as { userName?: string };
     return data.userName ?? null;
   } catch (err) {
-    console.warn(
-      `[email] User Service unreachable for user ${userId}:`,
-      err
-    );
+    console.warn(`[email] User Service unreachable for user ${userId}:`, err);
     return null;
   }
 }
