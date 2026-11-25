@@ -23,6 +23,7 @@ import { asyncHandler } from '../middleware/async-handler.js';
 import { prisma } from '../lib/prisma.js';
 import type { Prisma } from '../generated/prisma/index.js';
 
+// Clinical payloads are encrypted before persistence; handlers fail closed when the key is missing.
 export const clinicalWorkspaceRouter = Router();
 
 const KONG_URL = process.env.KONG_URL ?? 'http://localhost:8000';
