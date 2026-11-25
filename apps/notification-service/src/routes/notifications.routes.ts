@@ -179,7 +179,9 @@ notificationsRouter.get(
         orderBy: { createdAt: 'desc' },
       }),
       prisma.notification_logs.count({ where }),
-      prisma.notification_logs.count({ where: { userId, readAt: null } }),
+      prisma.notification_logs.count({
+        where: { ...where, readAt: null },
+      }),
     ]);
 
     const userRole = authReq.user.role;
