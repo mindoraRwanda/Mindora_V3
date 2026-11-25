@@ -88,6 +88,32 @@ router.post(
 
     // Level 5 — immediate escalation; AI is never called under any circumstances
     if (crisisLevel === 5) {
+      // Save to ai_interactions so the admin dashboard's "Total crisis events"
+      // count (which queries crisis_level = 5 from this table) is accurate.
+      if (userId) {
+        prisma.aiInteraction
+          .create({
+            data: {
+              user_id: userId,
+              session_id: resolvedSessionId ?? crypto.randomUUID(),
+              user_message: encrypt(message),
+              ai_response: encrypt(
+                'Crisis safety response — helpline numbers provided'
+              ),
+              input_flagged: true,
+              output_flagged: false,
+              crisis_level: 5,
+              response_ms: 0,
+            },
+          })
+          .catch((err) => {
+            console.error(
+              '[chat] Failed to save level-5 interaction to database:',
+              err
+            );
+          });
+      }
+
       res.status(200).json({
         response:
           "I'm concerned about your safety right now. Please reach out to a crisis helpline immediately. In Rwanda: Umutima Counselling Centre +250 788 386 225. International: Crisis Text Line — text HOME to 741741. You are not alone.",
