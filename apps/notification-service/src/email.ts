@@ -3,8 +3,14 @@ import { logNotification } from './notificationLogger.js';
 
 let resend: Resend | null = null;
 
-// Resend sandbox sender — replace once a custom sending domain is verified.
-const FROM = 'Mindora <onboarding@resend.dev>';
+// Railway production uses RESEND_FROM_EMAIL. Keep the legacy alias for
+// compatibility, but never use Resend's shared onboarding sender in production.
+const FROM =
+  process.env.RESEND_FROM_EMAIL ??
+  process.env.RESEND_FROM_ADDRESS ??
+  (process.env.NODE_ENV === 'production'
+    ? ''
+    : 'Mindora <onboarding@resend.dev>');
 
 export function initResend(): void {
   const apiKey = process.env.RESEND_EMAIL_API_KEY;
@@ -14,6 +20,14 @@ export function initResend(): void {
     );
     return;
   }
+
+  if (!FROM) {
+    console.error(
+      '[email] RESEND_FROM_EMAIL is not set — email notifications disabled'
+    );
+    return;
+  }
+
   resend = new Resend(apiKey);
   console.log('✓ Resend email client initialized');
 }
@@ -53,10 +67,8 @@ export async function sendEmail(
   subject: string,
   htmlBody: string
 ): Promise<boolean> {
-  console.log(`[email] sendEmail → to=${to} subject="${subject}"`);
-
   if (!resend) {
-    console.warn(`[email] Resend not initialized — skipping email to ${to}`);
+    console.warn('[email] Resend not initialized — skipping email');
     return false;
   }
 
@@ -68,11 +80,11 @@ export async function sendEmail(
   });
 
   if (error) {
-    console.error(`[email] Resend delivery failed for ${to}:`, error);
+    console.error('[email] Resend delivery failed:', error.message);
     throw new Error(error.message);
   }
 
-  console.log(`[email] Email delivered → to=${to} subject="${subject}"`);
+  console.log('[email] Email accepted by Resend');
   return true;
 }
 
