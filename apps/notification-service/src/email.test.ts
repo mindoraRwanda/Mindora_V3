@@ -16,6 +16,10 @@ vi.mock('resend', () => ({
   },
 }));
 
+vi.mock('./notificationLogger.js', () => ({
+  logNotification: vi.fn(),
+}));
+
 import { initResend, sendCrisisAlertEmail } from './email.js';
 
 describe('clinical crisis email alerts', () => {
