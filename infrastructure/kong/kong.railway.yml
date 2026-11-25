@@ -195,6 +195,29 @@ routes:
     paths: [/api/v1/ai/health]
     strip_path: false
     methods: [GET]
+  # Public provider callbacks: the notification service enforces a dedicated timing-safe webhook token.
+  - name: notification-voice-callback
+    service: notification-service
+    paths: [/webhooks/voice/callback]
+    strip_path: false
+    methods: [POST, OPTIONS]
+  - name: notification-voice-events
+    service: notification-service
+    paths: [/webhooks/voice/events]
+    strip_path: false
+    methods: [POST, OPTIONS]
+  # Private Python chatbot service-to-service crisis webhook; its dedicated
+  # bearer token is checked by the AI service before publishing to RabbitMQ.
+  - name: ai-chatbot-crisis-webhook
+    service: ai-integration-service
+    paths: [/api/v1/ai/internal/chatbot-crisis-events]
+    strip_path: false
+    methods: [POST, OPTIONS]
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
   - name: notification-health
     service: notification-service
     paths: [/api/v1/notifications/health]
