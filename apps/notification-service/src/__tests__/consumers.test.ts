@@ -3,6 +3,14 @@ import { EXCHANGES } from '@mindora/events';
 
 const mocks = vi.hoisted(() => ({
   sendPushNotification: vi.fn(),
+  sendEmail: vi.fn(),
+  sendEmailToUser: vi.fn(),
+  getUserName: vi.fn(),
+  sendSms: vi.fn(),
+  sendVoiceCall: vi.fn(),
+  claimNotificationAttempt: vi.fn(),
+  finishNotificationAttempt: vi.fn(),
+  logNotification: vi.fn(),
   subscribeWithRetry: vi.fn(),
 }));
 
@@ -12,6 +20,26 @@ vi.mock('../fcm.js', () => ({
 
 vi.mock('../retry.js', () => ({
   subscribeWithRetry: mocks.subscribeWithRetry,
+}));
+
+vi.mock('../email.js', () => ({
+  sendEmail: mocks.sendEmail,
+  sendEmailToUser: mocks.sendEmailToUser,
+  getUserName: mocks.getUserName,
+}));
+
+vi.mock('../sms.js', () => ({
+  sendSms: mocks.sendSms,
+}));
+
+vi.mock('../voice.js', () => ({
+  sendVoiceCall: mocks.sendVoiceCall,
+}));
+
+vi.mock('../notificationLogger.js', () => ({
+  claimNotificationAttempt: mocks.claimNotificationAttempt,
+  finishNotificationAttempt: mocks.finishNotificationAttempt,
+  logNotification: mocks.logNotification,
 }));
 
 import { startConsumers, SUBSCRIBED_EXCHANGES } from '../consumers.js';
@@ -399,3 +427,63 @@ describe('mood and AI handlers', () => {
     expect(mocks.sendPushNotification).not.toHaveBeenCalled();
   });
 });
+
+describe('AI crisis handler', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mocks.subscribeWithRetry.mockResolvedValue(undefined);
+    mocks.claimNotificationAttempt.mockResolvedValue(true);
+    mocks.sendEmail.mockResolvedValue(true);
+    mocks.sendSms.mockResolvedValue(undefined);
+    mocks.sendVoiceCall.mockResolvedValue({ accepted: true });
+    process.env.MINDORA_CRISIS_ALERT_EMAILS = 'safety@mindora.rw';
+    process.env.MINDORA_CRISIS_ALERT_PHONES = '+250788000001';
+    process.env.MINDORA_CRISIS_ALERT_VOICE_PHONES = '+250788000002';
+    process.env.SMS_ENABLED = 'true';
+    process.env.AT_API_KEY = 'test-api-key';
+    process.env.AT_USERNAME = 'sandbox';
+    process.env.AT_VOICE_ENABLED = 'true';
+    await startConsumers();
+  });
+
+  const crisisEvent = {
+    eventId: '432706a2-d868-412e-837a-62044072e586',
+    occurredAt: '2026-11-25T10:00:00.000Z',
+    timestamp: '2026-11-25T10:00:00.000Z',
+    userId: '5c4a96c6-f388-4adc-b188-90337ac37120',
+    sessionId: '3fc4d56e-7567-46df-9915-cceec7b4cd14',
+    crisisLevel: 5,
+    messageExcerpt: '<script>alert(1)</script>',
+    conversationExcerpt: 'User: I need urgent help',
+    interactionId: 'f406523f-a0fd-42e1-a488-9d97f903c679',
+    source: 'web-chatbot' as const,
+  };
+
+  it('sends email, SMS and voice independently and deduplicates each recipient', async () => {
+    await capturedHandler(EXCHANGES.AI)(crisisEvent);
+
+    expect(mocks.sendEmail).toHaveBeenCalledOnce();
+    expect(mocks.sendSms).toHaveBeenCalledOnce();
+    expect(mocks.sendVoiceCall).toHaveBeenCalledOnce();
+    expect(mocks.claimNotificationAttempt).toHaveBeenCalledTimes(3);
+    expect(mocks.finishNotificationAttempt).toHaveBeenCalledTimes(3);
+
+    const html = mocks.sendEmail.mock.calls[0][2] as string;
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('User: I need urgent help');
+  });
+
+  it('still attempts SMS and voice when the email provider fails', async () => {
+    mocks.sendEmail.mockRejectedValueOnce(new Error('Resend unavailable'));
+
+    await expect(capturedHandler(EXCHANGES.AI)(crisisEvent)).rejects.toThrow(
+      'Crisis notification delivery failed'
+    );
+
+    expect(mocks.sendEmail).toHaveBeenCalledOnce();
+    expect(mocks.sendSms).toHaveBeenCalledOnce();
+    expect(mocks.sendVoiceCall).toHaveBeenCalledOnce();
+  });
+});
+
