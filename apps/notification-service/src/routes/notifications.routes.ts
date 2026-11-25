@@ -102,7 +102,16 @@ function humanizeEventType(eventType: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function displayTextFor(eventType: string): { title: string; body: string } {
+function displayTextFor(
+  eventType: string,
+  role?: string
+): { title: string; body: string } {
+  if (eventType === 'appointment.booked' && role === 'THERAPIST') {
+    return {
+      title: 'New Appointment Request',
+      body: 'A patient has requested an appointment. Please review and confirm.',
+    };
+  }
   return (
     EVENT_DISPLAY_TEXT[eventType] ?? {
       title: humanizeEventType(eventType),
@@ -154,7 +163,13 @@ notificationsRouter.get(
     const page = parsePositiveInt(req.query.page, 1);
     const limit = Math.min(parsePositiveInt(req.query.limit, 20), 50);
 
-    const where: Prisma.notification_logsWhereInput = { userId };
+    // Only show one entry per event in the in-app feed — push channel
+    // entries are always logged (even when skipped), so filtering to 'push'
+    // deduplicates the push+email pair each event produces.
+    const where: Prisma.notification_logsWhereInput = {
+      userId,
+      channel: 'push',
+    };
 
     const [rows, total, unreadCount] = await Promise.all([
       prisma.notification_logs.findMany({
@@ -167,8 +182,9 @@ notificationsRouter.get(
       prisma.notification_logs.count({ where: { userId, readAt: null } }),
     ]);
 
+    const userRole = authReq.user.role;
     const notifications = rows.map((row) => {
-      const { title, body } = displayTextFor(row.eventType);
+      const { title, body } = displayTextFor(row.eventType, userRole);
       return {
         id: row.id,
         eventType: row.eventType,
