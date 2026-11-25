@@ -112,6 +112,12 @@ function displayTextFor(
       body: 'A patient has requested an appointment. Please review and confirm.',
     };
   }
+  if (eventType === 'ai.crisis' && (role === 'THERAPIST' || role === 'ADMIN')) {
+    return {
+      title: 'Crisis Alert',
+      body: 'A patient triggered a crisis alert. Please check on them immediately.',
+    };
+  }
   return (
     EVENT_DISPLAY_TEXT[eventType] ?? {
       title: humanizeEventType(eventType),

@@ -1050,3 +1050,27 @@ appointmentRouter.get(
     res.status(200).json({ hasRelationship: appointment !== null });
   })
 );
+
+// Internal: return distinct therapist IDs who have any appointment with
+// this patient. Used by notification-service for crisis escalation.
+appointmentRouter.get(
+  '/internal/appointments/patients/:patientId/therapists',
+  authenticatedRouteLimiter,
+  verifyJwt,
+  asyncHandler(async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
+    if (authReq.user?.role !== 'SERVICE') {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const patientId = routeParam(req.params.patientId);
+    const rows = await prisma.appointment.findMany({
+      where: { patientId },
+      distinct: ['therapistId'],
+      select: { therapistId: true },
+    });
+
+    res.status(200).json({ therapistIds: rows.map((r) => r.therapistId) });
+  })
+);
