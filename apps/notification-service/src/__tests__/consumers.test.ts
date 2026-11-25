@@ -447,20 +447,23 @@ describe('AI crisis handler', () => {
     source: 'web-chatbot' as const,
   };
 
-  it('sends email, SMS and voice independently and deduplicates each recipient', async () => {
-    await capturedHandler(EXCHANGES.AI)(crisisEvent);
+  it(
+    'sends email, SMS and voice independently and deduplicates each recipient',
+    async () => {
+      await capturedHandler(EXCHANGES.AI)(crisisEvent);
 
-    expect(mocks.sendEmail).toHaveBeenCalledOnce();
-    expect(mocks.sendSms).toHaveBeenCalledOnce();
-    expect(mocks.sendVoiceCall).toHaveBeenCalledOnce();
-    expect(mocks.claimNotificationAttempt).toHaveBeenCalledTimes(3);
-    expect(mocks.finishNotificationAttempt).toHaveBeenCalledTimes(3);
+      expect(mocks.sendEmail).toHaveBeenCalledOnce();
+      expect(mocks.sendSms).toHaveBeenCalledOnce();
+      expect(mocks.sendVoiceCall).toHaveBeenCalledOnce();
+      expect(mocks.claimNotificationAttempt).toHaveBeenCalledTimes(3);
+      expect(mocks.finishNotificationAttempt).toHaveBeenCalledTimes(3);
 
-    const html = mocks.sendEmail.mock.calls[0][2] as string;
-    expect(html).toContain('&lt;script&gt;');
-    expect(html).not.toContain('<script>');
-    expect(html).toContain('User: I need urgent help');
-  });
+      const html = mocks.sendEmail.mock.calls[0][2] as string;
+      expect(html).toContain('&lt;script&gt;');
+      expect(html).not.toContain('<script>');
+      expect(html).toContain('User: I need urgent help');
+    }
+  );
 
   it('still attempts SMS and voice when the email provider fails', async () => {
     mocks.sendEmail.mockRejectedValueOnce(new Error('Resend unavailable'));
