@@ -63,8 +63,11 @@ router.post(
 
     const crisisLevel = await runPreFilter(message, userId);
 
-    // Level 5 — immediate escalation; AI is never called under any circumstances
-    if (crisisLevel === 5) {
+    // Level 4–5 — active suicidal ideation or imminent danger; publish crisis
+    // event so therapists and admins are alerted. Level 5 returns an immediate
+    // safety response without calling the AI; level 4 still calls the AI but
+    // with the input flagged.
+    if (crisisLevel >= 4) {
       // INTENTIONAL fire-and-forget: do NOT await publishCrisisEvent.
       // The safety response must reach the user even if RabbitMQ is down, restarting,
       // or unreachable. Awaiting here would mean a broker outage causes the user to
@@ -81,7 +84,10 @@ router.post(
           err
         );
       });
+    }
 
+    // Level 5 — immediate escalation; AI is never called under any circumstances
+    if (crisisLevel === 5) {
       res.status(200).json({
         response:
           "I'm concerned about your safety right now. Please reach out to a crisis helpline immediately. In Rwanda: Umutima Counselling Centre +250 788 386 225. International: Crisis Text Line — text HOME to 741741. You are not alone.",
@@ -90,13 +96,6 @@ router.post(
       });
       return;
     }
-
-    // TODO[clinical-review]: Levels 3 and 4 currently set inputFlagged and continue
-    // to the AI call. A formal escalation path for these levels — specifically whether
-    // Level 3 (passive ideation) and Level 4 (active ideation without plan) should
-    // trigger therapist SMS alerts, in-app safety check prompts, or modified AI system
-    // prompts — has NOT been defined yet and requires clinical review before go-live.
-    // See: AFSP Safe Messaging Guidelines, Columbia Suicide Severity Rating Scale (C-SSRS).
     const inputFlagged = crisisLevel >= 1;
 
     if (!userId || !email) {

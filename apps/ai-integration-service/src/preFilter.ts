@@ -74,6 +74,14 @@ const CRISIS_KEYWORDS: Record<number, string[]> = {
     "i'm saying goodbye",
     'this is my last message',
     "i won't be here tomorrow",
+    'commit suicide',
+    'kill myself',
+    'end my life',
+    'take my own life',
+    'hang myself',
+    'overdose',
+    "i'm going to jump",
+    'slit my wrists',
   ],
 };
 

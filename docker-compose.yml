@@ -139,6 +139,7 @@ services:
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
       APP_BASE_URL: http://localhost:3001
+      RESEND_EMAIL_API_KEY: ${RESEND_EMAIL_API_KEY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:3001/oauth/google/callback}
@@ -405,6 +406,7 @@ services:
       AI_SERVICE_PORT: 3007
       AI_DATABASE_URL: postgresql://mindora:mindora@postgres:5432/mindora_ai
       REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
       THERAPY_CHATBOT_BASE_URL: ${THERAPY_CHATBOT_BASE_URL:-https://chatbot.mindora.rw}
       MINDORA_INTEGRATION_KEY: ${MINDORA_INTEGRATION_KEY:-}
       AI_INTERACTION_ENCRYPTION_KEY: ${AI_INTERACTION_ENCRYPTION_KEY:-mindora-dev-ai-interaction-key-32bytes!!}
@@ -414,6 +416,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test:
@@ -443,6 +447,7 @@ services:
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://mindora:mindora@rabbitmq:5672
       USER_SERVICE_URL: http://user-service:3002
+      APPOINTMENT_SERVICE_URL: http://appointment-service:3003
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       RESEND_EMAIL_API_KEY: ${RESEND_EMAIL_API_KEY:-}
       FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
