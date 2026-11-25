@@ -83,6 +83,15 @@ router.post(
       typeof body?.messageExcerpt === 'string'
         ? body.messageExcerpt.slice(0, 1500)
         : undefined;
+    const conversationExcerpt =
+      typeof body?.conversationExcerpt === 'string'
+        ? body.conversationExcerpt.slice(0, 5000)
+        : undefined;
+    const interactionId =
+      typeof body?.interactionId === 'string' &&
+      uuidPattern.test(body.interactionId)
+        ? body.interactionId
+        : eventId;
 
     const uuidPattern =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -108,7 +117,9 @@ router.post(
       sessionId: conversationId,
       crisisLevel,
       messageExcerpt,
-      interactionId: eventId,
+      interactionId,
+      messageExcerpt,
+      conversationExcerpt,
       source: 'python-chatbot',
       externalUserRef,
     });
