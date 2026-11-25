@@ -313,12 +313,10 @@ async function handleAi(payload: unknown): Promise<void> {
   // in one must never prevent the other from being attempted.
   const smsTask = (async () => {
     const prefs = await getUserPreferences(crisis.userId);
-    await sendSmsIfEnabled(
-      crisis.userId,
-      `Mindora crisis alert: your recent session flagged a concern (level ${crisis.crisisLevel}). A counsellor will reach out shortly.`,
-      'ai.crisis',
-      prefs
-    );
+    const smsBody =
+      `Mindora crisis alert: your recent session flagged a concern ` +
+      `(level ${crisis.crisisLevel}). A counsellor will reach out shortly.`;
+    await sendSmsIfEnabled(crisis.userId, smsBody, 'ai.crisis', prefs);
   })();
 
   const emailTask = sendCrisisAlertEmail({
