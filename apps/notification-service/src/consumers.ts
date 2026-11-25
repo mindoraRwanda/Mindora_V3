@@ -511,7 +511,9 @@ function failedNotificationChannels(
   return results.flatMap((result, index) =>
     result.status === 'rejected'
       ? [
-          `${labels[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+          `${labels[index]}: ${
+            result.reason instanceof Error ? result.reason.message : String(result.reason)
+          }`,
         ]
       : []
   );
@@ -561,7 +563,9 @@ async function handleAi(payload: unknown): Promise<void> {
   const failures = channelResults.flatMap((result, index) =>
     result.status === 'rejected'
       ? [
-          `${['email', 'sms', 'voice'][index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+          `${['email', 'sms', 'voice'][index]}: ${
+            result.reason instanceof Error ? result.reason.message : String(result.reason)
+          }`,
         ]
       : []
   );
