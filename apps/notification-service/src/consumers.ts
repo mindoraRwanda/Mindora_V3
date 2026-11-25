@@ -413,7 +413,7 @@ async function sendAdminSmsAlerts(
       }
       try {
         await sendSms('mindora-admin', message, phone, eventType);
-        if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'delivered');
+        if (dedupeKey) await finishNotificationAttempt(dedupeKey, 'accepted');
       } catch (error) {
         const reason = error instanceof Error ? error.message : 'unknown error';
         if (dedupeKey)
