@@ -117,6 +117,8 @@ function sessionTypeLabel(
   switch (sessionType) {
     case 'VIDEO':
       return 'Video';
+    case 'AUDIO':
+      return 'Audio';
     case 'IN_PERSON':
       return 'In-person';
     case 'CHAT':
