@@ -6,6 +6,7 @@ import {
   adminRejectApplicationSchema,
   adminRequestInfoApplicationSchema,
   analyticsRangeQuerySchema,
+  appointmentListQuerySchema,
   listAlertsQuerySchema,
   listAuditLogQuerySchema,
   listUsersQuerySchema,
@@ -70,6 +71,45 @@ adminRouter.get(
 
     if (!response.ok || !response.data) {
       res.status(503).json({ message: 'User Service unavailable' });
+      return;
+    }
+
+    res.status(200).json(response.data);
+  })
+);
+
+// GET /appointments — read-only platform register. The public route is
+// ADMIN-guarded by requireAdmin above; this hop uses the SERVICE token.
+adminRouter.get(
+  '/appointments',
+  asyncHandler(async (req, res) => {
+    const parsed = appointmentListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        message: 'Validation failed',
+        errors: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const query = new URLSearchParams();
+    query.set('page', String(parsed.data.page));
+    query.set('limit', String(parsed.data.limit));
+    if (parsed.data.status) query.set('status', parsed.data.status);
+
+    const response = await httpClient.get<{
+      appointments: unknown[];
+      total: number;
+      page: number;
+      limit: number;
+    }>(KONG_URL, `/internal/appointments?${query.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`,
+      },
+    });
+
+    if (!response.ok || !response.data) {
+      res.status(503).json({ message: 'Appointment Service unavailable' });
       return;
     }
 
