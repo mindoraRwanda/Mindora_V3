@@ -36,8 +36,7 @@ const mockQueryRaw = vi.fn();
 const mockIsBlacklisted = vi.fn();
 const mockBlacklistToken = vi.fn();
 const mockStoreReset = vi.fn();
-const mockGetResetUser = vi.fn();
-const mockDeleteReset = vi.fn();
+const mockConsumeReset = vi.fn();
 const mockPublish = vi.fn();
 
 vi.mock('../lib/prisma.js', () => ({
@@ -78,14 +77,13 @@ vi.mock('@mindora/queue', () => ({
 vi.mock('../lib/redis.js', () => ({
   connectRedis: vi.fn(),
   storePasswordResetToken: (...args: unknown[]) => mockStoreReset(...args),
-  getPasswordResetUserId: (...args: unknown[]) => mockGetResetUser(...args),
-  deletePasswordResetToken: (...args: unknown[]) => mockDeleteReset(...args),
+  consumePasswordResetToken: (...args: unknown[]) => mockConsumeReset(...args),
   isTokenBlacklisted: (...args: unknown[]) => mockIsBlacklisted(...args),
   blacklistToken: (...args: unknown[]) => mockBlacklistToken(...args),
 }));
 
 import { createApp } from '../app.js';
-import { hashPassword } from '../lib/password.js';
+import { hashPassword, verifyPassword } from '../lib/password.js';
 import { config } from '../config.js';
 import { signAccessToken } from '../lib/tokens.js';
 
@@ -434,6 +432,60 @@ describe('POST /forgot-password', () => {
 
     expect(response.status).toBe(200);
     expect(mockStoreReset).toHaveBeenCalled();
+  });
+});
+
+describe('POST /reset-password', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('updates the password, consumes the token, and revokes existing refresh tokens', async () => {
+    mockConsumeReset.mockResolvedValue('user-123');
+    mockUserUpdate.mockResolvedValue({ id: 'user-123' });
+    mockRefreshUpdateMany.mockResolvedValue({ count: 2 });
+
+    const app = createApp();
+    const response = await request(app).post('/reset-password').send({
+      token: 'valid-reset-token',
+      newPassword: 'NewSecurePass1',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toBe('Password updated successfully');
+    expect(mockConsumeReset).toHaveBeenCalled();
+    expect(mockUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'user-123' },
+        data: { passwordHash: expect.any(String) },
+      })
+    );
+
+    const update = mockUserUpdate.mock.calls[0]?.[0] as {
+      data: { passwordHash: string };
+    };
+    expect(await verifyPassword(update.data.passwordHash, 'NewSecurePass1')).toBe(
+      true
+    );
+    expect(mockRefreshUpdateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-123', revoked: false },
+      data: { revoked: true },
+    });
+  });
+
+  it('rejects an expired or already-used token without changing the password', async () => {
+    mockConsumeReset.mockResolvedValue(null);
+
+    const app = createApp();
+    const response = await request(app).post('/reset-password').send({
+      token: 'expired-reset-token',
+      newPassword: 'NewSecurePass1',
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('Invalid or expired reset token');
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(mockRefreshUpdateMany).not.toHaveBeenCalled();
   });
 });
 
